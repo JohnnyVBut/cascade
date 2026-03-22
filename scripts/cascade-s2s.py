@@ -238,8 +238,8 @@ def wait_for_gateways(api_a: CascadeAPI, gw_a_id: str,
         gws_a = {g['id']: g for g in get_gateways(api_a)}
         gws_b = {g['id']: g for g in get_gateways(api_b)}
 
-        status_a = gws_a.get(gw_a_id, {}).get('status', {}).get('health', 'unknown')
-        status_b = gws_b.get(gw_b_id, {}).get('status', {}).get('health', 'unknown')
+        status_a = gws_a.get(gw_a_id, {}).get('status', 'unknown')
+        status_b = gws_b.get(gw_b_id, {}).get('status', 'unknown')
 
         elapsed = int(timeout - (deadline - time.time()))
         print(f'  [{elapsed:3d}s]  Server A gateway: {status_a:<10}  Server B gateway: {status_b}',
