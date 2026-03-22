@@ -1,4 +1,4 @@
-# WireSteer — Deploy from Scratch
+# Cascade — Deploy from Scratch
 
 Full server setup: Ubuntu 22.04 / 24.04 + AmneziaWG kernel module + Docker + Caddy reverse proxy.
 
@@ -73,7 +73,7 @@ curl -fsSL https://get.docker.com | sh
 Enable IP forwarding and tune network buffers (required for WireGuard routing and HTTP/3):
 
 ```bash
-cat > /etc/sysctl.d/99-wiresteer.conf << 'EOF'
+cat > /etc/sysctl.d/99-cascade.conf << 'EOF'
 net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1
 net.core.rmem_max = 7340032
@@ -95,7 +95,7 @@ git checkout feature/go-rewrite
 
 ---
 
-## Step 6 — Build WireSteer (Go binary + Docker image)
+## Step 6 — Build Cascade (Go binary + Docker image)
 
 ```bash
 ./build-go.sh
@@ -105,7 +105,7 @@ The script compiles the Go binary and builds the Docker image `awg2-easy-go:late
 
 ---
 
-## Step 7 — Configure WireSteer
+## Step 7 — Configure Cascade
 
 Edit `docker-compose.go.yml`. The key variables:
 
@@ -120,7 +120,7 @@ environment:
 **Generate password hash:**
 
 ```bash
-docker run --rm -it awg2-easy-go:latest /app/wiresteer hash
+docker run --rm -it awg2-easy-go:latest /app/cascade hash
 # Enter password when prompted — copy the $2a$... hash
 ```
 
@@ -128,7 +128,7 @@ Paste the hash as the value of `PASSWORD_HASH=`.
 
 ---
 
-## Step 8 — Start WireSteer
+## Step 8 — Start Cascade
 
 ```bash
 docker compose -f docker-compose.go.yml up -d
@@ -146,7 +146,7 @@ curl http://127.0.0.1:8888/api/health
 
 ## Step 9 — Obtain TLS certificate (acme.sh)
 
-WireSteer must be running (Step 8) before this step.
+Cascade must be running (Step 8) before this step.
 acme.sh uses standalone mode — it temporarily binds port 80 to complete the ACME HTTP-01 challenge.
 **Port 80 must be free** (Caddy is not started yet at this point).
 
@@ -190,19 +190,19 @@ No `--certificate-profile` flag needed. Auto-renewal every 60 days.
 Install the certificate to a persistent location:
 
 ```bash
-mkdir -p /etc/ssl/wiresteer
+mkdir -p /etc/ssl/cascade
 
 ~/.acme.sh/acme.sh --install-cert -d YOUR.SERVER.IP \
-  --key-file       /etc/ssl/wiresteer/server.key \
-  --fullchain-file /etc/ssl/wiresteer/server.crt \
-  --reloadcmd      "docker exec wiresteer-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
+  --key-file       /etc/ssl/cascade/server.key \
+  --fullchain-file /etc/ssl/cascade/server.crt \
+  --reloadcmd      "docker exec cascade-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
 ```
 
 ---
 
 ## Step 10 — Deploy Caddy reverse proxy
 
-Caddy sits in front of WireSteer: serves the decoy site on HTTPS, and only routes
+Caddy sits in front of Cascade: serves the decoy site on HTTPS, and only routes
 requests under a secret path to the admin UI.
 
 ```bash
@@ -216,8 +216,8 @@ Edit `.env`:
 # Secret path prefix for the admin UI — choose something random, no slashes
 ADMIN_PATH=your_random_secret_here
 
-# WireSteer port (must match PORT in docker-compose.go.yml)
-WIRESTEER_PORT=8888
+# Cascade port (must match PORT in docker-compose.go.yml)
+CASCADE_PORT=8888
 ```
 
 Start Caddy:
@@ -256,7 +256,7 @@ Open in browser: `https://YOUR.SERVER.IP/YOUR_ADMIN_PATH/`
 |------|----------|---------|
 | 443 | TCP + UDP (HTTP/3) | HTTPS — Caddy (public) |
 | 80 | TCP | ACME renewal only (not permanently open) |
-| 8888 | TCP | WireSteer UI — bound to 127.0.0.1, not public |
+| 8888 | TCP | Cascade UI — bound to 127.0.0.1, not public |
 | 51830 | UDP | WireGuard interface wg10 (first tunnel) |
 | 51831 | UDP | WireGuard interface wg11, etc. |
 
@@ -270,7 +270,7 @@ ufw allow 51830:51840/udp
 
 ## Data directory
 
-All WireSteer state is stored in `~/awg-easy/data/`:
+All Cascade state is stored in `~/awg-easy/data/`:
 
 ```
 data/
@@ -292,7 +292,7 @@ git pull origin feature/go-rewrite
 docker compose -f docker-compose.go.yml up -d
 ```
 
-Caddy does not need to be restarted for WireSteer updates.
+Caddy does not need to be restarted for Cascade updates.
 
 ---
 
@@ -307,7 +307,7 @@ dkms status
 uname -r        # must be 6.x
 ```
 
-### WireSteer container exits immediately
+### Cascade container exits immediately
 
 ```bash
 docker logs awg-router
@@ -323,7 +323,7 @@ Common causes:
 # Confirm API is reachable through Caddy:
 curl -k https://YOUR.SERVER.IP/YOUR_ADMIN_PATH/api/health
 
-# Check WireSteer logs:
+# Check Cascade logs:
 docker logs awg-router | tail -30
 ```
 
@@ -340,9 +340,9 @@ Without the trailing slash, relative API paths resolve incorrectly.
 
 # Reinstall:
 ~/.acme.sh/acme.sh --install-cert -d YOUR.SERVER.IP \
-  --key-file /etc/ssl/wiresteer/server.key \
-  --fullchain-file /etc/ssl/wiresteer/server.crt \
-  --reloadcmd "docker exec wiresteer-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
+  --key-file /etc/ssl/cascade/server.key \
+  --fullchain-file /etc/ssl/cascade/server.crt \
+  --reloadcmd "docker exec cascade-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
 
 # Restart Caddy:
 cd ~/awg-easy/deploy/caddy && docker compose restart

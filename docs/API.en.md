@@ -1,4 +1,4 @@
-# WireSteer — API Reference (Go Rewrite)
+# Cascade — API Reference (Go Rewrite)
 
 > **Base URL:** `/api`
 > **Auth:** All routes except session, lang, release, remember-me and UI-flag stubs require either a valid session cookie **or** an API token (`Authorization: Bearer ws_...`).

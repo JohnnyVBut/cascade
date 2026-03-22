@@ -1,4 +1,4 @@
-# WireSteer — API Reference (Go Rewrite)
+# Cascade — API Reference (Go Rewrite)
 
 > **Base URL:** `/api`
 > **Auth:** Все маршруты кроме session, lang, release, remember-me и UI-флагов требуют либо валидного session cookie, либо API-токена (`Authorization: Bearer ws_...`).

@@ -1,6 +1,6 @@
-# WireSteer — Feature Overview
+# Cascade — Feature Overview
 
-WireSteer is a self-hosted WireGuard / AmneziaWG router management platform.
+Cascade is a self-hosted WireGuard / AmneziaWG router management platform.
 It replaces the original AWG-Easy with a full-stack rewrite in Go + Fiber, providing
 enterprise-grade routing, firewall, and monitoring capabilities through a clean web UI.
 
@@ -173,9 +173,9 @@ Reusable named objects for use in firewall rules and NAT.
   - Revoke instantly from UI
 
 ### Network security
-- `BIND_ADDR=127.0.0.1` — WireSteer binds to localhost only, not exposed directly
+- `BIND_ADDR=127.0.0.1` — Cascade binds to localhost only, not exposed directly
 - **Caddy reverse proxy** with hidden `ADMIN_PATH` prefix
-  - Requests to `/<secret>/...` → WireSteer
+  - Requests to `/<secret>/...` → Cascade
   - Everything else → decoy site (StreamVault)
 - Rate limiting: 5 POST requests/minute per IP (caddy-ratelimit plugin)
 - TLS via **acme.sh** — Let's Encrypt certificates for bare IP addresses

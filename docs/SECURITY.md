@@ -1,4 +1,4 @@
-# WireSteer — Security Model
+# Cascade — Security Model
 
 ## Defense-in-depth overview
 
@@ -13,8 +13,8 @@ Internet
    • Referrer-Policy: no-referrer (admin URL doesn't leak via Referer header)
    • Decoy site (StreamVault) served for all other paths
    │
-   ▼ only /<ADMIN_PATH>/* reaches WireSteer
-[WireSteer on 127.0.0.1:8888]
+   ▼ only /<ADMIN_PATH>/* reaches Cascade
+[Cascade on 127.0.0.1:8888]
    • Password authentication (bcrypt)
    • TOTP 2FA (per-user, optional but recommended)
    • Session cookie (SameSite=Strict)
@@ -127,7 +127,7 @@ Session cookies use `SameSite=Strict`. CSRF tokens are not implemented, but
 ### Deployment
 
 - [ ] Use random hex ADMIN_PATH (`openssl rand -hex 16`)
-- [ ] Set `BIND_ADDR=127.0.0.1` (WireSteer not exposed to internet)
+- [ ] Set `BIND_ADDR=127.0.0.1` (Cascade not exposed to internet)
 - [ ] Enable TOTP for all admin accounts
 - [ ] Use strong password (16+ chars, mixed)
 - [ ] Keep acme.sh cert auto-renewal working (check crontab)
@@ -192,5 +192,5 @@ or environment variable, never in plaintext files or version control.
 | 🟡 Medium | SSRF mitigation | Reject RFC-1918, loopback, and link-local IPs in gateway monitor address field |
 | 🟡 Medium | Login audit log | Record login attempts (timestamp, IP, success/failure) — visible in UI |
 | 🟡 Medium | Request body limit | Explicit `BodyLimit: 1MB` in Fiber to prevent memory exhaustion |
-| 🟢 Low | IP allowlist UI | Configure allowed source IPs for admin access from within WireSteer settings |
+| 🟢 Low | IP allowlist UI | Configure allowed source IPs for admin access from within Cascade settings |
 | 🟢 Low | Telegram alerts | Notify on failed login burst, ADMIN_PATH change, new API token created |
