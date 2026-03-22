@@ -87,8 +87,9 @@ class CascadeAPI:
     def health(self) -> bool:
         try:
             r = self.get('/health')
-            return r.get('ok') is True
-        except Exception:
+            return r.get('status') == 'ok'
+        except Exception as exc:
+            info(f'health check error: {exc}')
             return False
 
 
