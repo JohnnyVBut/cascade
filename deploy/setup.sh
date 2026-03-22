@@ -101,6 +101,42 @@ KERNEL_MAJOR=$(uname -r | cut -d. -f1)
 info "OS: Ubuntu $OS_VER  |  Kernel: $(uname -r)"
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STEP 0 — Swap (1 GB)
+# ═══════════════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "${B}── Step 0: Swap${N}"
+
+SWAPFILE=/swapfile
+if swapon --show | grep -q "$SWAPFILE"; then
+  ok "Swap already active ($SWAPFILE)"
+elif [[ -f "$SWAPFILE" ]]; then
+  info "Swap file exists but not active — activating..."
+  chmod 600 "$SWAPFILE"
+  mkswap "$SWAPFILE" > /dev/null
+  swapon "$SWAPFILE"
+  ok "Swap activated ($(du -h "$SWAPFILE" | cut -f1))"
+else
+  info "Creating 1 GB swap at $SWAPFILE..."
+  fallocate -l 1G "$SWAPFILE" 2>/dev/null || dd if=/dev/zero of="$SWAPFILE" bs=1M count=1024 status=none
+  chmod 600 "$SWAPFILE"
+  mkswap "$SWAPFILE" > /dev/null
+  swapon "$SWAPFILE"
+  ok "Swap created and activated (1 GB)"
+fi
+
+# Persist across reboots
+if ! grep -q "$SWAPFILE" /etc/fstab; then
+  echo "$SWAPFILE none swap sw 0 0" >> /etc/fstab
+  ok "Added $SWAPFILE to /etc/fstab"
+fi
+
+# Tune swappiness: use swap only under real memory pressure
+sysctl -w vm.swappiness=10 > /dev/null
+if ! grep -q 'vm.swappiness' /etc/sysctl.d/99-cascade.conf 2>/dev/null; then
+  echo 'vm.swappiness=10' >> /etc/sysctl.d/99-cascade.conf
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — Kernel upgrade (Ubuntu 22.04 only)
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""
