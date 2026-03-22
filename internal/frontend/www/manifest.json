@@ -1,0 +1,11 @@
+{
+  "name": "AmneziaWG",
+  "display": "standalone",
+  "background_color": "#fff",
+  "icons": [
+    {
+      "src": "img/favicon.ico",
+      "type": "image/x-icon"
+    }
+  ]
+}

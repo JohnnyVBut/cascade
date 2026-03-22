@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="980" height="300" viewBox="0 0 980 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Cascade logo</title>
+  <desc id="desc">Cascade logo with geometric network graph icon and the tagline Your VPN, Your way.</desc>
+  <defs>
+    <linearGradient id="gradA" x1="36" y1="230" x2="232" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="gradB" x1="70" y1="214" x2="204" y2="76" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <style>
+      .brand { fill: #E2E8F0; font: 700 163px Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; letter-spacing: -2px; }
+      .tag   { fill: #94A3B8; font: 500 57px Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; letter-spacing: -0.2px; }
+      .edgeA { stroke: url(#gradA); stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+      .edgeB { stroke: url(#gradB); stroke-width: 8;  stroke-linecap: round; stroke-linejoin: round; }
+      .nodeOuter     { fill: #1E293B; stroke: url(#gradA); stroke-width: 10; }
+      .nodeInner     { fill: #E2E8F0; }
+      .controller    { fill: #1E293B; stroke: url(#gradB); stroke-width: 12; }
+      .controllerCore{ fill: #E2E8F0; }
+    </style>
+  </defs>
+
+  <g transform="translate(20 20)">
+    <path class="edgeA" d="M70 190 L138 66 L242 172 L118 230 Z"/>
+    <path class="edgeB" d="M70 190 L242 172"/>
+    <path class="edgeB" d="M138 66 L118 230"/>
+    <path class="edgeB" d="M154 148 L138 66"/>
+    <path class="edgeB" d="M154 148 L70 190"/>
+    <path class="edgeB" d="M154 148 L242 172"/>
+    <path class="edgeB" d="M154 148 L118 230"/>
+
+    <circle class="nodeOuter" cx="138" cy="66" r="18"/>
+    <circle class="nodeOuter" cx="70"  cy="190" r="18"/>
+    <circle class="nodeOuter" cx="242" cy="172" r="18"/>
+    <circle class="nodeOuter" cx="118" cy="230" r="18"/>
+
+    <circle class="controller"     cx="154" cy="148" r="20"/>
+    <circle class="controllerCore" cx="154" cy="148" r="7"/>
+
+    <circle class="nodeInner" cx="138" cy="66"  r="6"/>
+    <circle class="nodeInner" cx="70"  cy="190" r="6"/>
+    <circle class="nodeInner" cx="242" cy="172" r="6"/>
+    <circle class="nodeInner" cx="118" cy="230" r="6"/>
+  </g>
+
+  <text x="300" y="178" class="brand">Cascade</text>
+  <text x="305" y="250" class="tag">Your VPN, Your way.</text>
+</svg>

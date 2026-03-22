@@ -1,0 +1,70 @@
+📦 ФАЙЛЫ ДЛЯ ПЕРЕДАЧИ В НОВОЕ ПРИЛОЖЕНИЕ CLAUDE
+================================================
+
+✅ ОБЯЗАТЕЛЬНЫЕ:
+---------------
+
+1. PROJECT_CONTEXT.md
+   ↳ Полный контекст проекта, история, текущее состояние, следующие шаги
+
+2. new-architecture/lib/TunnelInterface.js
+   ↳ Класс управления туннельным интерфейсом
+
+3. new-architecture/lib/Peer.js
+   ↳ Класс представления peer (удалённого подключения)
+
+4. new-architecture/lib/InterfaceManager.js
+   ↳ Singleton менеджер всех интерфейсов
+
+5. new-architecture/routes/tunnel-interfaces.js
+   ↳ REST API endpoints для интерфейсов и peers
+
+6. new-architecture/README.md
+   ↳ Документация новой архитектуры
+
+7. TRANSFER_GUIDE.md
+   ↳ Инструкция по передаче контекста
+
+
+📌 ОПЦИОНАЛЬНО (для справки):
+------------------------------
+
+8. app-FINAL-FIX.js
+   ↳ Последняя рабочая версия старого app.js (с tunnel address fix)
+
+9. TunnelManager.js
+   ↳ Старый менеджер WAN Tunnels
+
+10. WanTunnel-WITH-ADDRESS.js
+    ↳ Старый класс WAN Tunnel с Tunnel Address support
+
+
+📝 ДРУГИЕ ДОКУМЕНТЫ (для истории):
+----------------------------------
+
+- TUNNEL_ADDRESS_FEATURE.md
+- PAYLOAD_FIX.md
+- FINAL_FIX_TUNNEL_ADDRESS.md
+- UI_TO_CONFIG_MAPPING.md
+- MAPPING_CHEATSHEET.md
+
+
+🎯 МИНИМАЛЬНЫЙ НАБОР:
+--------------------
+
+Если нужно передать минимум:
+
+1. PROJECT_CONTEXT.md (ГЛАВНЫЙ)
+2. new-architecture/ (вся папка целиком)
+3. TRANSFER_GUIDE.md
+
+Этого достаточно для продолжения разработки!
+
+
+💡 СОВЕТ:
+---------
+
+Загрузи сначала PROJECT_CONTEXT.md, потом спроси у Claude:
+"Какие ещё файлы тебе нужны для работы?"
+
+Claude сам скажет что именно ему нужно из списка выше.

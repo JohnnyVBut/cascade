@@ -1,0 +1,50 @@
+services:
+  awg-router:
+    image: awg2-easy-go:latest
+    container_name: awg-router
+    restart: unless-stopped
+
+    environment:
+      # Required: Server public IP or domain
+      - WG_HOST=your-server-ip-or-domain
+
+      # Web UI password (bcrypt hash)
+      - PASSWORD_HASH=$$2y$$05$$abcdefghijklmnopqrstuv
+
+      # Web UI port (TCP)
+      - PORT=8888
+
+      # Web UI bind address (default empty = 0.0.0.0 = all interfaces).
+      # Set to 127.0.0.1 when Caddy reverse proxy is running on the same host
+      # so the admin interface is NOT reachable directly from the internet.
+      - BIND_ADDR=127.0.0.1
+
+      # Default WireGuard/AWG listen port (UDP) — используется при создании интерфейсов
+      - WG_PORT=555
+
+      # Debug logging
+      - DEBUG=true
+
+      # ================================================================
+      # NOTE: AWG2 obfuscation parameters (JC, JMIN, JMAX, S1-S4,
+      # H1-H4, I1-I5) are now managed via the Web UI Settings page
+      # and stored in /etc/wireguard/data/settings.json.
+      # ENV vars are no longer used for AWG2 params.
+      # ================================================================
+
+    volumes:
+      - ./data:/etc/wireguard/data
+
+    # --network host: container shares host network namespace.
+    # Required for WireGuard/AWG tunnel interfaces and iptables management.
+    # Set sysctls on the host before starting:
+    #   sysctl -w net.ipv4.ip_forward=1
+    #   sysctl -w net.ipv4.conf.all.src_valid_mark=1
+    network_mode: host
+
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+
+    devices:
+      - /dev/net/tun:/dev/net/tun

@@ -1,0 +1,45 @@
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cascade-caddy
+    # Must match Cascade network mode so Caddy can reach 127.0.0.1:8888.
+    # With --network host, Caddy binds ports 80 and 443 directly on the host.
+    network_mode: host
+    restart: unless-stopped
+
+    # ADMIN_PATH and other secrets — copy .env.example → .env and fill in
+    env_file: .env
+
+    volumes:
+      # Caddy config (read-only)
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Decoy static site
+      - ./www:/srv/www:ro
+      # acme.sh webroot for ACME HTTP-01 challenges
+      - /srv/acme:/srv/acme:ro
+      # TLS certs managed by acme.sh on the host
+      - /etc/ssl/cascade:/certs:ro
+      # Persistent logs
+      - caddy_logs:/logs
+
+    # Drop all capabilities, add back only what's needed to bind ports < 1024
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+    # Read-only root filesystem — Caddy only writes to /logs (volume) and /tmp
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_logs:

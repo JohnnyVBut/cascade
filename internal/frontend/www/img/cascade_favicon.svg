@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Cascade favicon</title>
+  <desc id="desc">Cascade favicon with a geometric network graph icon.</desc>
+  <defs>
+    <linearGradient id="gradA" x1="26" y1="208" x2="216" y2="42" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22C55E"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="gradB" x1="58" y1="194" x2="196" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34D399"/>
+      <stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <style>
+      .edgeA { stroke: url(#gradA); stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
+      .edgeB { stroke: url(#gradB); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .nodeOuter { fill: white; stroke: url(#gradA); stroke-width: 9; }
+      .nodeInner { fill: #0F172A; }
+      .controller { fill: white; stroke: url(#gradB); stroke-width: 11; }
+      .controllerCore { fill: #0F172A; }
+    </style>
+  </defs>
+
+  <path class="edgeA" d="M64 178 L124 58 L214 160 L106 214 Z"/>
+  <path class="edgeB" d="M64 178 L214 160"/>
+  <path class="edgeB" d="M124 58 L106 214"/>
+  <path class="edgeB" d="M138 136 L124 58"/>
+  <path class="edgeB" d="M138 136 L64 178"/>
+  <path class="edgeB" d="M138 136 L214 160"/>
+  <path class="edgeB" d="M138 136 L106 214"/>
+
+  <circle class="nodeOuter" cx="124" cy="58" r="17"/>
+  <circle class="nodeOuter" cx="64" cy="178" r="17"/>
+  <circle class="nodeOuter" cx="214" cy="160" r="17"/>
+  <circle class="nodeOuter" cx="106" cy="214" r="17"/>
+
+  <circle class="controller" cx="138" cy="136" r="19"/>
+  <circle class="controllerCore" cx="138" cy="136" r="7"/>
+
+  <circle class="nodeInner" cx="124" cy="58" r="5.5"/>
+  <circle class="nodeInner" cx="64" cy="178" r="5.5"/>
+  <circle class="nodeInner" cx="214" cy="160" r="5.5"/>
+  <circle class="nodeInner" cx="106" cy="214" r="5.5"/>
+</svg>

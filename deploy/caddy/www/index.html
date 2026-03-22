@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StreamVault</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f0f13;
+      --surface: #1a1a24;
+      --accent:  #6c63ff;
+      --text:    #e2e2f0;
+      --muted:   #6b6b80;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 40px;
+      background: var(--surface);
+      border-bottom: 1px solid #2a2a38;
+    }
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text);
+    }
+    .logo span { color: var(--accent); }
+    nav { display: flex; gap: 28px; }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color .2s;
+    }
+    nav a:hover { color: var(--text); }
+
+    /* ── Hero player ── */
+    .hero {
+      position: relative;
+      width: 100%;
+      height: 520px;
+      overflow: hidden;
+      background: #000;
+      flex-shrink: 0;
+    }
+    #noise-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(15,15,19,.9) 0%, rgba(15,15,19,.1) 50%, transparent 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 32px 40px;
+    }
+
+    /* ── Buffering indicator ── */
+    .buffering {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      color: rgba(255,255,255,.75);
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+      pointer-events: none;
+    }
+    .buffering-ring {
+      width: 42px;
+      height: 42px;
+      border: 3px solid rgba(255,255,255,.15);
+      border-top-color: rgba(255,255,255,.75);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Fake player controls bar ── */
+    .player-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 8px 16px 12px;
+      background: linear-gradient(to top, rgba(0,0,0,.7), transparent);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+    }
+    .progress-bar {
+      height: 3px;
+      background: rgba(255,255,255,.2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 1s linear;
+    }
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.72rem;
+      color: rgba(255,255,255,.7);
+    }
+    .ctrl-icon {
+      width: 16px;
+      height: 16px;
+      fill: rgba(255,255,255,.7);
+    }
+    .ctrl-spacer { flex: 1; }
+    .time-display { font-variant-numeric: tabular-nums; }
+
+    .hero-title {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .hero-meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 22px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+
+    /* ── Grid ── */
+    .section { padding: 40px 40px 20px; }
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: var(--text);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--surface);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    }
+    .card-thumb {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #2a2a38;
+      position: relative;
+      overflow: hidden;
+    }
+    .card-thumb canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .card-thumb .duration {
+      position: absolute;
+      bottom: 6px;
+      right: 8px;
+      background: rgba(0,0,0,.7);
+      color: #fff;
+      font-size: 0.72rem;
+      padding: 2px 6px;
+      border-radius: 3px;
+      z-index: 1;
+    }
+    .card-info { padding: 12px; }
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .card-sub { font-size: 0.75rem; color: var(--muted); }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: auto;
+      padding: 28px 40px;
+      border-top: 1px solid #2a2a38;
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">Stream<span>Vault</span></div>
+    <nav>
+      <a href="#">Home</a>
+      <a href="#">Movies</a>
+      <a href="#">Series</a>
+      <a href="#">Recent</a>
+    </nav>
+  </header>
+
+  <!-- Hero: canvas noise fallback + real video overlay when available -->
+  <div class="hero">
+    <canvas id="noise-canvas"></canvas>
+
+    <!-- Real video plays over canvas when decoy.mp4 exists.
+         loop + muted required for autoplay. No controls = immersive.
+         preload=auto starts buffering immediately to generate QUIC traffic. -->
+    <video id="hero-video" autoplay loop playsinline muted preload="auto"
+           style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none;">
+      <source src="./video/decoy.mp4" type="video/mp4">
+    </video>
+
+    <!-- Buffering spinner — shown until video starts playing -->
+    <div class="buffering" id="buffering-indicator">
+      <div class="buffering-ring"></div>
+      <span>Buffering&hellip; <span id="buf-pct">64</span>%</span>
+    </div>
+
+    <!-- Fake player controls -->
+    <div class="player-controls">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <div class="ctrl-row">
+        <!-- play icon -->
+        <svg class="ctrl-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <!-- volume icon -->
+        <svg class="ctrl-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        <span class="time-display">00:14 / 09:57</span>
+        <span class="ctrl-spacer"></span>
+        <!-- fullscreen icon -->
+        <svg class="ctrl-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+      </div>
+    </div>
+
+    <div class="hero-overlay">
+      <div class="hero-title">Big Buck Bunny</div>
+      <div class="hero-meta">2008 · Animation · 9 min · Blender Foundation</div>
+      <a class="btn btn-primary" href="#">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M8 5v14l11-7z"/>
+        </svg>
+        Play
+      </a>
+    </div>
+  </div>
+
+  <!-- Library grid -->
+  <div class="section">
+    <div class="section-title">Recently Added</div>
+    <div class="grid">
+
+      <div class="card">
+        <div class="card-thumb">
+          <canvas class="thumb-canvas"></canvas>
+          <span class="duration">12:34</span>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Elephant Dream</div>
+          <div class="card-sub">2006 · Animation</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-thumb">
+          <canvas class="thumb-canvas"></canvas>
+          <span class="duration">14:54</span>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Tears of Steel</div>
+          <div class="card-sub">2012 · Sci-Fi</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-thumb">
+          <canvas class="thumb-canvas"></canvas>
+          <span class="duration">09:57</span>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Cosmos Laundromat</div>
+          <div class="card-sub">2015 · Fantasy</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-thumb">
+          <canvas class="thumb-canvas"></canvas>
+          <span class="duration">17:10</span>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Sintel</div>
+          <div class="card-sub">2010 · Fantasy</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-thumb">
+          <canvas class="thumb-canvas"></canvas>
+          <span class="duration">04:14</span>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Glass Half</div>
+          <div class="card-sub">2020 · Short</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-thumb">
+          <canvas class="thumb-canvas"></canvas>
+          <span class="duration">06:33</span>
+        </div>
+        <div class="card-info">
+          <div class="card-title">Sprite Fright</div>
+          <div class="card-sub">2021 · Comedy</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <footer>
+    <span>StreamVault · Personal Media Server</span>
+    <span>Running on HTTP/3</span>
+  </footer>
+
+  <script>
+  (() => {
+    // ── Noise generator ──────────────────────────────────────────────
+    // Returns a Uint8ClampedArray of RGBA noise pixels (dark, tinted blue-grey).
+    // ~97% of pixels are very dark (0-28), ~3% are lighter (40-100) = TV static effect.
+    function fillNoise(data) {
+      for (let i = 0; i < data.length; i += 4) {
+        const bright = Math.random() < 0.03;
+        const v = bright
+          ? 40 + (Math.random() * 60 | 0)
+          : Math.random() * 28 | 0;
+        data[i]     = v * 0.72 | 0;   // R — slightly muted
+        data[i + 1] = v * 0.72 | 0;   // G
+        data[i + 2] = v * 1.15 | 0;   // B — slight blue tint
+        data[i + 3] = 255;
+      }
+    }
+
+    // ── Hero canvas ──────────────────────────────────────────────────
+    const hero  = document.getElementById('noise-canvas');
+    const hctx  = hero.getContext('2d');
+    let   hData = null;
+
+    function resizeHero() {
+      hero.width  = hero.offsetWidth  || 1280;
+      hero.height = hero.offsetHeight || 520;
+      hData = hctx.createImageData(hero.width, hero.height);
+    }
+
+    // ── Thumbnail canvases (static single frame, not animated) ──────
+    document.querySelectorAll('.thumb-canvas').forEach(c => {
+      // Make canvas match CSS size (rough)
+      c.width  = 200;
+      c.height = 112;
+      const ctx  = c.getContext('2d');
+      const data = ctx.createImageData(200, 112);
+      fillNoise(data.data);
+      ctx.putImageData(data, 0, 0);
+      // Slight dark overlay so cards look like paused thumbnails
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, 200, 112);
+    });
+
+    // ── Buffering progress ───────────────────────────────────────────
+    const bufEl   = document.getElementById('buf-pct');
+    const progEl  = document.getElementById('progress-fill');
+    let   bufPct  = 63 + (Math.random() * 5 | 0);
+    let   stalled = false;
+    let   stallTimeout = null;
+
+    function advanceBuffer() {
+      if (stalled) return;
+      bufPct++;
+      bufEl.textContent = bufPct;
+
+      if (bufPct >= 70 + (Math.random() * 6 | 0)) {
+        stalled = true;
+        stallTimeout = setTimeout(() => {
+          bufPct  = 60 + (Math.random() * 8 | 0);
+          stalled = false;
+          bufEl.textContent = bufPct;
+        }, 1800 + Math.random() * 2400);
+      }
+    }
+
+    // Fake playhead: video appears paused / frozen
+    // Progress bar stuck near 2-3% of a 9-min video (position ~14s)
+    const fakePct = 2.4;
+    if (progEl) progEl.style.width = fakePct + '%';
+
+    // ── Animation loop ───────────────────────────────────────────────
+    let tick = 0;
+    function loop() {
+      tick++;
+      // Redraw hero noise at ~20 fps (every 3 ticks at 60fps)
+      if (tick % 3 === 0 && hData) {
+        fillNoise(hData.data);
+        hctx.putImageData(hData, 0, 0);
+      }
+      // Advance buffer counter roughly every 1.2s
+      if (tick % 72 === 0) advanceBuffer();
+      requestAnimationFrame(loop);
+    }
+
+    window.addEventListener('resize', resizeHero);
+    resizeHero();
+    loop();
+
+    // ── Real video overlay ────────────────────────────────────────────────
+    // When decoy.mp4 is available, show it over the canvas and hide spinner.
+    const vid = document.getElementById('hero-video');
+    const buf = document.getElementById('buffering-indicator');
+    if (vid) {
+      vid.addEventListener('canplay', () => {
+        vid.style.display = 'block';
+        // Keep spinner hidden once video is playing
+        vid.addEventListener('playing', () => {
+          if (buf) buf.style.display = 'none';
+        }, { once: true });
+      });
+      // If video fails to load (file not present), canvas stays — no error shown
+      vid.addEventListener('error', () => {
+        vid.style.display = 'none';
+      });
+    }
+  })();
+  </script>
+
+</body>
+</html>

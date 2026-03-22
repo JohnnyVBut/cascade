@@ -1,0 +1,103 @@
+# Cascade — Caddy reverse proxy config
+#
+# Environment variables (set in .env):
+#   ADMIN_PATH   — random hidden path segment, e.g. "a8f3k2m9p7"
+#
+# TLS certs are managed by acme.sh (see scripts/acme-install.sh):
+#   /etc/ssl/cascade/server.crt
+#   /etc/ssl/cascade/server.key
+#
+# HTTP/3 (QUIC) is enabled automatically by Caddy when TLS is configured.
+
+{
+    # Disable Caddy admin API — not needed and reduces attack surface
+    admin off
+
+    # Default access log (decoy traffic)
+    log {
+        output file /logs/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# ── HTTP: ACME challenge + redirect ──────────────────────────────────────────
+http://:80 {
+    # acme.sh webroot challenge for cert renewal
+    handle /.well-known/acme-challenge/* {
+        root * /srv/acme
+        file_server
+    }
+
+    handle {
+        redir https://{host}{uri} 301
+    }
+}
+
+# ── HTTPS: main entry point ───────────────────────────────────────────────────
+https://:443 {
+    # Manual TLS cert issued by acme.sh (bare IP or domain).
+    # Caddy uses this cert for all HTTPS connections regardless of SNI.
+    tls /certs/server.crt /certs/server.key
+
+    # ── Security headers (global) ─────────────────────────────────────────────
+    header {
+        Strict-Transport-Security  "max-age=63072000; includeSubDomains; preload"
+        X-Frame-Options            "DENY"
+        X-Content-Type-Options     "nosniff"
+        X-XSS-Protection           "1; mode=block"
+        # no-referrer: prevents the hidden admin path from leaking
+        # via Referer header when clicking external links in the UI
+        Referrer-Policy            "no-referrer"
+        Permissions-Policy         "geolocation=(), microphone=(), camera=()"
+        # Strip server identification headers
+        -Server
+        -X-Powered-By
+    }
+
+    # ── Admin interface (hidden path) ─────────────────────────────────────────
+    #
+    # handle_path strips the prefix before forwarding to Cascade.
+    # Cascade's SPA uses relative asset paths (./css/app.css, ./js/app.js),
+    # so they resolve relative to the current path segment and are proxied
+    # correctly after prefix stripping:
+    #   /ADMIN_PATH/          → /           → Cascade index.html
+    #   /ADMIN_PATH/css/...   → /css/...    → Cascade static asset
+    #   /ADMIN_PATH/api/...   → /api/...    → Cascade API handler
+    #
+    handle_path /{$ADMIN_PATH}/* {
+        reverse_proxy 127.0.0.1:{$CASCADE_PORT}
+    }
+
+    # Redirect /ADMIN_PATH (no trailing slash) → add trailing slash
+    redir /{$ADMIN_PATH} /{$ADMIN_PATH}/ 301
+
+    # ── Decoy site ────────────────────────────────────────────────────────────
+    handle {
+        root * /srv/www
+
+        # Compress text responses (HTML, CSS, JS) — skip video (already compressed)
+        @compressible {
+            not path /video/*
+        }
+        encode @compressible gzip
+
+        # Video: no-store forces browser to re-fetch on every loop iteration,
+        # producing a continuous QUIC stream (~2 Mbps) that looks like real streaming.
+        @video path /video/*
+        header @video Cache-Control "no-store, no-cache, must-revalidate"
+
+        # Serve static files (index.html, video, etc.)
+        file_server
+    }
+
+    # Custom error page — do not reveal Caddy or server info
+    # handle_errors must be at site block level, not inside handle
+    handle_errors {
+        root * /srv/www
+        rewrite * /404.html
+        file_server
+    }
+}
