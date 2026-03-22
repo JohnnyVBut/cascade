@@ -157,9 +157,8 @@ def generate_awg_params(api: CascadeAPI) -> Optional[Dict]:
     """Generate AWG2 obfuscation params via /api/templates/generate."""
     try:
         result = api.post('/templates/generate', {
-            'profile':    'tls13',
-            'intensity':  'medium',
-            'host':       'example.com',
+            'profile':   'random',
+            'intensity': 'medium',
         })
         return awg_settings_from_params(result)
     except Exception as exc:
@@ -284,10 +283,10 @@ def main() -> None:
         log('Step 3: Generating AWG2 obfuscation parameters...')
         settings = generate_awg_params(api_a)
         if settings:
-            ok('Generated (TLS 1.3 profile, medium intensity)')
+            ok('Generated (random profile, medium intensity)')
             ok('Same params will be applied to both sides')
         else:
-            ok('Using server-side defaults')
+            fail('AWG2 param generation failed — cannot create amneziawg-2.0 interface')
     else:
         log()
         log('Step 3: Protocol is WireGuard 1.0 — no obfuscation params needed')
