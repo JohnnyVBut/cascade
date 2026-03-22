@@ -220,6 +220,14 @@ new Vue({
       gatewayWindowSeconds:     30,
       gatewayHealthyThreshold:  95,
       gatewayDegradedThreshold: 90,
+      // Router identity
+      routerName:     '',
+      publicIPMode:   'auto',
+      publicIPManual: '',
+      // Runtime-only (returned by GET, not sent in PUT)
+      hostname:         '',
+      resolvedPublicIP: '',
+      publicIPWarning:  '',
     },
     settingsSaved: false,
     templates: [],
@@ -2452,7 +2460,11 @@ new Vue({
 
     async saveSettings() {
       try {
-        await this.api.updateSettings(this.globalSettings);
+        // Strip runtime-only fields before sending to the API.
+        const { hostname, resolvedPublicIP, publicIPWarning, ...storable } = this.globalSettings;
+        const updated = await this.api.updateSettings(storable);
+        // Merge response back (includes fresh resolvedPublicIP / hostname).
+        this.globalSettings = { ...this.globalSettings, ...updated };
         this.settingsSaved = true;
         setTimeout(() => { this.settingsSaved = false; }, 2500);
       } catch (err) {

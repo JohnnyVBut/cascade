@@ -5,12 +5,22 @@ package api
 
 import (
 	"log"
+	"os"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 )
+
+// SettingsResponse wraps GlobalSettings and adds runtime-only fields
+// (hostname, resolvedPublicIP, publicIPWarning) that are not stored in the DB.
+type SettingsResponse struct {
+	settings.GlobalSettings
+	Hostname         string `json:"hostname"`
+	ResolvedPublicIP string `json:"resolvedPublicIP"`
+	PublicIPWarning  string `json:"publicIPWarning"`
+}
 
 // RegisterSettings registers all /api/settings and /api/templates routes.
 // Must be called after db.Init().
@@ -30,18 +40,26 @@ import (
 func RegisterSettings(api fiber.Router) {
 	// ── Global Settings ───────────────────────────────────────────────────────
 
-	// GET /api/settings — return current global settings
+	// GET /api/settings — return current global settings + runtime info
 	api.Get("/settings", func(c *fiber.Ctx) error {
 		s, err := settings.GetSettings()
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
-		return c.JSON(s)
+		hostname, _ := os.Hostname()
+		resolvedIP, ipWarn := settings.ResolvePublicIP(s.PublicIPMode, s.PublicIPManual)
+		return c.JSON(SettingsResponse{
+			GlobalSettings:   *s,
+			Hostname:         hostname,
+			ResolvedPublicIP: resolvedIP,
+			PublicIPWarning:  ipWarn,
+		})
 	})
 
 	// PUT /api/settings — partial update
 	// Body: { dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?,
-	//         gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold? }
+	//         gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?,
+	//         routerName?, publicIPMode?, publicIPManual? }
 	api.Put("/settings", func(c *fiber.Ctx) error {
 		var body map[string]any
 		if err := c.BodyParser(&body); err != nil {
@@ -53,8 +71,24 @@ func RegisterSettings(api fiber.Router) {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
 
+		// Invalidate public IP cache if mode or manual IP changed.
+		if _, ok := body["publicIPMode"]; ok {
+			settings.InvalidateIPCache()
+		}
+		if _, ok := body["publicIPManual"]; ok {
+			settings.InvalidateIPCache()
+		}
+
+		hostname, _ := os.Hostname()
+		resolvedIP, ipWarn := settings.ResolvePublicIP(updated.PublicIPMode, updated.PublicIPManual)
+
 		log.Println("settings: updated")
-		return c.JSON(updated)
+		return c.JSON(SettingsResponse{
+			GlobalSettings:   *updated,
+			Hostname:         hostname,
+			ResolvedPublicIP: resolvedIP,
+			PublicIPWarning:  ipWarn,
+		})
 	})
 
 	// ── AWG2 Templates ────────────────────────────────────────────────────────

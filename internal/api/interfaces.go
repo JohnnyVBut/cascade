@@ -80,12 +80,26 @@ func ifaceJSON(t *tunnel.TunnelInterface, withPeers bool) fiber.Map {
 	return m
 }
 
-// getWGHost returns WG_HOST env var, used for endpoint construction.
+// getWGHost returns the public host/IP used for endpoint construction.
+// Priority:
+//  1. WG_HOST env var (set during deploy — backward compat)
+//  2. publicIPManual setting (if publicIPMode == "manual")
+//  3. resolvedPublicIP from settings (auto-detect, cached 5 min)
 func getWGHost() string {
-	if m := tunnel.Get(); m != nil {
+	// 1. Env var takes precedence (set by deploy/setup.sh → docker-compose).
+	if h := os.Getenv("WG_HOST"); h != "" {
+		return h
+	}
+	if m := tunnel.Get(); m != nil && m.WGHost != "" {
 		return m.WGHost
 	}
-	return os.Getenv("WG_HOST")
+	// 2+3. Settings-based resolution.
+	if s, err := settings.GetSettings(); err == nil {
+		if ip, _ := settings.ResolvePublicIP(s.PublicIPMode, s.PublicIPManual); ip != "" {
+			return ip
+		}
+	}
+	return ""
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────

@@ -92,6 +92,24 @@
           <div style="padding: 20px 16px 14px;">
             <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:216px; height:auto; display:block;" alt="Cascade" />
           </div>
+          <!-- Router identity -->
+          <div style="padding: 0 16px 14px; border-bottom: 1px solid #e5e7eb;" class="dark:border-neutral-700">
+            <div class="text-sm font-semibold text-gray-800 dark:text-neutral-100 truncate"
+                 style="line-height:1.3;"
+                 :title="globalSettings.routerName || globalSettings.hostname">
+              {{ globalSettings.routerName || globalSettings.hostname || 'Cascade Router' }}
+            </div>
+            <div class="flex items-center gap-1" style="margin-top:3px;">
+              <span class="text-xs font-mono text-gray-400 dark:text-neutral-500 truncate">
+                {{ globalSettings.resolvedPublicIP || '…' }}
+              </span>
+              <!-- Warning dot if private/unavailable IP -->
+              <span v-if="globalSettings.publicIPWarning"
+                    :title="globalSettings.publicIPWarning"
+                    style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#f59e0b; flex-shrink:0;">
+              </span>
+            </div>
+          </div>
           <!-- Menu items -->
           <div style="padding: 0 8px;" class="flex-grow">
             <template v-for="page in sidebarMenu" :key="page.id">
@@ -1606,6 +1624,76 @@
         <!-- Settings Page                                                  -->
         <!-- ============================================================== -->
         <div v-if="activePage === 'settings'" class="mb-10" style="display: flex; flex-direction: column; gap: 24px;">
+
+          <!-- Router -->
+          <div class="shadow-md rounded-lg bg-white dark:bg-neutral-700 overflow-hidden">
+            <div class="p-5 border-b dark:border-neutral-600">
+              <p class="text-xl font-medium dark:text-neutral-200">Router</p>
+              <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Identity and public address of this router</p>
+            </div>
+            <div class="p-5" style="display:flex; flex-direction:column; gap:16px;">
+
+              <!-- Router Name -->
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Router name</label>
+                <input v-model="globalSettings.routerName" type="text"
+                  :placeholder="globalSettings.hostname || 'e.g. Moscow-01'"
+                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Shown in the sidebar. Defaults to system hostname
+                  <span v-if="globalSettings.hostname" class="font-mono">({{ globalSettings.hostname }})</span>.
+                </p>
+              </div>
+
+              <!-- Public IP -->
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-2">Public IP</label>
+
+                <!-- Mode selector -->
+                <div class="flex gap-4" style="margin-bottom:10px;">
+                  <label class="flex items-center gap-2 cursor-pointer text-sm dark:text-neutral-300">
+                    <input type="radio" v-model="globalSettings.publicIPMode" value="auto"> Auto-detect
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer text-sm dark:text-neutral-300">
+                    <input type="radio" v-model="globalSettings.publicIPMode" value="manual"> Manual
+                  </label>
+                </div>
+
+                <!-- Manual input -->
+                <input v-if="globalSettings.publicIPMode === 'manual'"
+                  v-model="globalSettings.publicIPManual" type="text"
+                  placeholder="e.g. 45.150.39.158"
+                  class="w-64 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono text-sm">
+
+                <!-- Resolved IP display -->
+                <div v-if="globalSettings.publicIPMode === 'auto'" class="flex items-center gap-2" style="margin-top:4px;">
+                  <span class="text-sm font-mono text-gray-600 dark:text-neutral-300">
+                    {{ globalSettings.resolvedPublicIP || 'Resolving…' }}
+                  </span>
+                  <!-- Warning badge -->
+                  <span v-if="globalSettings.publicIPWarning"
+                    class="text-xs font-medium px-2 py-0.5 rounded-full"
+                    style="background:#fef3c7; color:#92400e; border:1px solid #fcd34d;"
+                    :title="globalSettings.publicIPWarning">
+                    ⚠ {{ globalSettings.publicIPWarning }}
+                  </span>
+                </div>
+
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Used as the endpoint in peer configs and S2S exports when WG_HOST env is not set.
+                  Auto-detect tries external services (ip.sb, ifconfig.me, …), falls back to local routing.
+                </p>
+              </div>
+
+              <div class="flex items-center gap-3 pt-2">
+                <button @click="saveSettings"
+                  class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition text-sm font-medium">
+                  Save
+                </button>
+                <span v-if="settingsSaved" class="text-sm text-green-600 dark:text-green-400">Saved!</span>
+              </div>
+            </div>
+          </div>
 
           <!-- Global Settings -->
           <div class="shadow-md rounded-lg bg-white dark:bg-neutral-700 overflow-hidden">

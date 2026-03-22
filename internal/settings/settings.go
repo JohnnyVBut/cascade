@@ -20,12 +20,17 @@ import (
 // GlobalSettings holds application-wide defaults.
 // Mirrors the DEFAULTS object in Settings.js.
 type GlobalSettings struct {
-	DNS                      string  `json:"dns"`
-	DefaultPersistentKeepalive int   `json:"defaultPersistentKeepalive"`
-	DefaultClientAllowedIPs  string  `json:"defaultClientAllowedIPs"`
-	GatewayWindowSeconds     int     `json:"gatewayWindowSeconds"`
-	GatewayHealthyThreshold  float64 `json:"gatewayHealthyThreshold"`
-	GatewayDegradedThreshold float64 `json:"gatewayDegradedThreshold"`
+	DNS                        string  `json:"dns"`
+	DefaultPersistentKeepalive int     `json:"defaultPersistentKeepalive"`
+	DefaultClientAllowedIPs    string  `json:"defaultClientAllowedIPs"`
+	GatewayWindowSeconds       int     `json:"gatewayWindowSeconds"`
+	GatewayHealthyThreshold    float64 `json:"gatewayHealthyThreshold"`
+	GatewayDegradedThreshold   float64 `json:"gatewayDegradedThreshold"`
+
+	// Router identity
+	RouterName     string `json:"routerName"`     // human-readable name, e.g. "Moscow-01"
+	PublicIPMode   string `json:"publicIPMode"`   // "auto" | "manual"
+	PublicIPManual string `json:"publicIPManual"` // used when PublicIPMode == "manual"
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -81,12 +86,13 @@ type PeerDefaults struct {
 
 // defaults mirrors DEFAULTS in Settings.js.
 var defaults = GlobalSettings{
-	DNS:                      "1.1.1.1, 8.8.8.8",
+	DNS:                        "1.1.1.1, 8.8.8.8",
 	DefaultPersistentKeepalive: 25,
-	DefaultClientAllowedIPs:  "0.0.0.0/0, ::/0",
-	GatewayWindowSeconds:     30,
-	GatewayHealthyThreshold:  95,
-	GatewayDegradedThreshold: 90,
+	DefaultClientAllowedIPs:    "0.0.0.0/0, ::/0",
+	GatewayWindowSeconds:       30,
+	GatewayHealthyThreshold:    95,
+	GatewayDegradedThreshold:   90,
+	PublicIPMode:               "auto",
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -489,6 +495,14 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 		var f float64
 		fmt.Sscanf(v, "%f", &f)
 		if f > 0 { s.GatewayDegradedThreshold = f }
+	case "routerName":
+		s.RouterName = v
+	case "publicIPMode":
+		if v == "manual" || v == "auto" {
+			s.PublicIPMode = v
+		}
+	case "publicIPManual":
+		s.PublicIPManual = v
 	}
 }
 
