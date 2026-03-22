@@ -42,6 +42,11 @@ services:
     #   sysctl -w net.ipv4.conf.all.src_valid_mark=1
     network_mode: host
 
+    # Share host UTS namespace so os.Hostname() returns the real host hostname
+    # (used in the Settings → Router card and sidebar identity block).
+    # Without this, Docker assigns a random container ID as hostname.
+    uts: "host"
+
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
