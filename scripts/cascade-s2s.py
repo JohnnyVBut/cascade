@@ -160,7 +160,8 @@ def generate_awg_params(api: CascadeAPI) -> Optional[Dict]:
             'profile':   'random',
             'intensity': 'medium',
         })
-        return awg_settings_from_params(result)
+        # Response is { "params": {...}, "profiles": [...] }
+        return awg_settings_from_params(result.get('params', result))
     except Exception as exc:
         info(f'AWG param generation failed ({exc}), using server defaults')
         return None
