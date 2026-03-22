@@ -94,13 +94,14 @@
           </div>
           <!-- Router identity -->
           <div style="padding: 0 16px 14px; border-bottom: 1px solid #e5e7eb;" class="dark:border-neutral-700">
-            <div class="text-sm font-semibold text-gray-800 dark:text-neutral-100 truncate"
-                 style="line-height:1.3;"
+            <div class="text-sm font-semibold truncate"
+                 :style="{ color: theme === 'dark' ? '#f5f5f5' : '#1f2937', lineHeight: '1.3' }"
                  :title="globalSettings.routerName || globalSettings.hostname">
               {{ globalSettings.routerName || globalSettings.hostname || 'Cascade Router' }}
             </div>
             <div class="flex items-center gap-1" style="margin-top:3px;">
-              <span class="text-xs font-mono text-gray-400 dark:text-neutral-500 truncate">
+              <span class="text-xs font-mono truncate"
+                    :style="{ color: theme === 'dark' ? '#a3a3a3' : '#6b7280' }">
                 {{ globalSettings.resolvedPublicIP || '…' }}
               </span>
               <!-- Warning dot if private/unavailable IP -->
@@ -664,20 +665,29 @@
           <!-- Tab bar: (+) + "All" dashboard tab + interface tabs -->
           <div class="flex gap-2 mb-4 overflow-x-auto whitespace-nowrap" style="padding-bottom: 4px;">
             <button @click="showInterfaceCreate = true"
-              class="px-4 py-2 bg-green-600 text-white rounded-lg font-medium transition text-sm"
+              class="px-4 py-2 rounded-lg font-medium transition text-sm"
+              style="background:#16a34a; color:white;"
               title="Create Interface">
               +
             </button>
             <!-- "All" dashboard tab: selected when no interface is active -->
             <button @click="activeInterfaceId = null"
-              :class="!activeInterfaceId ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200'"
-              class="px-4 py-2 rounded-lg font-medium transition text-sm">
+              class="px-4 py-2 rounded-lg font-medium transition text-sm"
+              :style="!activeInterfaceId
+                ? 'background:#2563eb; color:white; border:none;'
+                : theme==='dark'
+                  ? 'background:#404040; color:#e5e5e5; border:1px solid #525252;'
+                  : 'background:#f3f4f6; color:#111827; border:1px solid #d1d5db;'">
               All
             </button>
             <button v-for="iface in tunnelInterfaces" :key="iface.id"
               @click="activeInterfaceId = iface.id"
-              :class="activeInterfaceId === iface.id ? 'bg-green-600 text-white' : 'bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200'"
-              class="px-4 py-2 rounded-lg font-medium transition text-sm">
+              class="px-4 py-2 rounded-lg font-medium transition text-sm"
+              :style="activeInterfaceId === iface.id
+                ? 'background:#16a34a; color:white; border:none;'
+                : theme==='dark'
+                  ? 'background:#404040; color:#e5e5e5; border:1px solid #525252;'
+                  : 'background:#f3f4f6; color:#111827; border:1px solid #d1d5db;'">
               {{ iface.name || iface.id }}
             </button>
           </div>
