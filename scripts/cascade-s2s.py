@@ -130,6 +130,31 @@ def strip_mask(addr: str) -> str:
     return addr.split('/')[0]
 
 
+def extract_host(url: str) -> str:
+    """'https://1.2.3.4/path/' → '1.2.3.4'"""
+    # strip scheme
+    host = url.split('://', 1)[-1]
+    # strip path
+    host = host.split('/')[0]
+    # strip port
+    if ':' in host and not host.startswith('['):
+        host = host.rsplit(':', 1)[0]
+    return host
+
+
+PLACEHOLDER_HOSTS = {'your-server-ip-or-domain', 'example.com', 'localhost', ''}
+
+def fix_endpoint(params: Dict, real_host: str, port: int) -> Dict:
+    """Replace placeholder endpoint with the real server IP:port."""
+    ep = params.get('endpoint', '')
+    ep_host = ep.split(':')[0] if ep else ''
+    if ep_host in PLACEHOLDER_HOSTS or not ep:
+        params = dict(params)
+        params['endpoint'] = f'{real_host}:{port}'
+        info(f'Patched placeholder endpoint → {params["endpoint"]}')
+    return params
+
+
 def next_free_port(api: CascadeAPI, preferred: Optional[int]) -> int:
     """Return preferred port if free, otherwise the first unused port ≥ 51830."""
     ifaces = api.get('/tunnel-interfaces').get('interfaces', [])
@@ -267,6 +292,10 @@ def main() -> None:
         fail(f'Cannot reach Server B: {args.url_b}')
     ok(f'Server B reachable: {args.url_b}')
 
+    # Extract real host IPs from URLs (used to patch placeholder endpoints)
+    host_a = extract_host(args.url_a)
+    host_b = extract_host(args.url_b)
+
     # ── Step 2: IP allocation ────────────────────────────────────────────────
     log()
     log('Step 2: Allocating tunnel IP addresses...')
@@ -336,6 +365,7 @@ def main() -> None:
     # A → B: export A's public key + endpoint → B creates peer, generates PSK
     try:
         params_a = export_params(api_a, iface_a_id)
+        params_a = fix_endpoint(params_a, host_a, port_a)
         info('Exported Server A params')
         peer_on_b = import_peer(api_b, iface_b_id, params_a)
         ok(f'Server B: created peer for A (id: {peer_on_b.get("id", "?")})')
@@ -345,6 +375,7 @@ def main() -> None:
     # B → A: export B's params (now includes PSK) → A imports PSK
     try:
         params_b = export_params(api_b, iface_b_id)
+        params_b = fix_endpoint(params_b, host_b, port_b)
         info('Exported Server B params (includes PSK)')
         peer_on_a = import_peer(api_a, iface_a_id, params_b)
         ok(f'Server A: created peer for B (id: {peer_on_a.get("id", "?")})')
