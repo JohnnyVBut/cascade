@@ -192,7 +192,7 @@ if command -v docker &>/dev/null; then
 
   # Detect Ubuntu-bundled docker.io (old, ships docker-compose 1.29 which breaks on
   # Docker 25+ image format — missing ContainerConfig). Replace with official Docker CE.
-  if dpkg -l docker.io &>/dev/null 2>&1; then
+  if dpkg -l docker.io 2>/dev/null | grep -q '^ii'; then
     warn "Detected Ubuntu-bundled docker.io — replacing with official Docker CE..."
     apt-get remove -y docker.io docker-compose 2>/dev/null || true
     curl -fsSL https://get.docker.com | sh
