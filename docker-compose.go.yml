@@ -34,6 +34,9 @@ services:
 
     volumes:
       - ./data:/etc/wireguard/data
+      # Mount host /etc/hostname read-only so the app can display the real
+      # server hostname (os.Hostname() inside Docker returns a container hash).
+      - /etc/hostname:/host_hostname:ro
 
     # --network host: container shares host network namespace.
     # Required for WireGuard/AWG tunnel interfaces and iptables management.
@@ -41,11 +44,6 @@ services:
     #   sysctl -w net.ipv4.ip_forward=1
     #   sysctl -w net.ipv4.conf.all.src_valid_mark=1
     network_mode: host
-
-    # Share host UTS namespace so os.Hostname() returns the real host hostname
-    # (used in the Settings → Router card and sidebar identity block).
-    # Without this, Docker assigns a random container ID as hostname.
-    uts: "host"
 
     cap_add:
       - NET_ADMIN

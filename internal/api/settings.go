@@ -6,12 +6,26 @@ package api
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 )
+
+// getHostname returns the real host hostname.
+// Docker containers get a random hash from os.Hostname(), so we first try
+// /host_hostname which is mounted from the host's /etc/hostname (read-only).
+func getHostname() string {
+	if b, err := os.ReadFile("/host_hostname"); err == nil {
+		if h := strings.TrimSpace(string(b)); h != "" {
+			return h
+		}
+	}
+	h, _ := os.Hostname()
+	return h
+}
 
 // SettingsResponse wraps GlobalSettings and adds runtime-only fields
 // (hostname, resolvedPublicIP, publicIPWarning) that are not stored in the DB.
@@ -46,7 +60,7 @@ func RegisterSettings(api fiber.Router) {
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
-		hostname, _ := os.Hostname()
+		hostname := getHostname()
 		resolvedIP, ipWarn := settings.ResolvePublicIP(s.PublicIPMode, s.PublicIPManual)
 		return c.JSON(SettingsResponse{
 			GlobalSettings:   *s,
@@ -79,7 +93,7 @@ func RegisterSettings(api fiber.Router) {
 			settings.InvalidateIPCache()
 		}
 
-		hostname, _ := os.Hostname()
+		hostname := getHostname()
 		resolvedIP, ipWarn := settings.ResolvePublicIP(updated.PublicIPMode, updated.PublicIPManual)
 
 		log.Println("settings: updated")
