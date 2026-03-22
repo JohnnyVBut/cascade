@@ -33,9 +33,10 @@ import ipaddress
 import json
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.request
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -220,6 +221,41 @@ def import_peer(api: CascadeAPI, iface_id: str, params: Dict) -> Dict:
     return result.get('peer', result)
 
 
+def get_gateways(api: CascadeAPI) -> List[Dict]:
+    return api.get('/gateways').get('gateways', [])
+
+
+def wait_for_gateways(api_a: CascadeAPI, gw_a_id: str,
+                      api_b: CascadeAPI, gw_b_id: str,
+                      timeout: int = 60) -> bool:
+    """Poll both gateways until healthy or timeout. Returns True if both healthy."""
+    log()
+    log('Step 8: Waiting for connectivity (gateway health check)...')
+    info(f'Timeout: {timeout}s  |  polling every 5s')
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        gws_a = {g['id']: g for g in get_gateways(api_a)}
+        gws_b = {g['id']: g for g in get_gateways(api_b)}
+
+        status_a = gws_a.get(gw_a_id, {}).get('status', {}).get('health', 'unknown')
+        status_b = gws_b.get(gw_b_id, {}).get('status', {}).get('health', 'unknown')
+
+        elapsed = int(timeout - (deadline - time.time()))
+        print(f'  [{elapsed:3d}s]  Server A gateway: {status_a:<10}  Server B gateway: {status_b}',
+              end='\r', flush=True)
+
+        if status_a == 'healthy' and status_b == 'healthy':
+            print()  # newline after \r
+            ok('Both gateways healthy — tunnel is UP')
+            return True
+
+        time.sleep(5)
+
+    print()  # newline after \r
+    return False
+
+
 def create_gateway(api: CascadeAPI, name: str, iface_id: str,
                    gateway_ip: str, monitor_ip: str) -> Dict:
     result = api.post('/gateways', {
@@ -389,12 +425,15 @@ def main() -> None:
     ip_a_plain = strip_mask(ip_a)
     ip_b_plain = strip_mask(ip_b)
 
+    gw_a_id = gw_b_id = None
+
     try:
         gw_a = create_gateway(api_a,
                                name=f'{link_name}-remote',
                                iface_id=iface_a_id,
                                gateway_ip=ip_b_plain,
                                monitor_ip=ip_b_plain)
+        gw_a_id = gw_a.get('id')
         ok(f'Server A: gateway "{gw_a.get("name", "?")}" → ping {ip_b_plain} via {iface_a_id}')
     except RuntimeError as exc:
         info(f'Gateway on Server A failed (non-fatal): {exc}')
@@ -405,9 +444,17 @@ def main() -> None:
                                iface_id=iface_b_id,
                                gateway_ip=ip_a_plain,
                                monitor_ip=ip_a_plain)
+        gw_b_id = gw_b.get('id')
         ok(f'Server B: gateway "{gw_b.get("name", "?")}" → ping {ip_a_plain} via {iface_b_id}')
     except RuntimeError as exc:
         info(f'Gateway on Server B failed (non-fatal): {exc}')
+
+    # ── Step 8: Connectivity check ────────────────────────────────────────────
+    tunnel_ok = False
+    if gw_a_id and gw_b_id:
+        tunnel_ok = wait_for_gateways(api_a, gw_a_id, api_b, gw_b_id, timeout=60)
+        if not tunnel_ok:
+            info('Gateways did not reach healthy within 60s — check firewall/routing')
 
     # ── Summary ──────────────────────────────────────────────────────────────
     log()
