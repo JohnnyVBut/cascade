@@ -179,12 +179,17 @@ def awg_settings_from_params(params: Dict) -> Dict:
 # API actions
 # ─────────────────────────────────────────────────────────────────────────────
 
-def generate_awg_params(api: CascadeAPI) -> Optional[Dict]:
-    """Generate AWG2 obfuscation params via /api/templates/generate."""
+def generate_awg_params(api: CascadeAPI, save_name: str) -> Optional[Dict]:
+    """Generate AWG2 obfuscation params via /api/templates/generate.
+
+    Params are also saved as a named template (saveName) on Server A so they
+    are visible in the UI and can be reused or applied to other interfaces.
+    """
     try:
         result = api.post('/templates/generate', {
             'profile':   'random',
             'intensity': 'medium',
+            'saveName':  save_name,
         })
         # Response is { "params": {...}, "profiles": [...] }
         return awg_settings_from_params(result.get('params', result))
@@ -347,9 +352,9 @@ def main() -> None:
     if args.protocol == 'amneziawg-2.0':
         log()
         log('Step 3: Generating AWG2 obfuscation parameters...')
-        settings = generate_awg_params(api_a)
+        settings = generate_awg_params(api_a, save_name=link_name)
         if settings:
-            ok('Generated (random profile, medium intensity)')
+            ok(f'Generated and saved as template "{link_name}" on Server A')
             ok('Same params will be applied to both sides')
         else:
             fail('AWG2 param generation failed — cannot create amneziawg-2.0 interface')
