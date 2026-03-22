@@ -18,7 +18,7 @@ package api
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/gateway"
+	"github.com/JohnnyVBut/cascade/internal/gateway"
 )
 
 // RegisterGateways registers all /api/gateways/* and /api/gateway-groups/* routes.

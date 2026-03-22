@@ -30,10 +30,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JohnnyVBut/awg-easy/internal/db"
-	"github.com/JohnnyVBut/awg-easy/internal/peer"
-	"github.com/JohnnyVBut/awg-easy/internal/util"
-	"github.com/JohnnyVBut/awg-easy/internal/validate"
+	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/util"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // TunnelInterface represents a single WireGuard or AmneziaWG tunnel interface.

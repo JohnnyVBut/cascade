@@ -24,10 +24,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/firewall"
-	"github.com/JohnnyVBut/awg-easy/internal/peer"
-	"github.com/JohnnyVBut/awg-easy/internal/settings"
-	"github.com/JohnnyVBut/awg-easy/internal/tunnel"
+	"github.com/JohnnyVBut/cascade/internal/firewall"
+	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/settings"
+	"github.com/JohnnyVBut/cascade/internal/tunnel"
 )
 
 // RegisterInterfaces registers all /api/tunnel-interfaces/* routes.

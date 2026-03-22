@@ -13,7 +13,7 @@ package api
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/firewall"
+	"github.com/JohnnyVBut/cascade/internal/firewall"
 )
 
 // RegisterFirewall registers all /api/firewall/* routes.

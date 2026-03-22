@@ -88,8 +88,8 @@ sysctl --system
 ## Step 5 — Clone repository
 
 ```bash
-git clone https://github.com/JohnnyVBut/awg-easy.git
-cd awg-easy
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
 git checkout feature/go-rewrite
 ```
 
@@ -206,7 +206,7 @@ Caddy sits in front of Cascade: serves the decoy site on HTTPS, and only routes
 requests under a secret path to the admin UI.
 
 ```bash
-cd ~/awg-easy/deploy/caddy
+cd ~/cascade/deploy/caddy
 cp .env.example .env
 ```
 
@@ -270,7 +270,7 @@ ufw allow 51830:51840/udp
 
 ## Data directory
 
-All Cascade state is stored in `~/awg-easy/data/`:
+All Cascade state is stored in `~/cascade/data/`:
 
 ```
 data/
@@ -286,7 +286,7 @@ The data directory is mounted into the container via `docker-compose.go.yml`.
 ## Updating
 
 ```bash
-cd ~/awg-easy
+cd ~/cascade
 git pull origin feature/go-rewrite
 ./build-go.sh
 docker compose -f docker-compose.go.yml up -d
@@ -345,7 +345,7 @@ Without the trailing slash, relative API paths resolve incorrectly.
   --reloadcmd "docker exec cascade-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
 
 # Restart Caddy:
-cd ~/awg-easy/deploy/caddy && docker compose restart
+cd ~/cascade/deploy/caddy && docker compose restart
 ```
 
 ### WireGuard tunnel not passing traffic

@@ -8,8 +8,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/awgparams"
-	"github.com/JohnnyVBut/awg-easy/internal/settings"
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
+	"github.com/JohnnyVBut/cascade/internal/settings"
 )
 
 // RegisterSettings registers all /api/settings and /api/templates routes.

@@ -55,7 +55,7 @@
 
 ## Правила работы
 
-- Активная ветка: **`feature/kernel-module`** | Репо: `git@github.com:JohnnyVBut/awg-easy.git`
+- Активная ветка: **`feature/kernel-module`** | Репо: `git@github.com:JohnnyVBut/cascade.git`
 - Коммитить и пушить только в `feature/kernel-module`, не в worktree-ветки
 - После каждого пуша напоминать команды деплоя на сервере
 - Каждый коммит — подробное сообщение (что, почему, какие файлы)

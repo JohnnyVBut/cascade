@@ -1,4 +1,4 @@
-module github.com/JohnnyVBut/awg-easy
+module github.com/JohnnyVBut/cascade
 
 go 1.23
 

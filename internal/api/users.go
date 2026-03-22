@@ -23,7 +23,7 @@ import (
 	totpLib "github.com/pquerna/otp/totp"
 	"rsc.io/qr"
 
-	"github.com/JohnnyVBut/awg-easy/internal/users"
+	"github.com/JohnnyVBut/cascade/internal/users"
 )
 
 // issuerName is displayed in authenticator apps (e.g. "WireSteer (admin)").

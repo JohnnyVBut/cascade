@@ -16,17 +16,17 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
-	"github.com/JohnnyVBut/awg-easy/internal/aliases"
-	"github.com/JohnnyVBut/awg-easy/internal/api"
-	"github.com/JohnnyVBut/awg-easy/internal/db"
-	"github.com/JohnnyVBut/awg-easy/internal/firewall"
-	"github.com/JohnnyVBut/awg-easy/internal/frontend"
-	"github.com/JohnnyVBut/awg-easy/internal/gateway"
-	"github.com/JohnnyVBut/awg-easy/internal/ipset"
-	"github.com/JohnnyVBut/awg-easy/internal/nat"
-	"github.com/JohnnyVBut/awg-easy/internal/routing"
-	"github.com/JohnnyVBut/awg-easy/internal/tunnel"
-	"github.com/JohnnyVBut/awg-easy/internal/users"
+	"github.com/JohnnyVBut/cascade/internal/aliases"
+	"github.com/JohnnyVBut/cascade/internal/api"
+	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/firewall"
+	"github.com/JohnnyVBut/cascade/internal/frontend"
+	"github.com/JohnnyVBut/cascade/internal/gateway"
+	"github.com/JohnnyVBut/cascade/internal/ipset"
+	"github.com/JohnnyVBut/cascade/internal/nat"
+	"github.com/JohnnyVBut/cascade/internal/routing"
+	"github.com/JohnnyVBut/cascade/internal/tunnel"
+	"github.com/JohnnyVBut/cascade/internal/users"
 )
 
 // Config holds all runtime configuration resolved from flags and ENV.

@@ -13,7 +13,7 @@ package api
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/nat"
+	"github.com/JohnnyVBut/cascade/internal/nat"
 )
 
 // RegisterCompat wires the legacy shim routes onto the given router group.

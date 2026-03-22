@@ -31,8 +31,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JohnnyVBut/awg-easy/internal/settings"
-	"github.com/JohnnyVBut/awg-easy/internal/util"
+	"github.com/JohnnyVBut/cascade/internal/settings"
+	"github.com/JohnnyVBut/cascade/internal/util"
 )
 
 const minProbes = 3 // minimum window probes before committing to a non-unknown status
@@ -266,7 +266,7 @@ func (m *Monitor) probeHTTP(gw Gateway, state *monitorState) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, h.URL, nil)
 	if err == nil {
-		req.Header.Set("User-Agent", "awg-easy-monitor/3.0")
+		req.Header.Set("User-Agent", "cascade-monitor/3.0")
 		req.Header.Set("Connection", "close")
 
 		start := time.Now()

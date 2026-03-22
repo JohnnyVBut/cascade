@@ -15,7 +15,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/JohnnyVBut/awg-easy/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/db"
 )
 
 // bcryptCost is the work factor for hashing new passwords.

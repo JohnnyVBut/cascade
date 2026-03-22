@@ -1,8 +1,8 @@
 # AWG-Easy 2.0
 
-[![Build & Publish Docker Image](https://github.com/JohnnyVBut/awg-easy/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/JohnnyVBut/awg-easy/actions/workflows/docker-publish.yml)
-[![Docker Pulls](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/JohnnyVBut/awg-easy/pkgs/container/awg-easy)
-[![License](https://img.shields.io/github/license/JohnnyVBut/awg-easy)](LICENSE)
+[![Build & Publish Docker Image](https://github.com/JohnnyVBut/cascade/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/JohnnyVBut/cascade/actions/workflows/docker-publish.yml)
+[![Docker Pulls](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/JohnnyVBut/cascade/pkgs/container/awg-easy)
+[![License](https://img.shields.io/github/license/JohnnyVBut/cascade)](LICENSE)
 
 **Самый простой способ запустить AmneziaWG 2.0 + веб-интерфейс для управления.**
 
@@ -61,7 +61,7 @@ exit
 ### 2. Генерация хеша пароля
 
 ```bash
-docker run --rm ghcr.io/johnnyvbut/awg-easy:latest wgpw 'ваш-надежный-пароль'
+docker run --rm ghcr.io/johnnyvbut/cascade:latest wgpw 'ваш-надежный-пароль'
 ```
 
 Скопируйте хеш (часть после `PASSWORD_HASH='` без кавычек).
@@ -94,7 +94,7 @@ docker run -d \
   \
   --device=/dev/net/tun:/dev/net/tun \
   \
-  ghcr.io/johnnyvbut/awg-easy:latest
+  ghcr.io/johnnyvbut/cascade:latest
 ```
 
 ### 4. Доступ к веб-интерфейсу
@@ -167,7 +167,7 @@ version: '3.8'
 
 services:
   awg-easy:
-    image: ghcr.io/johnnyvbut/awg-easy:latest
+    image: ghcr.io/johnnyvbut/cascade:latest
     container_name: awg-easy
     restart: unless-stopped
     
@@ -231,7 +231,7 @@ AmneziaWG 2.0 требует совместимых клиентов:
 ```bash
 docker stop awg-easy
 docker rm awg-easy
-docker pull ghcr.io/johnnyvbut/awg-easy:latest
+docker pull ghcr.io/johnnyvbut/cascade:latest
 ```
 
 Затем запустите команду `docker run` снова.
@@ -248,15 +248,15 @@ docker-compose up -d
 
 Запустите диагностику:
 ```bash
-docker exec awg-easy wg show
-docker exec awg-easy iptables -t nat -L -n -v
+docker exec awg-router wg show
+docker exec awg-router iptables -t nat -L -n -v
 ```
 
 ### Пароль не работает
 
 Сгенерируйте новый хеш:
 ```bash
-docker run --rm ghcr.io/johnnyvbut/awg-easy:latest wgpw 'новый-пароль'
+docker run --rm ghcr.io/johnnyvbut/cascade:latest wgpw 'новый-пароль'
 ```
 
 ### macOS клиент не может маршрутизировать трафик

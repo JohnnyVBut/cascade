@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JohnnyVBut/awg-easy/internal/peer"
-	"github.com/JohnnyVBut/awg-easy/internal/settings"
+	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/settings"
 )
 
 // Manager manages the collection of all TunnelInterface instances.

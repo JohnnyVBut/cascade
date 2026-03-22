@@ -27,7 +27,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
 // RegisterPeers registers all /api/tunnel-interfaces/:id/peers/* routes.

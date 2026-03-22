@@ -40,9 +40,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/JohnnyVBut/awg-easy/internal/aliases"
-	"github.com/JohnnyVBut/awg-easy/internal/db"
-	"github.com/JohnnyVBut/awg-easy/internal/util"
+	"github.com/JohnnyVBut/cascade/internal/aliases"
+	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/util"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────

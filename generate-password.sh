@@ -13,8 +13,8 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # Check if image exists
-if ! docker image inspect awg-easy:2.0 >/dev/null 2>&1; then
-    echo -e "${YELLOW}Docker image 'awg-easy:2.0' not found.${NC}"
+if ! docker image inspect awg2-easy-go:latest >/dev/null 2>&1; then
+    echo -e "${YELLOW}Docker image 'awg2-easy-go:latest' not found.${NC}"
     echo "Please run './build.sh' first."
     exit 1
 fi
@@ -31,7 +31,7 @@ fi
 # Generate hash
 echo ""
 echo -e "${BLUE}Generating bcrypt hash...${NC}"
-WGPW_OUTPUT=$(docker run --rm awg-easy:2.0 wgpw "$PASSWORD")
+WGPW_OUTPUT=$(docker run --rm awg2-easy-go:latest wgpw "$PASSWORD")
 
 # Extract hash from output: PASSWORD_HASH='$2y$...'
 HASH=$(echo "$WGPW_OUTPUT" | grep -oP "PASSWORD_HASH='\K[^']+")

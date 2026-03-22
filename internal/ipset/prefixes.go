@@ -363,7 +363,7 @@ func fetchJSON(url string, v any) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "awg-easy/3.0 (PrefixFetcher)")
+	req.Header.Set("User-Agent", "cascade/3.0 (PrefixFetcher)")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

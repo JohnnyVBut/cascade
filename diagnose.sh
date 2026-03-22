@@ -14,8 +14,8 @@ echo -e "${BLUE}========================================${NC}"
 echo ""
 
 # Check if container is running
-if ! docker ps --format '{{.Names}}' | grep -q '^awg-easy$'; then
-    echo -e "${RED}✗ Container 'awg-easy' is not running!${NC}"
+if ! docker ps --format '{{.Names}}' | grep -q '^awg-router$'; then
+    echo -e "${RED}✗ Container 'awg-router' is not running!${NC}"
     echo ""
     echo "Start it with:"
     echo "  ./run.sh"
@@ -29,7 +29,7 @@ echo ""
 
 # Check IP forwarding
 echo -e "${BLUE}Checking IP forwarding...${NC}"
-FORWARD=$(docker exec awg-easy sysctl -n net.ipv4.ip_forward 2>/dev/null || echo "0")
+FORWARD=$(docker exec awg-router sysctl -n net.ipv4.ip_forward 2>/dev/null || echo "0")
 if [ "$FORWARD" = "1" ]; then
     echo -e "${GREEN}✓ IP forwarding is enabled${NC}"
 else
@@ -45,7 +45,7 @@ echo ""
 
 # Check network interface
 echo -e "${BLUE}Detecting network interface...${NC}"
-INTERFACE=$(docker exec awg-easy ip route | grep default | awk '{print $5}')
+INTERFACE=$(docker exec awg-router ip route | grep default | awk '{print $5}')
 if [ -z "$INTERFACE" ]; then
     echo -e "${RED}✗ Cannot detect network interface!${NC}"
     exit 1
@@ -55,7 +55,7 @@ echo ""
 
 # Check WG_DEVICE setting
 echo -e "${BLUE}Checking WG_DEVICE setting...${NC}"
-WG_DEVICE=$(docker exec awg-easy printenv WG_DEVICE)
+WG_DEVICE=$(docker exec awg-router printenv WG_DEVICE)
 if [ "$WG_DEVICE" != "$INTERFACE" ]; then
     echo -e "${YELLOW}⚠ WG_DEVICE ($WG_DEVICE) differs from actual interface ($INTERFACE)${NC}"
     echo "This might cause routing issues!"
@@ -67,16 +67,16 @@ echo ""
 
 # Check WireGuard interface
 echo -e "${BLUE}Checking WireGuard interface...${NC}"
-if docker exec awg-easy wg show wg0 >/dev/null 2>&1; then
+if docker exec awg-router wg show wg0 >/dev/null 2>&1; then
     echo -e "${GREEN}✓ WireGuard interface wg0 is up${NC}"
     
     # Check for peers
-    PEER_COUNT=$(docker exec awg-easy wg show wg0 peers | wc -l)
+    PEER_COUNT=$(docker exec awg-router wg show wg0 peers | wc -l)
     echo "  Peers configured: $PEER_COUNT"
     
     if [ "$PEER_COUNT" -gt 0 ]; then
         # Check handshakes
-        docker exec awg-easy wg show wg0 latest-handshakes | while read peer timestamp; do
+        docker exec awg-router wg show wg0 latest-handshakes | while read peer timestamp; do
             if [ "$timestamp" -gt 0 ]; then
                 AGE=$(($(date +%s) - timestamp))
                 if [ "$AGE" -lt 180 ]; then
@@ -93,22 +93,22 @@ else
     echo -e "${RED}✗ WireGuard interface is DOWN!${NC}"
     echo ""
     echo "Try restarting WireGuard:"
-    echo "  docker exec awg-easy wg-quick down wg0"
-    echo "  docker exec awg-easy wg-quick up wg0"
+    echo "  docker exec awg-router wg-quick down wg0"
+    echo "  docker exec awg-router wg-quick up wg0"
     exit 1
 fi
 echo ""
 
 # Check NAT (MASQUERADE)
 echo -e "${BLUE}Checking NAT (MASQUERADE) rules...${NC}"
-if docker exec awg-easy iptables -t nat -L POSTROUTING -v -n 2>/dev/null | grep -q MASQUERADE; then
+if docker exec awg-router iptables -t nat -L POSTROUTING -v -n 2>/dev/null | grep -q MASQUERADE; then
     echo -e "${GREEN}✓ MASQUERADE rule exists${NC}"
-    docker exec awg-easy iptables -t nat -L POSTROUTING -v -n 2>/dev/null | grep MASQUERADE | head -1
+    docker exec awg-router iptables -t nat -L POSTROUTING -v -n 2>/dev/null | grep MASQUERADE | head -1
 else
     echo -e "${RED}✗ MASQUERADE rule NOT found!${NC}"
     echo ""
     echo "Adding MASQUERADE rule..."
-    docker exec awg-easy iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o "$INTERFACE" -j MASQUERADE
+    docker exec awg-router iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o "$INTERFACE" -j MASQUERADE
     if [ $? -eq 0 ]; then
         echo -e "${GREEN}✓ MASQUERADE rule added${NC}"
     else
@@ -120,13 +120,13 @@ echo ""
 
 # Check FORWARD rules
 echo -e "${BLUE}Checking FORWARD rules...${NC}"
-if docker exec awg-easy iptables -L FORWARD -v -n 2>/dev/null | grep -q "wg0"; then
+if docker exec awg-router iptables -L FORWARD -v -n 2>/dev/null | grep -q "wg0"; then
     echo -e "${GREEN}✓ FORWARD rules exist${NC}"
-    docker exec awg-easy iptables -L FORWARD -v -n 2>/dev/null | grep wg0
+    docker exec awg-router iptables -L FORWARD -v -n 2>/dev/null | grep wg0
 else
     echo -e "${YELLOW}⚠ FORWARD rules not found, adding...${NC}"
-    docker exec awg-easy iptables -A FORWARD -i wg0 -j ACCEPT
-    docker exec awg-easy iptables -A FORWARD -o wg0 -j ACCEPT
+    docker exec awg-router iptables -A FORWARD -i wg0 -j ACCEPT
+    docker exec awg-router iptables -A FORWARD -o wg0 -j ACCEPT
     echo -e "${GREEN}✓ FORWARD rules added${NC}"
 fi
 echo ""
@@ -163,8 +163,8 @@ echo "   (should show server IP, not your real IP)"
 echo ""
 
 # Check if any fixes were applied
-if docker exec awg-easy iptables -t nat -L POSTROUTING -v -n 2>/dev/null | grep -q MASQUERADE && \
-   docker exec awg-easy iptables -L FORWARD -v -n 2>/dev/null | grep -q wg0; then
+if docker exec awg-router iptables -t nat -L POSTROUTING -v -n 2>/dev/null | grep -q MASQUERADE && \
+   docker exec awg-router iptables -L FORWARD -v -n 2>/dev/null | grep -q wg0; then
     echo -e "${GREEN}✓ All checks passed! Try connecting your client now.${NC}"
 else
     echo -e "${YELLOW}⚠ Some issues detected. Review the output above.${NC}"

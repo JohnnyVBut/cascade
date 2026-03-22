@@ -1,7 +1,7 @@
 # AWG-Easy: Контекст разработки
 
 **Последнее обновление:** 2026-03-01
-**Репозиторий:** https://github.com/JohnnyVBut/awg-easy
+**Репозиторий:** https://github.com/JohnnyVBut/cascade
 **Рабочая ветка:** `feature/wan-tunnels`
 
 ---

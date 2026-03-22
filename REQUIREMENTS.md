@@ -1,7 +1,7 @@
 # AWG-Easy 2.0 — Requirements
 
 > Статус: **реализация в процессе** | Последнее обновление: 2026-03-12 (NAT page: Outbound Source NAT CRUD)
-> Ветка: `feature/kernel-module` | Репо: `git@github.com:JohnnyVBut/awg-easy.git`
+> Ветка: `feature/kernel-module` | Репо: `git@github.com:JohnnyVBut/cascade.git`
 
 ---
 

@@ -18,7 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/JohnnyVBut/awg-easy/internal/aliases"
+	"github.com/JohnnyVBut/cascade/internal/aliases"
 )
 
 // RegisterAliases registers all /api/aliases/* routes.

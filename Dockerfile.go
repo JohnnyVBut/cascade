@@ -20,7 +20,7 @@ RUN go mod tidy
 # -ldflags="-s -w": strip debug symbols → smaller binary.
 RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w" \
-    -o awg-easy \
+    -o cascade \
     ./cmd/awg-easy
 
 # ============================================================
@@ -55,9 +55,9 @@ RUN ln -sf /sbin/iptables-legacy         /sbin/iptables && \
     ln -sf /sbin/iptables-legacy-save    /sbin/iptables-save
 
 # Copy the static Go binary from build stage
-COPY --from=builder /app/awg-easy /usr/local/bin/awg-easy
+COPY --from=builder /app/cascade /usr/local/bin/cascade
 
 # Data directory (mapped via volume in docker-compose)
 RUN mkdir -p /etc/wireguard/data
 
-CMD ["/usr/bin/dumb-init", "awg-easy", "--data-dir", "/etc/wireguard/data"]
+CMD ["/usr/bin/dumb-init", "cascade", "--data-dir", "/etc/wireguard/data"]
