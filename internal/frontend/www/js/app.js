@@ -936,7 +936,7 @@ new Vue({
 
       try {
         const res = await this.api.updateTunnelInterface({ interfaceId: id, ...payload });
-        this._applyInterfaceUpdate(res.interface);
+        this._applyInterfaceUpdate(res);
         this.showInterfaceEdit = false;
         this.showToast(`Interface "${name}" updated successfully`);
       } catch (err) {
