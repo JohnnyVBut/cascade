@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title>WireSteer</title>
+  <title>Cascade</title>
   <meta charset="utf-8"/>
   <link href="./css/app.css" rel="stylesheet">
   <link rel="manifest" href="./manifest.json">
@@ -11,8 +11,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-</head>
-<style>
+  <style>
   [v-cloak] {
     display: none;
   }
@@ -80,6 +79,7 @@
   .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
   .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
 </style>
+</head>
 
 <body class="bg-gray-50 dark:bg-neutral-800">
   <div id="app">
@@ -90,7 +90,7 @@
              style="border-right: 1px solid #e5e7eb; min-height: 100vh;">
           <!-- Logo -->
           <div style="padding: 20px 16px 14px;">
-            <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:216px; height:auto; display:block;" alt="WireSteer" />
+            <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:216px; height:auto; display:block;" alt="Cascade" />
           </div>
           <!-- Menu items -->
           <div style="padding: 0 8px;" class="flex-grow">
@@ -4664,7 +4664,7 @@
 
       <div v-if="authenticated === false">
         <div class="text-center" style="margin-top:80px; margin-bottom:12px;">
-          <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:220px; height:auto; display:inline-block;" alt="WireSteer" />
+          <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:220px; height:auto; display:inline-block;" alt="Cascade" />
         </div>
 
         <!-- Step 1: username + password -->
