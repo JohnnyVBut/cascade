@@ -325,9 +325,13 @@ func restoreInterface(c *fiber.Ctx) error {
 		_ = mgr().RemovePeer(id, p.ID)
 	}
 
-	// Re-create peers from backup. Keys are preserved (GenerateKeys stays false
-	// as long as PublicKey is non-empty — AddPeer skips generation in that case).
+	// Re-create peers from backup.
+	// Force GenerateKeys=false regardless of what the backup file contains —
+	// a malicious or corrupted backup with "generateKeys":true would silently
+	// discard all backed-up keys and create peers with freshly generated ones,
+	// making the restored config non-functional without any visible error.
 	for _, inp := range body.File.Peers {
+		inp.GenerateKeys = false
 		if _, err := mgr().AddPeer(id, inp); err != nil {
 			// Log and continue — partial restore is better than aborting.
 			fmt.Printf("restore: AddPeer %q failed: %v\n", inp.Name, err)
