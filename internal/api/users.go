@@ -145,6 +145,13 @@ func updateUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "forbidden: you can only update your own account")
 	}
 
+	// Verify the target user exists before attempting any updates.
+	if target, err := users.GetByID(id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	} else if target == nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -177,6 +184,13 @@ func deleteUser(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "forbidden: you can only delete your own account")
 	}
 
+	// Verify the target user exists before attempting deletion.
+	if target, err := users.GetByID(id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	} else if target == nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+
 	if err := users.Delete(id); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
@@ -199,6 +213,13 @@ func setAdmin(c *fiber.Ctx) error {
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+
+	// Verify the target user exists before granting/revoking admin.
+	if target, err := users.GetByID(id); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	} else if target == nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
 	}
 
 	if err := users.SetAdmin(id, body.Admin); err != nil {

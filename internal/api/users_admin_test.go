@@ -432,3 +432,57 @@ func TestListUsers_OpenModeNoAuth(t *testing.T) {
 		t.Errorf("open mode (no users) GET /api/users: expected 200, got %d", resp.StatusCode)
 	}
 }
+
+// ── 404 for nonexistent user ID ───────────────────────────────────────────────
+
+// ghostID is a well-formed UUID that is never inserted into the test DB.
+// Using a fixed sentinel value keeps test output deterministic.
+const ghostID = "00000000-dead-beef-cafe-000000000000"
+
+// TestUpdateUser_NonexistentIDGets404 verifies that PATCH /api/users/:id
+// returns 404 when the target user does not exist, even for an admin caller.
+// This exercises the users.GetByID existence check in updateUser.
+func TestUpdateUser_NonexistentIDGets404(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ghostID,
+		ta.adminToken,
+		map[string]string{"password": "irrelevant"},
+	)
+	if resp.StatusCode != http.StatusNotFound {
+		body := decodeBody(resp)
+		t.Errorf("admin PATCH nonexistent user: expected 404, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestDeleteUser_NonexistentIDGets404 verifies that DELETE /api/users/:id
+// returns 404 when the target user does not exist, even for an admin caller.
+// This exercises the users.GetByID existence check in deleteUser.
+func TestDeleteUser_NonexistentIDGets404(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("DELETE", "/api/users/"+ghostID,
+		ta.adminToken,
+		nil,
+	)
+	if resp.StatusCode != http.StatusNotFound {
+		body := decodeBody(resp)
+		t.Errorf("admin DELETE nonexistent user: expected 404, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestSetAdmin_NonexistentIDGets404 verifies that POST /api/users/:id/set-admin
+// returns 404 when the target user does not exist.
+// This exercises the users.GetByID existence check in setAdmin.
+func TestSetAdmin_NonexistentIDGets404(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("POST", "/api/users/"+ghostID+"/set-admin",
+		ta.adminToken,
+		map[string]bool{"admin": true},
+	)
+	if resp.StatusCode != http.StatusNotFound {
+		body := decodeBody(resp)
+		t.Errorf("admin POST set-admin nonexistent user: expected 404, got %d; body=%v", resp.StatusCode, body)
+	}
+}
