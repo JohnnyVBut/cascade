@@ -361,6 +361,19 @@ WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
   AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1);
 `,
 	},
+	{
+		version: 10,
+		sql: `
+-- Fix: v9 fallback only ran when users table already had rows.
+-- On clean installs the table was empty during v9 → first user
+-- was created later via UI with is_admin=0.
+-- Re-apply the same fallback: grant admin to the oldest user
+-- if no admin exists yet.
+UPDATE users SET is_admin = 1
+WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1);
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
