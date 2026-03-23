@@ -4,12 +4,13 @@
 //
 // Routes:
 //
-//	GET    /api/users                    — list all users
-//	POST   /api/users                    — create user
+//	GET    /api/users                    — list all users (admin only)
+//	POST   /api/users                    — create user (admin only)
 //	GET    /api/users/me                 — current user info
 //	PATCH  /api/users/me                 — update own password
-//	PATCH  /api/users/:id                — update username/password
-//	DELETE /api/users/:id                — delete user
+//	PATCH  /api/users/:id                — update username/password (admin OR owner)
+//	DELETE /api/users/:id                — delete user (admin OR owner)
+//	POST   /api/users/:id/set-admin      — grant/revoke admin role (admin only)
 //
 //	GET    /api/users/me/totp/setup      — generate TOTP secret + QR
 //	POST   /api/users/me/totp/enable     — confirm and activate TOTP
@@ -50,17 +51,23 @@ func RegisterUsers(api fiber.Router) {
 	api.Post("/users/me/totp/enable", totpEnable)
 	api.Post("/users/me/totp/disable", totpDisable)
 
-	// PATCH /api/users/:id — update username or password.
+	// PATCH /api/users/:id — update username or password (admin OR owner).
 	api.Patch("/users/:id", updateUser)
 
-	// DELETE /api/users/:id — delete user.
+	// DELETE /api/users/:id — delete user (admin OR owner).
 	api.Delete("/users/:id", deleteUser)
+
+	// POST /api/users/:id/set-admin — grant or revoke admin role (admin only).
+	api.Post("/users/:id/set-admin", setAdmin)
 }
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
-// GET /api/users
+// GET /api/users — admin only.
 func listUsers(c *fiber.Ctx) error {
+	if !callerIsAdmin(c) {
+		return fiber.NewError(fiber.StatusForbidden, "admin only")
+	}
 	all, err := users.List()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -68,9 +75,13 @@ func listUsers(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"users": all})
 }
 
-// POST /api/users
+// POST /api/users — admin only.
 // Body: { "username": "...", "password": "..." }
 func createUser(c *fiber.Ctx) error {
+	if !callerIsAdmin(c) {
+		return fiber.NewError(fiber.StatusForbidden, "admin only")
+	}
+
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -124,10 +135,16 @@ func updateMe(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"user": u})
 }
 
-// PATCH /api/users/:id
+// PATCH /api/users/:id — admin OR owner.
 // Body: { "username": "...", "password": "..." } (both optional)
 func updateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
+
+	callerID, _ := currentUserID(c)
+	if callerID != id && !callerIsAdmin(c) {
+		return fiber.NewError(fiber.StatusForbidden, "forbidden: you can only update your own account")
+	}
+
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -151,13 +168,45 @@ func updateUser(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"user": u})
 }
 
-// DELETE /api/users/:id
+// DELETE /api/users/:id — admin OR owner.
 func deleteUser(c *fiber.Ctx) error {
 	id := c.Params("id")
+
+	callerID, _ := currentUserID(c)
+	if callerID != id && !callerIsAdmin(c) {
+		return fiber.NewError(fiber.StatusForbidden, "forbidden: you can only delete your own account")
+	}
+
 	if err := users.Delete(id); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	return c.JSON(fiber.Map{"ok": true})
+}
+
+// POST /api/users/:id/set-admin — admin only.
+// Body: { "admin": true/false }
+// Grants or revokes the admin role for the target user.
+// Cannot remove admin from the last remaining admin.
+func setAdmin(c *fiber.Ctx) error {
+	if !callerIsAdmin(c) {
+		return fiber.NewError(fiber.StatusForbidden, "admin only")
+	}
+
+	id := c.Params("id")
+
+	var body struct {
+		Admin bool `json:"admin"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+
+	if err := users.SetAdmin(id, body.Admin); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	u, _ := users.GetByID(id)
+	return c.JSON(fiber.Map{"user": u})
 }
 
 // ── TOTP handlers ─────────────────────────────────────────────────────────────

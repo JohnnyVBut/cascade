@@ -344,6 +344,23 @@ CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
 `,
 	},
+	{
+		version: 9,
+		sql: `
+-- Admin role: is_admin flag on users.
+-- Admins can manage all users; regular users can only manage themselves.
+ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0;
+
+-- Grant admin to the user named 'admin' (default installation).
+UPDATE users SET is_admin = 1 WHERE username = 'admin';
+
+-- Fallback for custom usernames: if nobody became admin yet,
+-- grant admin to the first registered user (oldest created_at).
+UPDATE users SET is_admin = 1
+WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
+  AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1);
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

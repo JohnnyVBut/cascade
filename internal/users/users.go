@@ -25,6 +25,7 @@ const bcryptCost = 12
 type User struct {
 	ID          string    `json:"id"`
 	Username    string    `json:"username"`
+	IsAdmin     bool      `json:"is_admin"`
 	TOTPEnabled bool      `json:"totp_enabled"`
 	CreatedAt   time.Time `json:"created_at"`
 }
@@ -34,7 +35,7 @@ type User struct {
 // List returns all users sorted by created_at ascending.
 func List() ([]User, error) {
 	rows, err := db.DB().Query(
-		`SELECT id, username, totp_enabled, created_at FROM users ORDER BY created_at ASC`,
+		`SELECT id, username, is_admin, totp_enabled, created_at FROM users ORDER BY created_at ASC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("users.List: %w", err)
@@ -45,7 +46,7 @@ func List() ([]User, error) {
 	for rows.Next() {
 		var u User
 		var createdAt string
-		if err := rows.Scan(&u.ID, &u.Username, &u.TOTPEnabled, &createdAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.IsAdmin, &u.TOTPEnabled, &createdAt); err != nil {
 			return nil, fmt.Errorf("users.List scan: %w", err)
 		}
 		u.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
@@ -62,8 +63,8 @@ func GetByID(id string) (*User, error) {
 	var u User
 	var createdAt string
 	err := db.DB().QueryRow(
-		`SELECT id, username, totp_enabled, created_at FROM users WHERE id = ?`, id,
-	).Scan(&u.ID, &u.Username, &u.TOTPEnabled, &createdAt)
+		`SELECT id, username, is_admin, totp_enabled, created_at FROM users WHERE id = ?`, id,
+	).Scan(&u.ID, &u.Username, &u.IsAdmin, &u.TOTPEnabled, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -79,9 +80,9 @@ func GetByUsername(username string) (*User, error) {
 	var u User
 	var createdAt string
 	err := db.DB().QueryRow(
-		`SELECT id, username, totp_enabled, created_at FROM users WHERE username = ? COLLATE NOCASE`,
+		`SELECT id, username, is_admin, totp_enabled, created_at FROM users WHERE username = ? COLLATE NOCASE`,
 		username,
-	).Scan(&u.ID, &u.Username, &u.TOTPEnabled, &createdAt)
+	).Scan(&u.ID, &u.Username, &u.IsAdmin, &u.TOTPEnabled, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -99,6 +100,52 @@ func Count() (int, error) {
 		return 0, fmt.Errorf("users.Count: %w", err)
 	}
 	return n, nil
+}
+
+// CountAdmins returns the number of users with is_admin = 1.
+func CountAdmins() (int, error) {
+	var n int
+	if err := db.DB().QueryRow(`SELECT COUNT(*) FROM users WHERE is_admin = 1`).Scan(&n); err != nil {
+		return 0, fmt.Errorf("users.CountAdmins: %w", err)
+	}
+	return n, nil
+}
+
+// IsAdmin returns true if the user with the given ID has is_admin = 1.
+func IsAdmin(userID string) (bool, error) {
+	var admin bool
+	err := db.DB().QueryRow(
+		`SELECT is_admin FROM users WHERE id = ?`, userID,
+	).Scan(&admin)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("users.IsAdmin: %w", err)
+	}
+	return admin, nil
+}
+
+// SetAdmin sets or clears the is_admin flag for the user with the given ID.
+// Returns an error if trying to remove admin from the last remaining admin.
+func SetAdmin(userID string, admin bool) error {
+	if !admin {
+		n, err := CountAdmins()
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return errors.New("cannot remove admin from the last admin user")
+		}
+	}
+	_, err := db.DB().Exec(
+		`UPDATE users SET is_admin = ? WHERE id = ?`,
+		admin, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("users.SetAdmin: %w", err)
+	}
+	return nil
 }
 
 // ── Write operations ──────────────────────────────────────────────────────────
@@ -179,12 +226,12 @@ func VerifyPassword(username, password string) (*User, error) {
 	}
 
 	var id, hash, createdAt string
-	var totpEnabled bool
+	var isAdmin, totpEnabled bool
 	err := db.DB().QueryRow(
-		`SELECT id, username, password_hash, totp_enabled, created_at
+		`SELECT id, username, password_hash, is_admin, totp_enabled, created_at
 		   FROM users WHERE username = ? COLLATE NOCASE`,
 		username,
-	).Scan(&id, &username, &hash, &totpEnabled, &createdAt)
+	).Scan(&id, &username, &hash, &isAdmin, &totpEnabled, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("invalid credentials")
 	}
@@ -196,7 +243,7 @@ func VerifyPassword(username, password string) (*User, error) {
 		return nil, errors.New("invalid credentials")
 	}
 
-	u := &User{ID: id, Username: username, TOTPEnabled: totpEnabled}
+	u := &User{ID: id, Username: username, IsAdmin: isAdmin, TOTPEnabled: totpEnabled}
 	u.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 	return u, nil
 }
@@ -271,7 +318,7 @@ func SeedAdminIfEmpty(passwordHash string) error {
 
 	id := uuid.New().String()
 	_, err = db.DB().Exec(
-		`INSERT INTO users (id, username, password_hash) VALUES (?, 'admin', ?)`,
+		`INSERT INTO users (id, username, password_hash, is_admin) VALUES (?, 'admin', ?, 1)`,
 		id, passwordHash,
 	)
 	if err != nil {

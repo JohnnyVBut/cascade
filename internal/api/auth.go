@@ -386,3 +386,27 @@ func currentUserID(c *fiber.Ctx) (string, bool) {
 func getAuthStore() *session.Store {
 	return authStore
 }
+
+// callerIsAdmin returns true if the caller of the current request has the admin role.
+//
+// Open mode (0 users in DB): returns true to preserve first-run / empty-table behaviour.
+// Bearer token or session: checks users.IsAdmin for the resolved user ID.
+// Unauthenticated (no user ID): returns false.
+func callerIsAdmin(c *fiber.Ctx) bool {
+	// Open mode: no users → everyone is implicitly admin.
+	n, err := users.Count()
+	if err == nil && n == 0 {
+		return true
+	}
+
+	userID, ok := currentUserID(c)
+	if !ok || userID == "" {
+		return false
+	}
+
+	admin, err := users.IsAdmin(userID)
+	if err != nil {
+		return false
+	}
+	return admin
+}
