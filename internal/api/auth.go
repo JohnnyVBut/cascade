@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/session"
 	totpLib "github.com/pquerna/otp/totp"
 
@@ -209,7 +210,24 @@ func RegisterAuth(api fiber.Router) {
 	// POST /api/session — verify username + password (step 1).
 	// Body: { "username": "...", "password": "...", "remember": true/false }
 	// If username is empty, defaults to "admin" for backward compatibility.
-	api.Post("/session", func(c *fiber.Ctx) error {
+	//
+	// Brute-force protection (CRIT-3):
+	//   - Rate limit: 5 attempts / 1 min per IP → 429 + Retry-After: 60
+	//   - Artificial delay: 500ms on failure (+ bcrypt ~300ms = ~800ms total)
+	loginLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			c.Set("Retry-After", "60")
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Too many login attempts. Try again in 60 seconds.",
+			})
+		},
+	})
+	api.Post("/session", loginLimiter, func(c *fiber.Ctx) error {
 		n, err := users.Count()
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "db error")
@@ -237,6 +255,9 @@ func RegisterAuth(api fiber.Router) {
 
 		u, err := users.VerifyPassword(body.Username, body.Password)
 		if err != nil || u == nil {
+			// Artificial delay on failure: slows brute-force even when rate
+			// limit hasn't triggered yet (CRIT-3 level 2).
+			time.Sleep(500 * time.Millisecond)
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Invalid credentials",
 			})
