@@ -1,300 +1,182 @@
-# AWG-Easy 2.0
+<p align="center">
+  <img src="./assets/logo.svg" width="120" alt="Cascade" />
+</p>
 
-[![Build & Publish Docker Image](https://github.com/JohnnyVBut/cascade/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/JohnnyVBut/cascade/actions/workflows/docker-publish.yml)
-[![Docker Pulls](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/JohnnyVBut/cascade/pkgs/container/awg-easy)
-[![License](https://img.shields.io/github/license/JohnnyVBut/cascade)](LICENSE)
-
-**Самый простой способ запустить AmneziaWG 2.0 + веб-интерфейс для управления.**
-
-Полная поддержка **AmneziaWG 2.0** с правильными параметрами обфускации, имитацией DNS-протокола и усиленным обходом DPI.
+<h1 align="center">Cascade</h1>
 
 <p align="center">
-  <img src="./assets/screenshot.png" width="802" />
+  <strong>Платформа управления роутером WireGuard / AmneziaWG с веб-интерфейсом</strong>
 </p>
+
+<p align="center">
+  <a href="https://github.com/JohnnyVBut/cascade/actions/workflows/docker-publish.yml">
+    <img src="https://github.com/JohnnyVBut/cascade/actions/workflows/docker-publish.yml/badge.svg" alt="Build" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/github/license/JohnnyVBut/cascade" alt="License" />
+  </a>
+  <img src="https://img.shields.io/badge/Go-1.23-blue" alt="Go 1.23" />
+  <img src="https://img.shields.io/badge/AmneziaWG-2.0-purple" alt="AmneziaWG 2.0" />
+</p>
+
+<p align="center">
+  <a href="README.md">🇬🇧 English</a>
+</p>
+
+---
 
 ## ✨ Возможности
 
-* 🔐 **Полная поддержка AmneziaWG 2.0** - параметры S3, S4, I5, диапазоны H
-* 🌐 **Всё в одном** - AmneziaWG + веб-интерфейс в одном контейнере
-* 📱 **Простая настройка** - одна команда для запуска
-* 👥 **Управление клиентами** - создание, редактирование, удаление, вкл/выкл клиентов
-* 📊 **QR-коды** - мгновенная настройка клиентов через QR-код
-* 📥 **Скачивание конфигов** - получение файлов конфигурации клиентов
-* 📈 **Статистика** - статистика подключений и графики Tx/Rx в реальном времени
-* 🎨 **Современный UI** - автоматический светлый/тёмный режим, поддержка Gravatar
-* 🌍 **Мультиязычность** - поддержка нескольких языков
-* 🔗 **Одноразовые ссылки** - временные ссылки для скачивания (опционально)
-* ⏱️ **Срок действия клиентов** - установка даты истечения для клиентов (опционально)
-* 📊 **Метрики Prometheus** - экспорт метрик для мониторинга
-* 🍎 **Совместимость с macOS** - исправлены проблемы маршрутизации с маской /32
+| Модуль | Описание |
+|--------|----------|
+| 🔌 **Интерфейсы** | Несколько туннельных интерфейсов WireGuard / AmneziaWG |
+| 👥 **Пиры** | Клиентские и S2S-пиры (site-to-site) с поддержкой QR-кодов |
+| 🌐 **Маршрутизация** | Статические маршруты, PBR (Policy-Based Routing), просмотр таблиц ядра |
+| 🔀 **NAT** | Outbound MASQUERADE / SNAT с поддержкой алиасов |
+| 🛡️ **Файрвол** | Правила фильтрации (ACCEPT / DROP / REJECT) + PBR через шлюз |
+| 📋 **Алиасы** | Типы: host, network, ipset, group, port, port-group |
+| 📡 **Шлюзы** | Live-мониторинг ping + HTTP/S, группы шлюзов, автоматический failover |
+| 🎛️ **Шаблоны AWG2** | Шаблоны параметров обфускации AmneziaWG 2.0 со встроенным генератором |
+| 🔒 **TLS** | Let's Encrypt через acme.sh (shortlived-сертификат для bare IP или домен) |
+| 🎭 **Decoy-сайт** | Caddy раздаёт фейковый стриминговый сайт на `/`; панель управления скрыта за секретным путём |
 
-## 🎯 Чем это особенное?
+## 🎯 Почему Cascade?
 
-В отличие от других решений WireGuard/AmneziaWG:
-
-- ✅ **Настоящий AmneziaWG 2.0** - не AWG 1.x! Включает параметры S3, S4, I5
-- ✅ **Правильные диапазоны H** - обфускация заголовков с диапазонами (не одиночные значения)
-- ✅ **DNS обфускация** - преднастроенный параметр I1 для маскировки трафика
-- ✅ **Production значения** - проверенные в бою параметры обфускации
-- ✅ **Исправлен macOS** - маска клиента /32 для правильной маршрутизации
-- ✅ **Исправлен пароль** - скорректирован парсинг bcrypt хеша
+- ✅ **Go-бинарник** — один статический бинарник, без Node.js, без npm, без зависимостей
+- ✅ **Несколько интерфейсов** — управление несколькими WireGuard/AWG интерфейсами из одного UI
+- ✅ **Полный AmneziaWG 2.0** — параметры S3, S4, I5, диапазонная обфускация H, 7 CPS-профилей
+- ✅ **Policy-Based Routing** — маршрутизация трафика по источнику через разные шлюзы
+- ✅ **Мониторинг шлюзов** — ICMP ping + HTTP/S-пробы, автоматический fallback при отказе
+- ✅ **HTTPS по умолчанию** — Caddy + acme.sh, работает с bare IP через shortlived-сертификаты Let's Encrypt
+- ✅ **Защита admin-панели** — путь к панели скрыт; посетители видят фейковый стриминговый сайт
 
 ## 📋 Требования
 
-* Хост с установленным Docker
-* Публичный IP-адрес или динамический DNS
+- Ubuntu 22.04 или 24.04 (другие дистрибутивы: ручная установка)
+- Root-доступ
+- Публичный IP-адрес или доменное имя
+- Открытые порты: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
 
-## 🚀 Быстрый старт
-
-### 1. Установка Docker
-
-Если Docker ещё не установлен:
+## 🚀 Быстрый деплой
 
 ```bash
-curl -sSL https://get.docker.com | sh
-sudo usermod -aG docker $(whoami)
-exit
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+sudo bash deploy/setup.sh
 ```
 
-Войдите заново после установки.
+Скрипт делает всё автоматически:
+1. Создаёт 1 ГБ swap
+2. Обновляет ядро до HWE 6.x (только Ubuntu 22.04)
+3. Устанавливает kernel-модуль AmneziaWG
+4. Устанавливает Docker
+5. Собирает Docker-образ Cascade
+6. Выпускает TLS-сертификат (Let's Encrypt / acme.sh)
+7. Запускает Cascade + Caddy reverse proxy
 
-### 2. Генерация хеша пароля
-
-```bash
-docker run --rm ghcr.io/johnnyvbut/cascade:latest wgpw 'ваш-надежный-пароль'
+В конце вы получите:
+```
+Admin URL: https://ВАШ_IP/<секретный-путь>/
 ```
 
-Скопируйте хеш (часть после `PASSWORD_HASH='` без кавычек).
+Откройте в браузере, создайте первого администратора — готово.
 
-### 3. Запуск AWG-Easy
+## ⚙️ Конфигурация
 
-Замените `ВАШ_IP_СЕРВЕРА` и `ВАШ_ХЕШ_ПАРОЛЯ`:
-
-```bash
-docker run -d \
-  --name=awg-easy \
-  --restart unless-stopped \
-  \
-  -e PASSWORD_HASH='ВАШ_ХЕШ_ПАРОЛЯ' \
-  -e PORT=51821 \
-  -e WG_PORT=51820 \
-  -e WG_DEFAULT_DNS=1.1.1.1,8.8.8.8 \
-  \
-  -v ~/.awg-easy:/etc/amnezia/amneziawg \
-  \
-  -p 51820:51820/udp \
-  -p 51821:51821/tcp \
-  \
-  --cap-add=NET_ADMIN \
-  --cap-add=SYS_MODULE \
-  \
-  --sysctl="net.ipv4.ip_forward=1" \
-  --sysctl="net.ipv4.conf.all.src_valid_mark=1" \
-  \
-  --device=/dev/net/tun:/dev/net/tun \
-  \
-  ghcr.io/johnnyvbut/cascade:latest
-```
-
-### 4. Доступ к веб-интерфейсу
-
-Откройте в браузере:
-```
-http://ВАШ_IP_СЕРВЕРА:51821
-```
-
-Войдите с паролем, который вы установили на шаге 2.
-
-> 💡 Ваша конфигурация будет сохранена в `~/.awg-easy`
-
-## 🔧 Параметры конфигурации
-
-### Переменные окружения
-
-| Переменная | По умолчанию | Пример | Описание |
-|------------|--------------|--------|----------|
-| `WG_HOST` | - | `vpn.example.com` | Публичное имя хоста или IP сервера. Опционально — если не задан, IP настраивается через Settings UI или определяется автоматически |
-| `PASSWORD_HASH` | - | `$2y$12$...` | **Обязательно**. Bcrypt хеш для входа в веб-интерфейс |
-| `PORT` | `51821` | `8080` | TCP порт для веб-интерфейса |
-| `WG_PORT` | `51820` | `12345` | UDP порт для WireGuard/AmneziaWG |
-| `WG_DEFAULT_DNS` | `1.1.1.1,8.8.8.8` | `8.8.8.8` | DNS серверы для клиентов |
-| `WG_DEFAULT_ADDRESS` | `10.8.0.x` | `10.6.0.x` | Диапазон IP-адресов клиентов |
-| `WG_MTU` | `1420` | `1380` | MTU для клиентов |
-| `WG_PERSISTENT_KEEPALIVE` | `25` | `0` | Интервал keepalive (0 для отключения) |
-| `WG_ALLOWED_IPS` | `0.0.0.0/0,::/0` | `192.168.1.0/24` | Разрешённые IP для маршрутизации |
-| `LANG` | `en` | `ru` | Язык веб-интерфейса |
-
-### Параметры AmneziaWG 2.0
-
-**Преднастроены production значениями** (можно изменить через переменные окружения):
+Настройки собираются интерактивно скриптом `setup.sh` и сохраняются в `deploy/.env`.
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `JC` | `6` | Количество мусорных пакетов |
-| `JMIN` | `10` | Минимальный размер мусорного пакета |
-| `JMAX` | `50` | Максимальный размер мусорного пакета |
-| `S1` | `64` | Размер мусора в init пакете |
-| `S2` | `67` | Размер мусора в response пакете |
-| `S3` | `17` | Размер мусора в cookie reply (AWG 2.0) |
-| `S4` | `4` | Размер мусора в transport message (AWG 2.0) |
-| `H1` | `221138202-537563446` | Диапазон magic header init пакета |
-| `H2` | `1824677785-1918284606` | Диапазон magic header response пакета |
-| `H3` | `2058490965-2098228430` | Диапазон magic header underload пакета |
-| `H4` | `2114920036-2134209753` | Диапазон magic header transport пакета |
-| `I1` | DNS пакет | Имитация DNS протокола (tickets.widget.kinopoisk.ru) |
-| `I2-I5` | Пусто | Дополнительные параметры имитации |
+| `WG_HOST` | автоопределение | Публичный IP или домен сервера |
+| `ADMIN_PATH` | случайный hex | Секретный путь к панели (например `/a1b2c3d4.../`) |
+| `CASCADE_PORT` | `8888` | Внутренний порт Cascade (Caddy проксирует на него) |
+| `BIND_ADDR` | `127.0.0.1` | Адрес привязки Cascade (используйте `127.0.0.1` за Caddy) |
+| `ACME_EMAIL` | опционально | Email для уведомлений Let's Encrypt |
 
-> 💡 **Значения по умолчанию проверены в production и обеспечивают сильную обфускацию!**
+Дополнительные настройки (дефолты WireGuard, DNS и т.д.) настраиваются в веб-интерфейсе в разделе **Settings**.
 
-### Дополнительные функции
+## 🔒 Модель безопасности
 
-| Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `UI_TRAFFIC_STATS` | `false` | Включить детальную статистику RX/TX |
-| `UI_CHART_TYPE` | `0` | Тип графика: 0=выкл, 1=линия, 2=область, 3=столбцы |
-| `WG_ENABLE_ONE_TIME_LINKS` | `false` | Включить временные ссылки для скачивания |
-| `WG_ENABLE_EXPIRES_TIME` | `false` | Включить срок действия клиентов |
-| `ENABLE_PROMETHEUS_METRICS` | `false` | Включить метрики Prometheus на `/metrics` |
-| `MAX_AGE` | `0` | Макс. возраст сессии в минутах (0=до закрытия браузера) |
+- Панель управления доступна только по `https://HOST/<ADMIN_PATH>/` — на `https://HOST/` отображается decoy-сайт
+- HTTPS с HTTP/3 (QUIC) через Caddy
+- TLS-сертификаты: shortlived (6 дней) для bare IP, стандартные 90-дневные для доменов
+- Session cookie: `HttpOnly`, `Secure`, `SameSite=Strict`
+- Хеширование паролей bcrypt (cost 12)
+- Валидация входных данных на всех API-эндпоинтах
 
-## 🐳 Использование Docker Compose
-
-Создайте `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  awg-easy:
-    image: ghcr.io/johnnyvbut/cascade:latest
-    container_name: awg-easy
-    restart: unless-stopped
-    
-    environment:
-      # WG_HOST опционален — IP настраивается через Settings UI или определяется автоматически
-      # - WG_HOST=ВАШ_IP_СЕРВЕРА
-      - PASSWORD_HASH=ВАШ_ХЕШ_ПАРОЛЯ
-      - PORT=51821
-      - WG_PORT=51820
-      - WG_DEFAULT_DNS=1.1.1.1,8.8.8.8
-      
-    volumes:
-      - ./data:/etc/amnezia/amneziawg
-      
-    ports:
-      - "51820:51820/udp"
-      - "51821:51821/tcp"
-      
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-      
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv4.conf.all.src_valid_mark=1
-      
-    devices:
-      - /dev/net/tun:/dev/net/tun
-```
-
-Затем запустите:
-```bash
-docker-compose up -d
-```
-
-## 📱 Клиентские приложения
-
-AmneziaWG 2.0 требует совместимых клиентов:
-
-### Android
-- [Amnezia VPN](https://play.google.com/store/apps/details?id=org.amnezia.vpn) - Официальный клиент
-- [AmneziaWG](https://play.google.com/store/apps/details?id=org.amnezia.awg) - Официальный AWG клиент
-
-### iOS / macOS
-- [Amnezia VPN](https://apps.apple.com/app/amneziavpn/id1600529900) - Официальный клиент
-- [AmneziaWG](https://apps.apple.com/app/amneziawg/id6478942365) - Официальный AWG клиент
-
-### Windows
-- [Amnezia VPN](https://github.com/amnezia-vpn/amnezia-client/releases) - Официальный клиент
-- [AmneziaWG](https://github.com/amnezia-vpn/amneziawg-windows-client/releases) - Официальный AWG клиент
-
-### Linux
-- [Amnezia VPN](https://github.com/amnezia-vpn/amnezia-client/releases) - Официальный клиент
-- [amneziawg-tools](https://github.com/amnezia-vpn/amneziawg-tools) - Инструменты командной строки
-
-> ⚠️ **Обычные клиенты WireGuard НЕ будут работать с AmneziaWG 2.0!**
+Полная модель угроз: [docs/SECURITY.md](docs/SECURITY.md)
 
 ## 🔄 Обновление
 
-Для обновления до последней версии:
-
 ```bash
-docker stop awg-easy
-docker rm awg-easy
-docker pull ghcr.io/johnnyvbut/cascade:latest
+git pull origin feature/go-rewrite
+./build-go.sh
+docker compose -f docker-compose.go.yml up -d
 ```
 
-Затем запустите команду `docker run` снова.
+## 📱 Совместимые VPN-клиенты
 
-Или с docker-compose:
-```bash
-docker-compose pull
-docker-compose up -d
-```
+> ⚠️ **Обычные клиенты WireGuard НЕ работают с интерфейсами AmneziaWG 2.0.**
+> Интерфейсы WireGuard 1.0 работают с обычными клиентами без ограничений.
+
+| Платформа | Приложение |
+|-----------|------------|
+| Android | [Amnezia VPN](https://play.google.com/store/apps/details?id=org.amnezia.vpn) · [AmneziaWG](https://play.google.com/store/apps/details?id=org.amnezia.awg) |
+| iOS / macOS | [Amnezia VPN](https://apps.apple.com/app/amneziavpn/id1600529900) · [AmneziaWG](https://apps.apple.com/app/amneziawg/id6478942365) |
+| Windows | [Amnezia VPN](https://github.com/amnezia-vpn/amnezia-client/releases) · [AmneziaWG](https://github.com/amnezia-vpn/amneziawg-windows-client/releases) |
+| Linux | [amneziawg-tools](https://github.com/amnezia-vpn/amneziawg-tools) · [Amnezia VPN](https://github.com/amnezia-vpn/amnezia-client/releases) |
 
 ## 🛠️ Решение проблем
 
-### Проблемы с подключением
-
-Запустите диагностику:
+**Проверить состояние контейнеров:**
 ```bash
+docker logs awg-router
+docker compose -f deploy/caddy/docker-compose.yml logs
+```
+
+**Проверить WireGuard-интерфейсы:**
+```bash
+docker exec awg-router awg show
 docker exec awg-router wg show
-docker exec awg-router iptables -t nat -L -n -v
 ```
 
-### Пароль не работает
-
-Сгенерируйте новый хеш:
+**Проверить файрвол / NAT:**
 ```bash
-docker run --rm ghcr.io/johnnyvbut/cascade:latest wgpw 'новый-пароль'
+docker exec awg-router iptables-nft -t nat -L -n -v
+docker exec awg-router ip rule show
 ```
 
-### macOS клиент не может маршрутизировать трафик
-
-Убедитесь что конфиг клиента использует маску `/32`:
-```ini
-[Interface]
-Address = 10.8.0.2/32  # Не /24!
-```
-
-### Логи
-
-Просмотр логов контейнера:
+**Перезапустить setup (например после перезагрузки или обновления сертификата):**
 ```bash
-docker logs -f awg-easy
+sudo bash deploy/setup.sh
 ```
 
 ## 📖 Документация
 
-- [FINAL_SUMMARY.md](FINAL_SUMMARY.md) - Полный список функций и changelog
-- [MACOS_FIX.md](MACOS_FIX.md) - Детали исправления маршрутизации для macOS
-- [PASSWORD_FIX.md](PASSWORD_FIX.md) - Исправление аутентификации по паролю
-- [REAL_CONFIG_ANALYSIS.md](REAL_CONFIG_ANALYSIS.md) - Объяснение параметров AWG 2.0
+- [Руководство по деплою](docs/DEPLOY.md)
+- [API Reference (RU)](docs/API.md)
+- [API Reference (EN)](docs/API.en.md)
+- [Модель безопасности](docs/SECURITY.md)
+
+## 🏗️ Стек технологий
+
+| Уровень | Технология |
+|---------|------------|
+| Backend | Go 1.23, Fiber v2 |
+| Frontend | Vue 2, Tailwind CSS (встроен в бинарник) |
+| База данных | SQLite (`modernc.org/sqlite`, без CGO) |
+| Reverse proxy | Caddy 2 (HTTP/3 + QUIC) |
+| VPN | AmneziaWG 2.0 / WireGuard 1.0 |
 
 ## 🙏 Благодарности
 
-- Основано на [wg-easy](https://github.com/wg-easy/wg-easy) от сообщества wg-easy
-- Интеграция AmneziaWG вдохновлена [amnezia-wg-easy](https://github.com/spcfox/amnezia-wg-easy)
+- Основано на [wg-easy](https://github.com/wg-easy/wg-easy)
 - [AmneziaVPN](https://github.com/amnezia-vpn) за протокол AmneziaWG
 
 ## 📄 Лицензия
 
-Этот проект лицензирован в соответствии с условиями лицензии, включённой в этот репозиторий.
-
-## ⭐ Поддержка
-
-Если этот проект вам помог, пожалуйста, поставьте звезду на GitHub! ⭐
+MIT — см. [LICENSE](LICENSE)
 
 ---
 
-**Сделано с ❤️ для безопасного и приватного доступа в интернет**
+<p align="center">Сделано с ❤️ для безопасного и приватного доступа в интернет</p>
