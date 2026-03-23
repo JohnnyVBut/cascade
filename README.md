@@ -222,6 +222,7 @@ Full reference: [docs/API.en.md](docs/API.en.md) · [docs/API.md (RU)](docs/API.
 
 - Based on [wg-easy](https://github.com/wg-easy/wg-easy)
 - [AmneziaVPN](https://github.com/amnezia-vpn) for the AmneziaWG protocol
+- [Vadim-Khristenko/AmneziaWG-Architect](https://github.com/Vadim-Khristenko/AmneziaWG-Architect) — math and code for AWG 2.0 obfuscation profile generation (CPS signatures, H-ranges, browser fingerprint packet sizing)
 
 ## 📄 License
 

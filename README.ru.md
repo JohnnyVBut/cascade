@@ -222,6 +222,7 @@ curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/pee
 
 - Основано на [wg-easy](https://github.com/wg-easy/wg-easy)
 - [AmneziaVPN](https://github.com/amnezia-vpn) за протокол AmneziaWG
+- [Vadim-Khristenko/AmneziaWG-Architect](https://github.com/Vadim-Khristenko/AmneziaWG-Architect) — математика и код для генерации параметров обфускации AWG 2.0 (CPS-сигнатуры, H-диапазоны, размеры пакетов Browser Fingerprint)
 
 ## 📄 Лицензия
 
