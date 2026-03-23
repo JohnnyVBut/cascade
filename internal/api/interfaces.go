@@ -28,6 +28,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // RegisterInterfaces registers all /api/tunnel-interfaces/* routes.
@@ -127,10 +128,17 @@ func createInterface(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
 	}
 
+	addr := strings.TrimSpace(body.Address)
+	if addr != "" {
+		if err := validate.CIDR(addr); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "address: "+err.Error())
+		}
+	}
+
 	t, err := mgr().CreateInterface(tunnel.CreateInput{
 		Name:          strings.TrimSpace(body.Name),
 		Protocol:      body.Protocol,
-		Address:       strings.TrimSpace(body.Address),
+		Address:       addr,
 		ListenPort:    body.ListenPort,
 		DisableRoutes: body.DisableRoutes,
 		AWG2:          body.AWG2,
@@ -161,6 +169,9 @@ func updateInterface(c *fiber.Ctx) error {
 	}
 	if v, ok := raw["address"].(string); ok {
 		s := strings.TrimSpace(v)
+		if err := validate.CIDR(s); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "address: "+err.Error())
+		}
 		upd.Address = &s
 	}
 	if v, ok := raw["listenPort"].(float64); ok {
