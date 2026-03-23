@@ -5,6 +5,7 @@ tools:
   - Read
   - Grep
   - Glob
+model: sonnet
 ---
 
 You are a senior code reviewer.

@@ -5,7 +5,7 @@ tools:
   - Read
   - Grep
   - Glob
-  - LS
+model: sonnet
 ---
 
 You are a senior software architect.
