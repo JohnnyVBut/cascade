@@ -372,3 +372,60 @@ func TestVerifyPasswordByID_Empty(t *testing.T) {
 		t.Error("VerifyPasswordByID with both empty: expected error, got nil")
 	}
 }
+
+// ── Create: first user auto-admin (Fix 1) ─────────────────────────────────────
+
+// TestCreate_FirstUserIsAdmin verifies that the first user created in an empty DB
+// automatically receives is_admin=true (MED-3 fix).
+func TestCreate_FirstUserIsAdmin(t *testing.T) {
+	initTestDB(t)
+
+	u, err := Create("alice", "password1")
+	if err != nil {
+		t.Fatalf("Create alice: %v", err)
+	}
+
+	if !u.IsAdmin {
+		t.Error("first user created in empty DB should have is_admin=true")
+	}
+
+	// Confirm via direct DB query.
+	admin, err := IsAdmin(u.ID)
+	if err != nil {
+		t.Fatalf("IsAdmin: %v", err)
+	}
+	if !admin {
+		t.Error("is_admin should be 1/true in DB for first user")
+	}
+}
+
+// TestCreate_SecondUserIsNotAdmin verifies that only the first user is auto-promoted;
+// subsequent users are created with is_admin=false.
+func TestCreate_SecondUserIsNotAdmin(t *testing.T) {
+	initTestDB(t)
+
+	// First user — should be admin.
+	_, err := Create("alice", "password1")
+	if err != nil {
+		t.Fatalf("Create alice: %v", err)
+	}
+
+	// Second user — must NOT be admin.
+	bob, err := Create("bob", "password2")
+	if err != nil {
+		t.Fatalf("Create bob: %v", err)
+	}
+
+	if bob.IsAdmin {
+		t.Error("second user should have is_admin=false")
+	}
+
+	// Confirm via direct DB query.
+	admin, err := IsAdmin(bob.ID)
+	if err != nil {
+		t.Fatalf("IsAdmin: %v", err)
+	}
+	if admin {
+		t.Error("is_admin should be 0/false in DB for second user")
+	}
+}
