@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/logo.svg" width="120" alt="Cascade" />
+  <img src="./assets/logo.svg" width="240" alt="Cascade" />
 </p>
 
 <h1 align="center">Cascade</h1>
