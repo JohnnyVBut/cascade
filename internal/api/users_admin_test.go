@@ -6,6 +6,7 @@
 //   - updateUser (PATCH /api/users/:id) — admin OR owner
 //   - deleteUser (DELETE /api/users/:id) — admin OR owner
 //   - setAdmin (POST /api/users/:id/set-admin) — admin only, last-admin guard
+//   - updateMe (PATCH /api/users/me) — SEC-2: currentPassword required
 //
 // Authorization is exercised via Bearer API tokens — the only mechanism that
 // sets the user ID in c.Locals and therefore propagates identity to callerIsAdmin.
@@ -249,9 +250,10 @@ func TestCreateUser_NonAdminGets403(t *testing.T) {
 func TestUpdateUser_OwnerCanUpdateSelf(t *testing.T) {
 	ta := newTestApp(t)
 
+	// SEC-2: owner must provide their current password when changing password.
 	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
 		ta.aliceToken,
-		map[string]string{"password": "newAlicePass"},
+		map[string]string{"password": "newAlicePass", "currentPassword": "alicepass"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -275,9 +277,10 @@ func TestUpdateUser_NonOwnerNonAdminGets403(t *testing.T) {
 func TestUpdateUser_AdminCanUpdateAnyUser(t *testing.T) {
 	ta := newTestApp(t)
 
+	// SEC-2: admin must provide their own current password when resetting another user's password.
 	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
 		ta.adminToken,
-		map[string]string{"password": "newPassForAlice"},
+		map[string]string{"password": "newPassForAlice", "currentPassword": "adminpass"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -484,5 +487,160 @@ func TestSetAdmin_NonexistentIDGets404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		body := decodeBody(resp)
 		t.Errorf("admin POST set-admin nonexistent user: expected 404, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// ── SEC-2: PATCH /api/users/me — currentPassword required ────────────────────
+
+// TestUpdateMe_PasswordChange_RequiresCurrentPassword verifies that omitting
+// currentPassword when changing own password via /api/users/me returns 401.
+func TestUpdateMe_PasswordChange_RequiresCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/me",
+		ta.aliceToken,
+		map[string]string{"password": "brandnewpass"},
+	)
+	if resp.StatusCode != http.StatusUnauthorized {
+		body := decodeBody(resp)
+		t.Errorf("updateMe without currentPassword: expected 401, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestUpdateMe_PasswordChange_WrongCurrentPassword verifies that supplying
+// an incorrect currentPassword via /api/users/me returns 401.
+func TestUpdateMe_PasswordChange_WrongCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/me",
+		ta.aliceToken,
+		map[string]string{"password": "brandnewpass", "currentPassword": "wrongpassword"},
+	)
+	if resp.StatusCode != http.StatusUnauthorized {
+		body := decodeBody(resp)
+		t.Errorf("updateMe with wrong currentPassword: expected 401, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestUpdateMe_PasswordChange_CorrectCurrentPassword verifies that supplying
+// the correct currentPassword via /api/users/me returns 200 and updates the password.
+func TestUpdateMe_PasswordChange_CorrectCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/me",
+		ta.aliceToken,
+		map[string]string{"password": "brandnewpass", "currentPassword": "alicepass"},
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := decodeBody(resp)
+		t.Errorf("updateMe with correct currentPassword: expected 200, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// ── SEC-2: PATCH /api/users/:id (self) — currentPassword required ─────────────
+
+// TestUpdateUser_SelfPasswordChange_RequiresCurrentPassword verifies that the
+// owner omitting currentPassword when patching their own :id endpoint returns 401.
+func TestUpdateUser_SelfPasswordChange_RequiresCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
+		ta.aliceToken,
+		map[string]string{"password": "brandnewpass"},
+	)
+	if resp.StatusCode != http.StatusUnauthorized {
+		body := decodeBody(resp)
+		t.Errorf("owner PATCH :id without currentPassword: expected 401, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestUpdateUser_SelfPasswordChange_WrongCurrentPassword verifies that the
+// owner supplying a wrong currentPassword via PATCH :id returns 401.
+func TestUpdateUser_SelfPasswordChange_WrongCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
+		ta.aliceToken,
+		map[string]string{"password": "brandnewpass", "currentPassword": "notmypassword"},
+	)
+	if resp.StatusCode != http.StatusUnauthorized {
+		body := decodeBody(resp)
+		t.Errorf("owner PATCH :id with wrong currentPassword: expected 401, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestUpdateUser_SelfPasswordChange_CorrectCurrentPassword verifies that the
+// owner supplying the correct currentPassword via PATCH :id returns 200.
+func TestUpdateUser_SelfPasswordChange_CorrectCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
+		ta.aliceToken,
+		map[string]string{"password": "brandnewpass", "currentPassword": "alicepass"},
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := decodeBody(resp)
+		t.Errorf("owner PATCH :id with correct currentPassword: expected 200, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// ── SEC-2: PATCH /api/users/:id (admin resets other user) ────────────────────
+
+// TestUpdateUser_AdminResetOtherPassword_RequiresAdminCurrentPassword verifies
+// that an admin omitting currentPassword when resetting another user's password
+// returns 401.
+func TestUpdateUser_AdminResetOtherPassword_RequiresAdminCurrentPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
+		ta.adminToken,
+		map[string]string{"password": "forcedNewPass"},
+	)
+	if resp.StatusCode != http.StatusUnauthorized {
+		body := decodeBody(resp)
+		t.Errorf("admin PATCH other user without currentPassword: expected 401, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestUpdateUser_AdminResetOtherPassword_WrongAdminPassword verifies that an
+// admin supplying a wrong currentPassword when resetting another user's password
+// returns 401.
+func TestUpdateUser_AdminResetOtherPassword_WrongAdminPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
+		ta.adminToken,
+		map[string]string{"password": "forcedNewPass", "currentPassword": "wrongadminpass"},
+	)
+	if resp.StatusCode != http.StatusUnauthorized {
+		body := decodeBody(resp)
+		t.Errorf("admin PATCH other user with wrong currentPassword: expected 401, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+// TestUpdateUser_AdminResetOtherPassword_CorrectAdminPassword verifies that an
+// admin supplying the correct currentPassword (their own) when resetting another
+// user's password returns 200, and that it is the TARGET user's password that
+// changes — not the admin's.
+func TestUpdateUser_AdminResetOtherPassword_CorrectAdminPassword(t *testing.T) {
+	ta := newTestApp(t)
+
+	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
+		ta.adminToken,
+		map[string]string{"password": "aliceNewPass", "currentPassword": "adminpass"},
+	)
+	if resp.StatusCode != http.StatusOK {
+		body := decodeBody(resp)
+		t.Errorf("admin PATCH other user with correct currentPassword: expected 200, got %d; body=%v", resp.StatusCode, body)
+	}
+
+	// Alice's password must now be "aliceNewPass".
+	if err := users.VerifyPasswordByID(ta.alice.ID, "aliceNewPass"); err != nil {
+		t.Errorf("alice's password should have been updated to 'aliceNewPass': %v", err)
+	}
+
+	// Admin's password must still be "adminpass" (unchanged).
+	if err := users.VerifyPasswordByID(ta.admin.ID, "adminpass"); err != nil {
+		t.Errorf("admin's password should remain 'adminpass' after resetting alice's password: %v", err)
 	}
 }

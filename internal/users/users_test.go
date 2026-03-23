@@ -317,3 +317,58 @@ func TestCountAdmins_MultipleUsersOnlyOneAdmin(t *testing.T) {
 		t.Errorf("expected 1 admin with 3 total users, got %d", n)
 	}
 }
+
+// ── SEC-2: VerifyPasswordByID ─────────────────────────────────────────────────
+
+// TestVerifyPasswordByID_Correct verifies that the correct password returns nil.
+func TestVerifyPasswordByID_Correct(t *testing.T) {
+	initTestDB(t)
+
+	u, err := Create("vera", "verapass")
+	if err != nil {
+		t.Fatalf("Create vera: %v", err)
+	}
+
+	if err := VerifyPasswordByID(u.ID, "verapass"); err != nil {
+		t.Errorf("VerifyPasswordByID with correct password: expected nil, got %v", err)
+	}
+}
+
+// TestVerifyPasswordByID_Wrong verifies that a wrong password returns a non-nil error.
+func TestVerifyPasswordByID_Wrong(t *testing.T) {
+	initTestDB(t)
+
+	u, err := Create("vera", "verapass")
+	if err != nil {
+		t.Fatalf("Create vera: %v", err)
+	}
+
+	if err := VerifyPasswordByID(u.ID, "wrongpassword"); err == nil {
+		t.Error("VerifyPasswordByID with wrong password: expected error, got nil")
+	}
+}
+
+// TestVerifyPasswordByID_NonExistent verifies that an unknown user ID returns an error.
+func TestVerifyPasswordByID_NonExistent(t *testing.T) {
+	initTestDB(t)
+
+	if err := VerifyPasswordByID("00000000-0000-0000-0000-000000000000", "anypassword"); err == nil {
+		t.Error("VerifyPasswordByID with non-existent ID: expected error, got nil")
+	}
+}
+
+// TestVerifyPasswordByID_Empty verifies that empty id or password returns an error
+// without hitting the database.
+func TestVerifyPasswordByID_Empty(t *testing.T) {
+	initTestDB(t)
+
+	if err := VerifyPasswordByID("", "somepass"); err == nil {
+		t.Error("VerifyPasswordByID with empty id: expected error, got nil")
+	}
+	if err := VerifyPasswordByID("some-id", ""); err == nil {
+		t.Error("VerifyPasswordByID with empty password: expected error, got nil")
+	}
+	if err := VerifyPasswordByID("", ""); err == nil {
+		t.Error("VerifyPasswordByID with both empty: expected error, got nil")
+	}
+}

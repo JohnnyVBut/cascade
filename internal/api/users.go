@@ -111,7 +111,8 @@ func getMe(c *fiber.Ctx) error {
 }
 
 // PATCH /api/users/me
-// Body: { "password": "..." }
+// Body: { "currentPassword": "...", "password": "..." }
+// Changing the password requires currentPassword (the caller's existing password).
 func updateMe(c *fiber.Ctx) error {
 	userID, ok := currentUserID(c)
 	if !ok {
@@ -119,13 +120,21 @@ func updateMe(c *fiber.Ctx) error {
 	}
 
 	var body struct {
-		Password string `json:"password"`
+		CurrentPassword string `json:"currentPassword"`
+		Password        string `json:"password"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
 	}
 
 	if body.Password != "" {
+		// Always require currentPassword for self-service password change.
+		if body.CurrentPassword == "" {
+			return fiber.NewError(fiber.StatusUnauthorized, "current password is required to change your password")
+		}
+		if err := users.VerifyPasswordByID(userID, body.CurrentPassword); err != nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "current password is incorrect")
+		}
 		if err := users.UpdatePassword(userID, body.Password); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
@@ -136,7 +145,12 @@ func updateMe(c *fiber.Ctx) error {
 }
 
 // PATCH /api/users/:id — admin OR owner.
-// Body: { "username": "...", "password": "..." } (both optional)
+// Body: { "username": "...", "password": "...", "currentPassword": "..." }
+//
+// Password change rules:
+//   - currentPassword is always the CALLER's current password (not the target's).
+//   - Required for all password changes: self-service AND admin resetting another user.
+//   - This prevents a stolen session from permanently locking out the account owner.
 func updateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -153,11 +167,25 @@ func updateUser(c *fiber.Ctx) error {
 	}
 
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username        string `json:"username"`
+		Password        string `json:"password"`
+		CurrentPassword string `json:"currentPassword"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+
+	// Verify currentPassword BEFORE any writes to avoid partial updates:
+	// if password change is requested but currentPassword is wrong, username must not be committed.
+	if body.Password != "" {
+		// Require caller's current password for any password change.
+		// callerID is always verified — even when admin resets another user's password.
+		if body.CurrentPassword == "" {
+			return fiber.NewError(fiber.StatusUnauthorized, "current password is required to change a password")
+		}
+		if err := users.VerifyPasswordByID(callerID, body.CurrentPassword); err != nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "current password is incorrect")
+		}
 	}
 
 	if body.Username != "" {

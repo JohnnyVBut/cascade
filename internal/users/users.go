@@ -218,6 +218,29 @@ func Delete(id string) error {
 
 // ── Authentication ────────────────────────────────────────────────────────────
 
+// VerifyPasswordByID checks whether the given password matches the stored hash
+// for the user with the given ID. Returns nil on success, error on failure.
+// Used to verify the caller's identity before allowing a password change.
+func VerifyPasswordByID(id, password string) error {
+	if id == "" || password == "" {
+		return errors.New("invalid credentials")
+	}
+	var hash string
+	err := db.DB().QueryRow(
+		`SELECT password_hash FROM users WHERE id = ?`, id,
+	).Scan(&hash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errors.New("invalid credentials")
+	}
+	if err != nil {
+		return fmt.Errorf("users.VerifyPasswordByID: %w", err)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
+		return errors.New("invalid credentials")
+	}
+	return nil
+}
+
 // VerifyPassword checks whether the given username/password pair is valid.
 // Returns the User on success, nil + error on failure.
 func VerifyPassword(username, password string) (*User, error) {
