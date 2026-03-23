@@ -15,10 +15,47 @@ import (
 // Only alphanumeric + underscore, 1–15 chars — safe for shell substitution.
 var reIfaceID = regexp.MustCompile(`^[a-zA-Z0-9_]{1,15}$`)
 
+// reIfaceName matches any Linux network interface name (including host interfaces
+// like eth0, ens3, bond-1). Allows alphanumeric, underscore, dot, hyphen, 1–15 chars.
+var reIfaceName = regexp.MustCompile(`^[a-zA-Z0-9_.\-]{1,15}$`)
+
+// reTableName matches an iproute2 routing table name or number.
+// Names: up to 31 chars, alphanumeric + underscore + hyphen (e.g. "vpn_kz", "100").
+var reTableName = regexp.MustCompile(`^[a-zA-Z0-9_\-]{1,31}$`)
+
 // IfaceID returns an error if id is not a safe interface identifier.
 func IfaceID(id string) error {
 	if !reIfaceID.MatchString(id) {
 		return fmt.Errorf("invalid interface id %q: must match ^[a-zA-Z0-9_]{1,15}$", id)
+	}
+	return nil
+}
+
+// IfaceName returns an error if name is not a safe Linux network interface name.
+// Unlike IfaceID, this allows hyphens and dots for host interfaces (eth0, bond-1).
+func IfaceName(name string) error {
+	if !reIfaceName.MatchString(name) {
+		return fmt.Errorf("invalid interface name %q: must match ^[a-zA-Z0-9_.\\-]{1,15}$", name)
+	}
+	return nil
+}
+
+// TableName returns an error if s is not a safe iproute2 routing table name or number.
+// Allows "main", "default", "local", numeric IDs, and names like "vpn_kz".
+func TableName(s string) error {
+	if s == "" {
+		return fmt.Errorf("table name must not be empty")
+	}
+	if !reTableName.MatchString(s) {
+		return fmt.Errorf("invalid routing table %q: must match ^[a-zA-Z0-9_\\-]{1,31}$", s)
+	}
+	return nil
+}
+
+// IP returns an error if s is not a valid IPv4 or IPv6 address.
+func IP(s string) error {
+	if net.ParseIP(s) == nil {
+		return fmt.Errorf("invalid IP address %q", s)
 	}
 	return nil
 }

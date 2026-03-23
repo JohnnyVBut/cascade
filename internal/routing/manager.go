@@ -25,6 +25,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/util"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -255,6 +256,9 @@ func (m *Manager) GetKernelRoutes(table string) ([]KernelRoute, error) {
 	if table == "" {
 		table = "main"
 	}
+	if err := validate.TableName(table); err != nil {
+		return nil, err
+	}
 	cmd := fmt.Sprintf("ip route show table %s", table)
 	out, err := util.Exec(cmd, util.FastTimeout, true)
 	if err != nil {
@@ -280,6 +284,9 @@ func (m *Manager) GetKernelRoutes(table string) ([]KernelRoute, error) {
 // non-local address the kernel returns "RTNETLINK: Network unreachable".
 // PBR simulation is done via firewall.SimulateTrace → fwmark → mark flag.
 func (m *Manager) TestRoute(ip string, mark *int) (*RouteResult, error) {
+	if err := validate.IP(ip); err != nil {
+		return nil, err
+	}
 	var cmd string
 	if mark != nil {
 		cmd = fmt.Sprintf("ip route get %s mark %d", ip, *mark)
@@ -385,6 +392,9 @@ func (m *Manager) AddRoute(data Route) (*Route, error) {
 	if data.Table == "" {
 		data.Table = "main"
 	}
+	if err := validateRouteFields(data); err != nil {
+		return nil, err
+	}
 
 	r := Route{
 		ID:          uuid.NewString(),
@@ -489,6 +499,9 @@ func (m *Manager) UpdateRoute(id string, data Route) (*Route, error) {
 	if data.Table != "" {
 		r.Table = data.Table
 	}
+	if err := validateRouteFields(*r); err != nil {
+		return nil, err
+	}
 
 	if r.Enabled {
 		// Remove old route from kernel, add new one.
@@ -505,6 +518,38 @@ func (m *Manager) UpdateRoute(id string, data Route) (*Route, error) {
 	}
 
 	return r, nil
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+
+// validateRouteFields checks all user-supplied Route fields before they are
+// interpolated into shell commands (CRIT-1 fix: command injection prevention).
+func validateRouteFields(r Route) error {
+	// Destination: CIDR or the literal "default".
+	if r.Destination != "" && r.Destination != "default" {
+		if err := validate.CIDR(r.Destination); err != nil {
+			return fmt.Errorf("invalid destination: %w", err)
+		}
+	}
+	// Gateway: must be a valid IP if provided.
+	if r.Gateway != "" {
+		if err := validate.IP(r.Gateway); err != nil {
+			return fmt.Errorf("invalid gateway: %w", err)
+		}
+	}
+	// Dev: must be a safe Linux interface name if provided.
+	if r.Dev != "" {
+		if err := validate.IfaceName(r.Dev); err != nil {
+			return fmt.Errorf("invalid interface: %w", err)
+		}
+	}
+	// Table: must be a safe iproute2 table name or number.
+	if r.Table != "" {
+		if err := validate.TableName(r.Table); err != nil {
+			return fmt.Errorf("invalid table: %w", err)
+		}
+	}
+	return nil
 }
 
 // ── Kernel helpers ────────────────────────────────────────────────────────────

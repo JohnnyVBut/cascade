@@ -19,6 +19,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/routing"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // RegisterRouting registers all /api/routing/* routes.
@@ -41,6 +42,9 @@ func RegisterRouting(api fiber.Router) {
 // Wrapped as { routes: [...] } because the frontend does `res.routes || []`.
 func getKernelRoutes(c *fiber.Ctx) error {
 	table := c.Query("table", "main")
+	if err := validate.TableName(table); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
 	routes, err := routing.Get().GetKernelRoutes(table)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -86,6 +90,9 @@ func testRoute(c *fiber.Ctx) error {
 	if ip == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "ip query parameter is required")
 	}
+	if err := validate.IP(ip); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
 	src := c.Query("src")      // optional source IP for PBR trace
 	markStr := c.Query("mark") // optional explicit fwmark override
 
@@ -105,6 +112,9 @@ func testRoute(c *fiber.Ctx) error {
 	var routeMark *int          // mark to pass to ip route get
 
 	if src != "" {
+		if err := validate.IP(src); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
 		trace, err := firewall.Get().SimulateTrace(src, ip)
 		if err != nil {
 			// Non-fatal — fall through to default route lookup.
