@@ -39,6 +39,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/gateway"
 	"github.com/JohnnyVBut/cascade/internal/util"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -1149,7 +1150,14 @@ func (m *Manager) matchAlias(aliasID, ip string) (bool, error) {
 }
 
 // ipsetTest runs "ipset test <name> <ip>" and returns true on exit 0.
+// Both setName and ip are validated before shell interpolation (CRIT-2).
 func (m *Manager) ipsetTest(setName, ip string) bool {
+	if err := validate.IpsetName(setName); err != nil {
+		return false
+	}
+	if err := validate.IP(ip); err != nil {
+		return false
+	}
 	_, err := util.Exec(fmt.Sprintf("ipset test %s %s", setName, ip), 3*time.Second, false)
 	return err == nil
 }

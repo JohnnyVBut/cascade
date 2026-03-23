@@ -2,6 +2,7 @@ package validate
 
 import (
 	"testing"
+	"strings"
 )
 
 // ---- IfaceName ----
@@ -132,6 +133,46 @@ func TestIP_Invalid(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := IP(tc.input); err == nil {
 				t.Errorf("IP(%q) expected error, got nil", tc.input)
+			}
+		})
+	}
+}
+
+// ---- IpsetName ----
+
+func TestIpsetName_Valid(t *testing.T) {
+	cases := []string{
+		"myset",
+		"vpn_ru",
+		"cascade_ipset",
+		"a",
+		strings.Repeat("a", 31), // exactly 31 chars — kernel limit
+	}
+	for _, name := range cases {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			if err := IpsetName(name); err != nil {
+				t.Errorf("IpsetName(%q) returned unexpected error: %v", name, err)
+			}
+		})
+	}
+}
+
+func TestIpsetName_Invalid(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"empty string", ""},
+		{"shell injection semicolon", "myset; id"},
+		{"hyphen not allowed", "my-set"},
+		{"space in name", "my set"},
+		{"longer than 31 chars", strings.Repeat("a", 32)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := IpsetName(tc.input); err == nil {
+				t.Errorf("IpsetName(%q) expected error, got nil", tc.input)
 			}
 		})
 	}

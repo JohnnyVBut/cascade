@@ -23,6 +23,11 @@ var reIfaceName = regexp.MustCompile(`^[a-zA-Z0-9_.\-]{1,15}$`)
 // Names: up to 31 chars, alphanumeric + underscore + hyphen (e.g. "vpn_kz", "100").
 var reTableName = regexp.MustCompile(`^[a-zA-Z0-9_\-]{1,31}$`)
 
+// reIpsetName matches a Linux ipset name.
+// ipset kernel limit: 31 chars, alphanumeric + underscore only
+// (ipsetNameFromAlias converts hyphens → underscores, so no hyphen expected).
+var reIpsetName = regexp.MustCompile(`^[a-zA-Z0-9_]{1,31}$`)
+
 // IfaceID returns an error if id is not a safe interface identifier.
 func IfaceID(id string) error {
 	if !reIfaceID.MatchString(id) {
@@ -48,6 +53,18 @@ func TableName(s string) error {
 	}
 	if !reTableName.MatchString(s) {
 		return fmt.Errorf("invalid routing table %q: must match ^[a-zA-Z0-9_\\-]{1,31}$", s)
+	}
+	return nil
+}
+
+// IpsetName returns an error if s is not a safe ipset set name.
+// ipset names: up to 31 chars, alphanumeric + underscore — no shell metacharacters.
+func IpsetName(s string) error {
+	if s == "" {
+		return fmt.Errorf("ipset name must not be empty")
+	}
+	if !reIpsetName.MatchString(s) {
+		return fmt.Errorf("invalid ipset name %q: must match ^[a-zA-Z0-9_]{1,31}$", s)
 	}
 	return nil
 }
