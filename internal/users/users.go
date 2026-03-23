@@ -164,10 +164,20 @@ func Create(username, password string) (*User, error) {
 		return nil, fmt.Errorf("users.Create bcrypt: %w", err)
 	}
 
+	// First user created in the system automatically becomes admin.
+	// This covers the open-mode registration flow: when the DB has 0 users,
+	// callerIsAdmin returns true (open mode). After the first user is inserted
+	// the count becomes 1, callerIsAdmin switches to DB lookup — without is_admin=1
+	// the creator would immediately lose admin access.
+	isAdmin := 0
+	if n, err := Count(); err == nil && n == 0 {
+		isAdmin = 1
+	}
+
 	id := uuid.New().String()
 	_, err = db.DB().Exec(
-		`INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)`,
-		id, username, string(hash),
+		`INSERT INTO users (id, username, password_hash, is_admin) VALUES (?, ?, ?, ?)`,
+		id, username, string(hash), isAdmin,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("users.Create insert: %w", err)
