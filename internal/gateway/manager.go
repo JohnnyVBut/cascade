@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // Manager manages gateways and gateway groups.
@@ -523,8 +524,17 @@ func validateGatewayInput(inp GatewayInput) error {
 	if strings.TrimSpace(inp.Interface) == "" {
 		return fmt.Errorf("interface is required")
 	}
+	if err := validate.IfaceName(strings.TrimSpace(inp.Interface)); err != nil {
+		return fmt.Errorf("invalid interface: %w", err)
+	}
 	if strings.TrimSpace(inp.GatewayIP) == "" {
 		return fmt.Errorf("gatewayIP is required")
+	}
+	if err := validate.IP(strings.TrimSpace(inp.GatewayIP)); err != nil {
+		return fmt.Errorf("invalid gatewayIP: %w", err)
+	}
+	if err := validate.HostOrIP(strings.TrimSpace(inp.MonitorAddress)); err != nil {
+		return fmt.Errorf("invalid monitorAddress: %w", err)
 	}
 	rule := inp.MonitorRule
 	if rule != "" && rule != "icmp_only" && rule != "http_only" && rule != "all" && rule != "any" {

@@ -33,6 +33,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/util"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 const minProbes = 3 // minimum window probes before committing to a non-unknown status
@@ -193,6 +194,17 @@ func (m *Monitor) probeICMP(gw Gateway, state *monitorState) {
 	target := gw.MonitorAddress
 	if target == "" {
 		target = gw.GatewayIP
+	}
+
+	// Defence-in-depth: validate before shell interpolation (HIGH-6).
+	// Protects against legacy rows written before input validation was added.
+	if err := validate.IfaceName(gw.Interface); err != nil {
+		log.Printf("gateway-monitor: %s: skipping ICMP probe — unsafe interface %q: %v", gw.ID, gw.Interface, err)
+		return
+	}
+	if err := validate.HostOrIP(target); err != nil {
+		log.Printf("gateway-monitor: %s: skipping ICMP probe — unsafe target %q: %v", gw.ID, target, err)
+		return
 	}
 
 	var success bool

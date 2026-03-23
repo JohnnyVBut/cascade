@@ -1,8 +1,8 @@
 package validate
 
 import (
-	"testing"
 	"strings"
+	"testing"
 )
 
 // ---- IfaceName ----
@@ -173,6 +173,54 @@ func TestIpsetName_Invalid(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if err := IpsetName(tc.input); err == nil {
 				t.Errorf("IpsetName(%q) expected error, got nil", tc.input)
+			}
+		})
+	}
+}
+
+// ---- HostOrIP ----
+
+func TestHostOrIP_Valid(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"empty string (not set)", ""},
+		{"IPv4 address", "8.8.8.8"},
+		{"IPv6 loopback", "::1"},
+		{"simple hostname", "google.com"},
+		{"multi-label hostname with hyphen", "my-host.example.org"},
+		{"mixed-case hostname", "Example.COM"},
+		{"three single-char labels", "a.b.c"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if err := HostOrIP(tc.input); err != nil {
+				t.Errorf("HostOrIP(%q) returned unexpected error: %v", tc.input, err)
+			}
+		})
+	}
+}
+
+func TestHostOrIP_Invalid(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"shell injection semicolon", "google.com; id"},
+		{"space in name", "host name"},
+		{"command substitution", "$(id)"},
+		{"label exceeds 63 chars", strings.Repeat("a", 64) + ".com"},
+		{"total exceeds 253 chars", strings.Repeat("a", 50) + "." + strings.Repeat("b", 50) + "." + strings.Repeat("c", 50) + "." + strings.Repeat("d", 50) + "." + strings.Repeat("e", 55)},
+		{"double dot (empty label)", "host..double.dot"},
+		{"leading dash in label", "-leading.dash"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if err := HostOrIP(tc.input); err == nil {
+				t.Errorf("HostOrIP(%q) expected error, got nil", tc.input)
 			}
 		})
 	}

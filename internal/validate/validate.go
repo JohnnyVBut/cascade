@@ -77,6 +77,46 @@ func IP(s string) error {
 	return nil
 }
 
+// reHostnameLabel matches a single RFC 1123 hostname label:
+// starts and ends with alphanumeric, may contain hyphens, 1–63 chars.
+var reHostnameLabel = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
+
+// shellMetachars contains characters that are dangerous in bash -c strings.
+const shellMetachars = ";|&`$(){}\\<> \t\n\r"
+
+// HostOrIP returns an error if s is not a valid IPv4/IPv6 address, a safe
+// RFC 1123 hostname, or an empty string.
+//
+// Empty string is valid — callers use it as "not set / use default".
+// Used for gateway MonitorAddress which may be an IP or a hostname.
+func HostOrIP(s string) error {
+	if s == "" {
+		return nil
+	}
+	// Fast path: valid IP address.
+	if net.ParseIP(s) != nil {
+		return nil
+	}
+	// Reject shell metacharacters before hostname parsing.
+	if strings.ContainsAny(s, shellMetachars) {
+		return fmt.Errorf("invalid host %q: contains shell metacharacters", s)
+	}
+	// RFC 1123 hostname: labels separated by dots, total <= 253 chars.
+	if len(s) > 253 {
+		return fmt.Errorf("invalid host %q: exceeds 253 characters", s)
+	}
+	labels := strings.Split(s, ".")
+	for _, label := range labels {
+		if label == "" {
+			return fmt.Errorf("invalid host %q: empty label", s)
+		}
+		if !reHostnameLabel.MatchString(label) {
+			return fmt.Errorf("invalid host %q: label %q is not a valid RFC 1123 label", s, label)
+		}
+	}
+	return nil
+}
+
 // WGKey validates a WireGuard public key or preshared key.
 // Both are 32-byte values encoded as standard base64 (44 chars, trailing =).
 func WGKey(key string) error {
