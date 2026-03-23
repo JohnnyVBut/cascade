@@ -122,16 +122,18 @@ func RegisterSettings(api fiber.Router) {
 
 	// POST /api/templates/generate — generate AWG2 obfuscation params
 	// Registered BEFORE /:id routes so Fiber doesn't interpret "generate" as an id.
-	// Body: { profile?, intensity?, host?, iterCount?, jc?, saveName? }
+	// Body: { profile?, intensity?, host?, browser?, iterCount?, jc?, saveName? }
+	// browser: "chrome"|"firefox"|"safari"|"edge"|"yandex_desktop"|"yandex_mobile"|"" (default: no BFP)
 	// Returns: { params, profiles } | { params, profiles, template } if saveName provided
 	api.Post("/templates/generate", func(c *fiber.Ctx) error {
 		var body struct {
-			Profile   string  `json:"profile"`
-			Intensity string  `json:"intensity"`
-			Host      string  `json:"host"`
-			IterCount int     `json:"iterCount"`
-			Jc        int     `json:"jc"`
-			SaveName  string  `json:"saveName"`
+			Profile   string `json:"profile"`
+			Intensity string `json:"intensity"`
+			Host      string `json:"host"`
+			Browser   string `json:"browser"`
+			IterCount int    `json:"iterCount"`
+			Jc        int    `json:"jc"`
+			SaveName  string `json:"saveName"`
 		}
 		// Body is optional — ignore parse errors, use zero values → defaults
 		_ = c.BodyParser(&body)
@@ -140,6 +142,7 @@ func RegisterSettings(api fiber.Router) {
 			Profile:   body.Profile,
 			Intensity: body.Intensity,
 			Host:      body.Host,
+			Browser:   body.Browser,
 			IterCount: body.IterCount,
 			Jc:        body.Jc,
 		})

@@ -4387,6 +4387,8 @@
                   <option value="http3">HTTP/3 over QUIC</option>
                   <option value="sip">SIP REGISTER</option>
                   <option value="wireguard_noise">Noise_IK (WireGuard)</option>
+                  <option value="tls_to_quic">TLS→QUIC (composite)</option>
+                  <option value="quic_burst">QUIC Burst (composite)</option>
                 </select>
               </div>
               <div>
@@ -4407,6 +4409,20 @@
                 <input v-model="generateForm.host" type="text" placeholder="e.g. yandex.ru"
                   class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm"/>
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Leave empty for a random host from the pool.</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium mb-1">Browser Fingerprint <span class="text-gray-400 font-normal">(optional)</span></label>
+                <select v-model="generateForm.browser"
+                  class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm">
+                  <option value="">None (protocol defaults)</option>
+                  <option value="chrome">Chrome</option>
+                  <option value="firefox">Firefox</option>
+                  <option value="safari">Safari</option>
+                  <option value="edge">Edge</option>
+                  <option value="yandex_desktop">Yandex Browser (Desktop)</option>
+                  <option value="yandex_mobile">Yandex Browser (Mobile)</option>
+                </select>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Adjusts packet sizes to match browser QUIC/TLS fingerprint. Not applicable to SIP.</p>
               </div>
               <button @click="generateParams()" :disabled="generatingParams"
                 class="w-full py-2 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-60 text-white rounded font-medium text-sm transition flex items-center justify-center gap-2">

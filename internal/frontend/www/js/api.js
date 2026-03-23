@@ -295,16 +295,17 @@ class API {
    * @param {string} [opts.profile]    — профиль CPS ('random', 'quic_initial', 'tls_client_hello', ...)
    * @param {string} [opts.intensity]  — интенсивность ('low', 'medium', 'high')
    * @param {string} [opts.host]       — кастомный хост для SNI
+   * @param {string} [opts.browser]    — Browser Fingerprint: chrome|firefox|safari|edge|yandex_desktop|yandex_mobile
    * @param {number} [opts.iterCount]  — счётчик попыток
    * @param {number} [opts.jc]         — базовое Jc
    * @param {string} [opts.saveName]   — если задан, сохраняет как шаблон
    * @returns {{ params, profiles[, template] }}
    */
-  async generateTemplate({ profile, intensity, host, iterCount, jc, saveName } = {}) {
+  async generateTemplate({ profile, intensity, host, browser, iterCount, jc, saveName } = {}) {
     return this.call({
       method: 'post',
       path: '/templates/generate',
-      body: { profile, intensity, host, iterCount, jc, saveName },
+      body: { profile, intensity, host, browser, iterCount, jc, saveName },
     });
   }
 

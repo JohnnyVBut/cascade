@@ -248,6 +248,7 @@ new Vue({
       profile: 'random',
       intensity: 'medium',
       host: '',
+      browser: '',
       saveName: '',
     },
     generatedParams: null,
@@ -2600,7 +2601,7 @@ new Vue({
     // ── Generate AWG2 modal ───────────────────────────────────────────────────
 
     openGenerateModal() {
-      this.generateForm = { profile: 'random', intensity: 'medium', host: '', saveName: '' };
+      this.generateForm = { profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '' };
       this.generatedParams = null;
       this.showGenerateModal = true;
     },
@@ -2612,6 +2613,7 @@ new Vue({
           profile:   this.generateForm.profile,
           intensity: this.generateForm.intensity,
           host:      this.generateForm.host || undefined,
+          browser:   this.generateForm.browser || undefined,
         });
         this.generatedParams = res.params;
         if (!this.generateProfiles.length && res.profiles) {

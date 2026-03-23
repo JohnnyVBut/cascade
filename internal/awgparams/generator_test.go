@@ -2,6 +2,7 @@ package awgparams
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,6 +29,24 @@ func parseRange(t *testing.T, s string) (int, int) {
 // rangesOverlap returns true when [a1,a2] and [b1,b2] share any value.
 func rangesOverlap(a1, a2, b1, b2 int) bool {
 	return a1 <= b2 && b1 <= a2
+}
+
+// rcRegex matches the first <rc N> tag and captures N.
+var rcRegex = regexp.MustCompile(`<rc (\d+)>`)
+
+// extractRC returns the integer N from the first <rc N> occurrence in s.
+// Fails the test if no match is found.
+func extractRC(t *testing.T, s string) int {
+	t.Helper()
+	m := rcRegex.FindStringSubmatch(s)
+	if m == nil {
+		t.Fatalf("extractRC: no <rc N> found in %q", s)
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("extractRC: bad integer %q: %v", m[1], err)
+	}
+	return n
 }
 
 // ── H1-H4 non-overlapping ─────────────────────────────────────────────────────
@@ -162,6 +181,7 @@ func TestGenerate_AllProfilesProduceI1(t *testing.T) {
 	profiles := []string{
 		"quic_initial", "quic_0rtt", "tls_client_hello",
 		"dtls", "http3", "sip", "wireguard_noise",
+		"tls_to_quic", "quic_burst",
 	}
 	for _, profile := range profiles {
 		p := Generate(Options{Profile: profile})
@@ -205,7 +225,136 @@ func TestGenerate_IterCountBumpsJmax(t *testing.T) {
 // ── Profiles list ─────────────────────────────────────────────────────────────
 
 func TestProfiles_Length(t *testing.T) {
-	if len(Profiles) < 8 {
-		t.Errorf("expected at least 8 profiles, got %d", len(Profiles))
+	if len(Profiles) < 10 {
+		t.Errorf("expected at least 10 profiles, got %d", len(Profiles))
+	}
+}
+
+// ── BFP: Chrome <rc N> in range per protocol ─────────────────────────────────
+
+// chromeBFPRanges maps profile name → expected [min, max] for Chrome BFP <rc N>.
+// Values come directly from BFP["chrome"] in generator.go.
+var chromeBFPRanges = map[string][2]int{
+	"quic_initial":     {1250, 1250},
+	"quic_0rtt":        {1250, 1350},
+	"http3":            {1250, 1350},
+	"tls_client_hello": {512, 800},
+	"wireguard_noise":  {1200, 1250},
+	"dtls":             {1100, 1200},
+}
+
+func TestBFP_ChromeRcInRange(t *testing.T) {
+	for profile, want := range chromeBFPRanges {
+		profile, want := profile, want // capture
+		t.Run(profile, func(t *testing.T) {
+			for i := 0; i < 20; i++ {
+				p := Generate(Options{Profile: profile, Browser: "chrome"})
+				rc := extractRC(t, p.I1)
+				if rc < want[0] || rc > want[1] {
+					t.Errorf("iteration %d: profile=%s browser=chrome <rc %d> not in [%d,%d] — I1=%s",
+						i, profile, rc, want[0], want[1], p.I1)
+				}
+			}
+		})
+	}
+}
+
+// ── BFP: all browsers smoke test ─────────────────────────────────────────────
+
+func TestBFP_AllBrowsersSmoke(t *testing.T) {
+	browsers := []string{
+		"chrome", "firefox", "safari", "edge", "yandex_desktop", "yandex_mobile",
+	}
+	for _, browser := range browsers {
+		browser := browser
+		t.Run(browser, func(t *testing.T) {
+			p := Generate(Options{Profile: "quic_initial", Browser: browser})
+			if p.I1 == "" {
+				t.Errorf("browser=%s: I1 is empty", browser)
+			}
+			if p.Profile != "quic_initial" {
+				t.Errorf("browser=%s: expected Profile=quic_initial, got %s", browser, p.Profile)
+			}
+		})
+	}
+}
+
+// ── BFP: unknown browser falls back gracefully ────────────────────────────────
+
+func TestBFP_UnknownBrowserFallback(t *testing.T) {
+	p := Generate(Options{Profile: "quic_initial", Browser: "ie6"})
+	if p.I1 == "" {
+		t.Errorf("unknown browser 'ie6': I1 is empty — fallback must not panic or produce empty output")
+	}
+}
+
+// ── BFP: empty browser uses protocol defaults (regression guard) ──────────────
+
+func TestBFP_EmptyBrowserFallback(t *testing.T) {
+	baseProfiles := []string{
+		"quic_initial", "quic_0rtt", "tls_client_hello",
+		"dtls", "http3", "sip", "wireguard_noise",
+	}
+	for _, profile := range baseProfiles {
+		profile := profile
+		t.Run(profile, func(t *testing.T) {
+			p := Generate(Options{Profile: profile, Browser: ""})
+			if p.I1 == "" {
+				t.Errorf("profile=%s browser='': I1 is empty", profile)
+			}
+		})
+	}
+}
+
+// ── Composite: tls_to_quic ────────────────────────────────────────────────────
+
+func TestComposite_TLStoQUIC(t *testing.T) {
+	p := Generate(Options{Profile: "tls_to_quic"})
+
+	if p.I1 == "" {
+		t.Fatal("tls_to_quic: I1 is empty")
+	}
+	if p.Profile != "tls_to_quic" {
+		t.Errorf("tls_to_quic: expected Profile=tls_to_quic, got %s", p.Profile)
+	}
+	// TLS ClientHello record starts with 160301 — must be present as mkTLS is first
+	if !strings.Contains(p.I1, "160301") {
+		t.Errorf("tls_to_quic: expected TLS record header '160301' in I1, got: %s", p.I1)
+	}
+	// Composite packet should be substantially longer than a single packet
+	if len(p.I1) <= 50 {
+		t.Errorf("tls_to_quic: I1 length %d is too short (expected > 50), got: %s", len(p.I1), p.I1)
+	}
+}
+
+// ── Composite: quic_burst ─────────────────────────────────────────────────────
+
+func TestComposite_QUICBurst(t *testing.T) {
+	p := Generate(Options{Profile: "quic_burst"})
+
+	if p.I1 == "" {
+		t.Fatal("quic_burst: I1 is empty")
+	}
+	if p.Profile != "quic_burst" {
+		t.Errorf("quic_burst: expected Profile=quic_burst, got %s", p.Profile)
+	}
+	// Three packets concatenated — must be substantially longer than a single packet
+	if len(p.I1) <= 100 {
+		t.Errorf("quic_burst: I1 length %d is too short (expected > 100), got: %s", len(p.I1), p.I1)
+	}
+}
+
+// ── Composite profiles not in random pool ─────────────────────────────────────
+
+func TestComposite_NotInRandomPool(t *testing.T) {
+	composites := map[string]bool{
+		"tls_to_quic": true,
+		"quic_burst":  true,
+	}
+	for i := 0; i < 100; i++ {
+		p := Generate(Options{Profile: "random"})
+		if composites[p.Profile] {
+			t.Errorf("iteration %d: random pool returned composite profile %q — composites must be excluded", i, p.Profile)
+		}
 	}
 }
