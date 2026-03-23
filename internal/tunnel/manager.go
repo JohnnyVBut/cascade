@@ -15,6 +15,7 @@ package tunnel
 import (
 	"fmt"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -208,6 +209,8 @@ func (m *Manager) GetInterface(id string) *TunnelInterface {
 }
 
 // GetAllInterfaces returns a snapshot slice of all interfaces in creation order.
+// Sorted by CreatedAt ASC — map iteration order is non-deterministic in Go
+// (FIX-GO-13 applied at manager level).
 func (m *Manager) GetAllInterfaces() []*TunnelInterface {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -215,6 +218,9 @@ func (m *Manager) GetAllInterfaces() []*TunnelInterface {
 	for _, t := range m.interfaces {
 		out = append(out, t)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].CreatedAt < out[j].CreatedAt
+	})
 	return out
 }
 
@@ -322,14 +328,22 @@ func (m *Manager) GetPeers(interfaceID string) ([]*peer.Peer, error) {
 	return t.GetAllPeers(), nil
 }
 
-// GetAllPeers returns all in-memory peers across all interfaces.
-// Each peer carries its InterfaceID field for identification.
-// Used by the dashboard "All" view.
+// GetAllPeers returns all in-memory peers across all interfaces in stable order.
+// Interfaces are sorted by CreatedAt ASC first; within each interface peers are
+// already sorted by CreatedAt ASC (FIX-GO-13). Map iteration order is
+// non-deterministic — without sorting the dashboard reorders every second.
 func (m *Manager) GetAllPeers() []*peer.Peer {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	var out []*peer.Peer
+	ifaces := make([]*TunnelInterface, 0, len(m.interfaces))
 	for _, t := range m.interfaces {
+		ifaces = append(ifaces, t)
+	}
+	sort.Slice(ifaces, func(i, j int) bool {
+		return ifaces[i].CreatedAt < ifaces[j].CreatedAt
+	})
+	var out []*peer.Peer
+	for _, t := range ifaces {
 		out = append(out, t.GetAllPeers()...)
 	}
 	return out
