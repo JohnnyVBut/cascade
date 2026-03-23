@@ -1853,7 +1853,8 @@
                 <p class="text-xl font-medium dark:text-neutral-200">Users</p>
                 <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Manage accounts that can access the Web UI</p>
               </div>
-              <button @click="showAddUserModal = true"
+              <button v-if="!currentUser || currentUser.is_admin"
+                @click="showAddUserModal = true"
                 class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded text-sm font-medium transition">
                 + Add User
               </button>
@@ -1880,6 +1881,10 @@
                   class="border-b last:border-b-0 dark:border-neutral-600">
                   <td class="tc dark:text-neutral-200 font-medium">
                     {{ user.username }}
+                    <span v-if="user.is_admin"
+                      style="margin-left:6px; font-size:0.7rem; background:#fef3c7; color:#92400e; padding:2px 8px; border-radius:9999px; font-weight:500;">
+                      Admin
+                    </span>
                     <span v-if="currentUser && user.id === currentUser.id"
                       class="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full">
                       You
@@ -1910,6 +1915,15 @@
                           Disable 2FA
                         </button>
                       </template>
+                      <!-- Grant/Revoke Admin — visible to admin users only -->
+                      <button v-if="currentUser && currentUser.is_admin"
+                        @click="setUserAdmin(user)"
+                        class="px-3 py-1 text-xs border rounded transition"
+                        :class="user.is_admin
+                          ? 'border-orange-400 text-orange-600 dark:text-orange-400'
+                          : 'border-gray-400 text-gray-600 dark:text-neutral-400'">
+                        {{ user.is_admin ? 'Revoke Admin' : 'Make Admin' }}
+                      </button>
                       <!-- Delete -->
                       <button @click="deleteUser(user)"
                         :disabled="users.length <= 1"

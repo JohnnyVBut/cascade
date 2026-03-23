@@ -2726,6 +2726,25 @@ new Vue({
       }
     },
 
+    async setUserAdmin(user) {
+      const granting = !user.is_admin;
+      const action = granting ? `grant admin to "${user.username}"` : `remove admin from "${user.username}"`;
+      if (!confirm(`Are you sure you want to ${action}?`)) return;
+      try {
+        const res = await this.api.setUserAdmin(user.id, granting);
+        if (res && res.user) {
+          const idx = this.users.findIndex(u => u.id === res.user.id);
+          if (idx !== -1) this.users.splice(idx, 1, res.user);
+          if (this.currentUser && res.user.id === this.currentUser.id) {
+            this.currentUser = res.user;
+          }
+        }
+        this.showToast(granting ? `Admin granted to "${user.username}"` : `Admin removed from "${user.username}"`);
+      } catch (err) {
+        this.showToast(err.message || 'Failed to update admin role', 'error');
+      }
+    },
+
     // ========================================================================
     // API Tokens
     // ========================================================================

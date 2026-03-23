@@ -866,6 +866,11 @@ class API {
     return this.call({ method: 'delete', path: `/users/${id}` });
   }
 
+  /** Grant or revoke admin role for a user. */
+  async setUserAdmin(id, admin) {
+    return this.call({ method: 'post', path: `/users/${id}/set-admin`, body: { admin } });
+  }
+
   /** Get the currently authenticated user. */
   async getCurrentUser() {
     return this.call({ method: 'get', path: '/users/me' });
