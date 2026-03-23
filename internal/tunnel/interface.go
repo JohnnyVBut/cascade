@@ -984,11 +984,15 @@ func (t *TunnelInterface) ExportInterfaceParams(wgHost string) InterfaceExport {
 		Address:   t.Address,
 		Protocol:  t.Protocol,
 	}
-	// NOTE: AllowedIPs is intentionally omitted from the export.
-	// importPeerJSON derives the peer's AllowedIPs from the `address` field
-	// (remote tunnel IP → /32). Exporting "0.0.0.0/0" for disableRoutes=true
-	// interfaces caused the importer to store AllowedIPs="0.0.0.0/0" instead
-	// of the correct /32, leaving the peer's address field empty as well.
+	// For transit/S2S interfaces (DisableRoutes=true) export AllowedIPs=0.0.0.0/0
+	// so the importing side routes all traffic through this peer.
+	// For point-to-point interfaces (DisableRoutes=false) omit AllowedIPs —
+	// importPeerJSON will derive /32 from the address field instead.
+	// Note: FIX-GO-11 ensures inp.Address is always written from body["address"]
+	// independently of allowedIPs, so 0.0.0.0/0 no longer causes empty address.
+	if t.DisableRoutes {
+		exp.AllowedIPs = "0.0.0.0/0"
+	}
 	if psk != "" {
 		exp.PresharedKey = psk
 	}
