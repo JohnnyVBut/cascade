@@ -57,15 +57,34 @@
 - Public IP address or domain name
 - Ports: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
 
-## 🚀 Quick Deploy
+## 🚀 Deployment Options
+
+### Option A — Router only (advanced users)
+
+Run just the Cascade container. The web UI listens on **localhost only** — no public exposure, no TLS.
+You are responsible for network security, authentication and access control.
+
+```bash
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+./build-go.sh
+docker compose -f docker-compose.go.yml up -d
+# UI available at http://127.0.0.1:8888/
+```
+
+Use this if you already have a reverse proxy, firewall, or VPN-only access in place.
+Step-by-step guide: [docs/DEPLOY.md](docs/DEPLOY.md)
+
+### Option B — Full stack (recommended)
+
+One command sets up everything: AmneziaWG kernel module, TLS certificate, Caddy reverse proxy
+with a decoy streaming site and a hidden admin path. The router is never exposed directly to the internet.
 
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
 cd cascade
 sudo bash deploy/setup.sh
 ```
-
-The script does everything automatically:
 
 | Step | What happens |
 |------|-------------|
@@ -76,9 +95,9 @@ The script does everything automatically:
 | 4 | sysctl: `ip_forward`, UDP buffers |
 | 5 | Build Cascade Docker image |
 | 6 | Collect config interactively (IP, secret path, email) |
-| 7 | Start Cascade |
+| 7 | Start Cascade (localhost only) |
 | 8 | Issue TLS certificate via acme.sh (Let's Encrypt) |
-| 9 | Start Caddy reverse proxy (decoy site + hidden admin path) |
+| 9 | Start Caddy (HTTPS + decoy site + hidden admin path) |
 
 At the end you get:
 ```
@@ -87,7 +106,7 @@ Admin URL: https://YOUR_IP/<secret-path>/
 
 Open it, create the first admin account, done.
 
-> **Re-run safe:** `setup.sh` is idempotent — running it again after a reboot or update is always safe.
+> **Re-run safe:** `setup.sh` is idempotent — safe to run again after a reboot or update.
 
 ## ⚙️ Configuration
 
@@ -158,6 +177,29 @@ docker exec awg-router ip rule show
 ```bash
 sudo bash deploy/setup.sh
 ```
+
+## 🔌 REST API
+
+Cascade exposes a full REST API — everything the web UI does, your scripts can do too.
+
+```bash
+# Authenticate
+curl -c cookies.txt -X POST http://127.0.0.1:8888/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"yourpassword"}'
+
+# List interfaces
+curl -b cookies.txt http://127.0.0.1:8888/api/tunnel-interfaces
+
+# Create a peer
+curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/peers \
+  -H "Content-Type: application/json" \
+  -d '{"name":"laptop"}'
+```
+
+Use it to automate peer provisioning, integrate with your own dashboards, or build custom clients.
+
+Full reference: [docs/API.en.md](docs/API.en.md) · [docs/API.md (RU)](docs/API.md)
 
 ## 📖 Documentation
 

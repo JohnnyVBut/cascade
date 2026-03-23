@@ -57,7 +57,28 @@
 - Публичный IP-адрес или доменное имя
 - Открытые порты: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
 
-## 🚀 Быстрый деплой
+## 🚀 Варианты деплоя
+
+### Вариант А — Только роутер (для продвинутых)
+
+Запускается только контейнер Cascade. Веб-интерфейс доступен **только на localhost** — без публичного доступа, без TLS.
+Вопросы сетевой безопасности, аутентификации и контроля доступа решаете сами.
+
+```bash
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+./build-go.sh
+docker compose -f docker-compose.go.yml up -d
+# UI доступен на http://127.0.0.1:8888/
+```
+
+Используйте, если у вас уже есть reverse proxy, файрвол или доступ только через VPN.
+Пошаговое руководство: [docs/DEPLOY.md](docs/DEPLOY.md)
+
+### Вариант Б — Полный стек (рекомендуется)
+
+Одна команда разворачивает всё: kernel-модуль AmneziaWG, TLS-сертификат, Caddy reverse proxy
+с decoy-сайтом и скрытым путём к панели управления. Роутер никогда не открывается напрямую в интернет.
 
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
@@ -65,14 +86,18 @@ cd cascade
 sudo bash deploy/setup.sh
 ```
 
-Скрипт делает всё автоматически:
-1. Создаёт 1 ГБ swap
-2. Обновляет ядро до HWE 6.x (только Ubuntu 22.04)
-3. Устанавливает kernel-модуль AmneziaWG
-4. Устанавливает Docker
-5. Собирает Docker-образ Cascade
-6. Выпускает TLS-сертификат (Let's Encrypt / acme.sh)
-7. Запускает Cascade + Caddy reverse proxy
+| Шаг | Что происходит |
+|-----|----------------|
+| 0 | 1 ГБ swap (защита от OOM при сборке) |
+| 1 | Обновление ядра до HWE 6.x (только Ubuntu 22.04) — перезагрузка, затем повтор |
+| 2 | Установка kernel-модуля AmneziaWG |
+| 3 | Установка Docker CE |
+| 4 | sysctl: `ip_forward`, UDP-буферы |
+| 5 | Сборка Docker-образа Cascade |
+| 6 | Интерактивный сбор конфигурации (IP, секретный путь, email) |
+| 7 | Запуск Cascade (только localhost) |
+| 8 | Выпуск TLS-сертификата через acme.sh (Let's Encrypt) |
+| 9 | Запуск Caddy (HTTPS + decoy-сайт + скрытый путь к панели) |
 
 В конце вы получите:
 ```
@@ -80,6 +105,8 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 ```
 
 Откройте в браузере, создайте первого администратора — готово.
+
+> **Повторный запуск безопасен:** `setup.sh` идемпотентен — можно запускать повторно после перезагрузки или обновления.
 
 ## ⚙️ Конфигурация
 
@@ -150,6 +177,29 @@ docker exec awg-router ip rule show
 ```bash
 sudo bash deploy/setup.sh
 ```
+
+## 🔌 REST API
+
+Cascade предоставляет полноценный REST API — всё, что делает веб-интерфейс, доступно и через API.
+
+```bash
+# Аутентификация
+curl -c cookies.txt -X POST http://127.0.0.1:8888/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"yourpassword"}'
+
+# Список интерфейсов
+curl -b cookies.txt http://127.0.0.1:8888/api/tunnel-interfaces
+
+# Создать пира
+curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/peers \
+  -H "Content-Type: application/json" \
+  -d '{"name":"laptop"}'
+```
+
+Используйте для автоматизации провизионирования пиров, интеграции с собственными дашбордами или создания кастомных клиентов.
+
+Полная документация: [docs/API.md (RU)](docs/API.md) · [docs/API.en.md (EN)](docs/API.en.md)
 
 ## 📖 Документация
 
