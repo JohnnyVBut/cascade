@@ -5,6 +5,8 @@ tools:
   - Read
   - Grep
   - Glob
+  - Write
+  - Bash
 model: sonnet
 ---
 
