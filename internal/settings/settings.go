@@ -139,6 +139,25 @@ func UpdateSettings(updates map[string]any) (*GlobalSettings, error) {
 	return GetSettings()
 }
 
+// GetWGHost resolves the server's public hostname or IP using 3-level priority:
+//  1. override (WG_HOST env var passed by caller) — used as-is if non-empty
+//  2. publicIPManual from Settings UI (if publicIPMode == "manual")
+//  3. Auto-detect public IP via external services (cached 5 min)
+//
+// WG_HOST is optional — if not set, the system falls back to Settings UI
+// configuration or automatic detection.
+func GetWGHost(override string) string {
+	if override != "" {
+		return override
+	}
+	s, err := GetSettings()
+	if err != nil {
+		return ""
+	}
+	ip, _ := ResolvePublicIP(s.PublicIPMode, s.PublicIPManual)
+	return ip
+}
+
 // GetPeerDefaults returns dns/keepalive/allowedIPs for new peer creation.
 func GetPeerDefaults() (*PeerDefaults, error) {
 	s, err := GetSettings()

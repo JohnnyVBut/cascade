@@ -384,7 +384,7 @@ func (m *Manager) GetPeerRemoteConfig(interfaceID, peerID string) (string, error
 		ListenPort:              t.ListenPort,
 		DNS:                     gs.DNS,
 		DefaultClientAllowedIPs: gs.DefaultClientAllowedIPs,
-		Host:                    m.WGHost,
+		Host:                    settings.GetWGHost(m.WGHost),
 		Settings:                awg2,
 	}
 

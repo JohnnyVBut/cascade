@@ -258,7 +258,7 @@ func parseConfig() Config {
 
 	flag.StringVar(&cfg.Host, "host",
 		envStr("WG_HOST", ""),
-		"Server public hostname or IP address (required)")
+		"Server public hostname or IP address (optional — can be configured via Settings UI)")
 
 	flag.StringVar(&cfg.PasswordHash, "password-hash",
 		envStr("PASSWORD_HASH", ""),
@@ -271,7 +271,7 @@ func parseConfig() Config {
 	flag.Parse()
 
 	if cfg.Host == "" {
-		log.Fatal("WG_HOST env or --host flag is required")
+		log.Println("WG_HOST not set — public IP will be resolved via Settings UI or auto-detect")
 	}
 
 	return cfg

@@ -5,8 +5,10 @@ services:
     restart: unless-stopped
 
     environment:
-      # Required: Server public IP or domain
-      - WG_HOST=your-server-ip-or-domain
+      # Optional: Server public IP or domain for peer config Endpoint field.
+      # If not set — configured via Settings UI or auto-detected from external services.
+      # Uncomment and set to override:
+      # - WG_HOST=1.2.3.4
 
       # Web UI password (bcrypt hash)
       - PASSWORD_HASH=$$2y$$05$$abcdefghijklmnopqrstuv
