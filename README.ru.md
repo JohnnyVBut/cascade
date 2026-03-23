@@ -75,7 +75,6 @@ docker run -d \
   --name=awg-easy \
   --restart unless-stopped \
   \
-  -e WG_HOST=ВАШ_IP_СЕРВЕРА \
   -e PASSWORD_HASH='ВАШ_ХЕШ_ПАРОЛЯ' \
   -e PORT=51821 \
   -e WG_PORT=51820 \
@@ -114,7 +113,7 @@ http://ВАШ_IP_СЕРВЕРА:51821
 
 | Переменная | По умолчанию | Пример | Описание |
 |------------|--------------|--------|----------|
-| `WG_HOST` | - | `vpn.example.com` | **Обязательно**. Публичное имя хоста или IP VPN-сервера |
+| `WG_HOST` | - | `vpn.example.com` | Публичное имя хоста или IP сервера. Опционально — если не задан, IP настраивается через Settings UI или определяется автоматически |
 | `PASSWORD_HASH` | - | `$2y$12$...` | **Обязательно**. Bcrypt хеш для входа в веб-интерфейс |
 | `PORT` | `51821` | `8080` | TCP порт для веб-интерфейса |
 | `WG_PORT` | `51820` | `12345` | UDP порт для WireGuard/AmneziaWG |
@@ -172,7 +171,8 @@ services:
     restart: unless-stopped
     
     environment:
-      - WG_HOST=ВАШ_IP_СЕРВЕРА
+      # WG_HOST опционален — IP настраивается через Settings UI или определяется автоматически
+      # - WG_HOST=ВАШ_IP_СЕРВЕРА
       - PASSWORD_HASH=ВАШ_ХЕШ_ПАРОЛЯ
       - PORT=51821
       - WG_PORT=51820

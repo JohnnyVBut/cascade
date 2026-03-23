@@ -112,7 +112,9 @@ Edit `docker-compose.go.yml`. The key variables:
 ```yaml
 environment:
   - PASSWORD_HASH=          # bcrypt hash of your admin password (see below)
-  - WG_HOST=                # your server's public IP or hostname
+  # WG_HOST is optional — public IP can be configured via Settings UI or auto-detected.
+  # Uncomment to override:
+  # - WG_HOST=1.2.3.4
   - PORT=8888               # Web UI port (listens on localhost only)
   - BIND_ADDR=127.0.0.1     # bind to localhost — Caddy proxies from outside
 ```
@@ -315,7 +317,6 @@ docker logs awg-router
 
 Common causes:
 - `PASSWORD_HASH` is empty or malformed
-- `WG_HOST` is not set
 
 ### Interfaces not appearing in UI
 
