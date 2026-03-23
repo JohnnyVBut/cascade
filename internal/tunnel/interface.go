@@ -376,6 +376,24 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 			return nil, fmt.Errorf("invalid endpoint: %w", err)
 		}
 	}
+	// PrivateKey is written verbatim into the .conf file — validate to prevent
+	// newline injection (e.g. "\nPostUp = <cmd>") that would execute on wg-quick up.
+	// Empty is allowed: interconnect peers have no server-side private key (HIGH-3).
+	if inp.PrivateKey != "" {
+		if err := validate.WGKey(inp.PrivateKey); err != nil {
+			return nil, fmt.Errorf("invalid private key: %w", err)
+		}
+	}
+	if inp.ClientAllowedIPs != "" {
+		if err := validate.CIDR(inp.ClientAllowedIPs); err != nil {
+			return nil, fmt.Errorf("invalid client allowed IPs: %w", err)
+		}
+	}
+	if inp.Address != "" {
+		if err := validate.CIDR(inp.Address); err != nil {
+			return nil, fmt.Errorf("invalid address: %w", err)
+		}
+	}
 
 	p, err := peer.CreatePeer(t.ID, inp)
 	if err != nil {

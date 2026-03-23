@@ -225,3 +225,64 @@ func TestHostOrIP_Invalid(t *testing.T) {
 		})
 	}
 }
+
+// ---- WGKey ----
+
+// TestWGKey_Valid verifies that well-formed 32-byte base64-encoded keys are accepted.
+func TestWGKey_Valid(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		// 32 zero bytes in standard base64 — 44 chars with trailing =
+		{"32 zero bytes", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="},
+		// All-ones (0xFF) 32-byte value
+		{"32 0xFF bytes", "//////////////////////////////////////////8="},
+		// Sequential bytes 0x01..0x20 — deterministic non-trivial value
+		{"bytes 1 to 32", "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if err := WGKey(tc.input); err != nil {
+				t.Errorf("WGKey(%q) returned unexpected error: %v", tc.input, err)
+			}
+		})
+	}
+}
+
+// TestWGKey_Invalid verifies that malformed keys — including newline injection,
+// the primary attack vector against wg/awg config files — are rejected.
+func TestWGKey_Invalid(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+	}{
+		// PRIMARY ATTACK VECTOR: newline injection into wg/awg config file.
+		// An attacker-controlled PrivateKey field containing "\nPostUp = id"
+		// would terminate the [Interface] section early and inject an arbitrary
+		// iptables/shell command that runs as root when the interface starts.
+		{"newline injection PostUp", "fake\nPostUp = id"},
+		// Empty string — AddPeer guard checks this before WGKey, but WGKey itself
+		// must also reject it for use as a standalone validator.
+		{"empty string", ""},
+		// Garbage that is neither base64 nor a key.
+		{"not base64", "notbase64!!!"},
+		// Valid base64 but only 16 bytes — WireGuard keys must be exactly 32 bytes.
+		{"base64 but 16 bytes", "AAAAAAAAAAAAAAAAAAAAAA=="},
+		// Valid base64, 44 chars without padding — decodes to 33 bytes (one too many).
+		{"base64 but 33 bytes", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+		// Shell metacharacter injection via backtick substitution.
+		{"backtick command substitution", "`id`"},
+		// Semicolon — common shell injection delimiter.
+		{"semicolon injection", "AAAAA;BBBBB"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if err := WGKey(tc.input); err == nil {
+				t.Errorf("WGKey(%q) expected error, got nil", tc.input)
+			}
+		})
+	}
+}
