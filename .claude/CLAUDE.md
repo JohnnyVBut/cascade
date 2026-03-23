@@ -1,5 +1,56 @@
 # AWG-Easy 2.0 — Claude Memory
 
+# Нзвание проекта:
+Cascade
+
+# Описание:
+Self-hosted веб-интерфейс для управления WireGuard и AmneziaWG VPN роутером.
+Поддерживает несколько туннельных интерфейсов, peer management, политики маршрутизации, 
+NAT, файрвол, мониторинг шлюзов и S2S interconnect между роутерами.
+
+# Архитектура:
+
+- **Frontend**:
+Vue 2 (CDN, без сборки)
+Tailwind CSS (прекомпилированный статический файл)
+ApexCharts (графики трафика)
+VueI18n (i18n)
+Встроен в бинарник через go:embed
+
+- **Backend**:
+Go 1.23
+Fiber v2 (HTTP framework)
+AmneziaWG / WireGuard (awg-quick / wg-quick)
+iptables-nft (NAT, firewall, PBR)
+iproute2 (routing tables)
+Запускается в Docker с --network host
+
+- **База данных**:
+
+SQLite (через modernc.org/sqlite — pure Go, без CGO)
+Файл: /etc/wireguard/data/cascade.db
+Таблицы: settings, users, tokens, tunnel_interfaces, peers, gateways, gateway_groups, routes, nat_rules, firewall_rules, aliases
+
+
+## CRITICAL RULES  
+- NEVER удалять или переписывать рабочие тесты без явного запроса
+- NEVER удалять файлы без подтверждения
+- ALWAYS запускать тесты после любого изменения кода
+- ALWAYS делать git checkpoint перед крупными рефакторингами
+- Одна задача за раз. НЕ делать несколько изменений одновременно
+- Если не уверен — СПРОСИ, не угадывай
+
+## Working Style
+- Сначала ПЛАН, потом код
+- Маленькие дифы: один файл → тесты → следующий файл
+- Используй субагентов для исследования кодовой базы
+
+## Agents
+- Use `planner` agent для планирования
+- Use `tester` agent после изменений кода
+- Use `code-reviewer` agent перед коммитами
+
+
 ## ⚠️ ПРАВИЛО №0: ДОКУМЕНТАЦИЯ API — ОБНОВЛЯТЬ ОБА ФАЙЛА
 
 При добавлении, изменении или удалении **любого API endpoint** — обязательно обновить **оба** файла:
