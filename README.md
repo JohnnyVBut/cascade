@@ -66,13 +66,19 @@ sudo bash deploy/setup.sh
 ```
 
 The script does everything automatically:
-1. Creates 1 GB swap
-2. Upgrades kernel to HWE 6.x (Ubuntu 22.04 only)
-3. Installs AmneziaWG kernel module
-4. Installs Docker
-5. Builds the Cascade image
-6. Issues a TLS certificate (Let's Encrypt / acme.sh)
-7. Starts Cascade + Caddy reverse proxy
+
+| Step | What happens |
+|------|-------------|
+| 0 | 1 GB swap (prevents OOM during build) |
+| 1 | Kernel upgrade to HWE 6.x (Ubuntu 22.04 only) — reboot, then re-run |
+| 2 | AmneziaWG kernel module install |
+| 3 | Docker CE install |
+| 4 | sysctl: `ip_forward`, UDP buffers |
+| 5 | Build Cascade Docker image |
+| 6 | Collect config interactively (IP, secret path, email) |
+| 7 | Start Cascade |
+| 8 | Issue TLS certificate via acme.sh (Let's Encrypt) |
+| 9 | Start Caddy reverse proxy (decoy site + hidden admin path) |
 
 At the end you get:
 ```
@@ -80,6 +86,8 @@ Admin URL: https://YOUR_IP/<secret-path>/
 ```
 
 Open it, create the first admin account, done.
+
+> **Re-run safe:** `setup.sh` is idempotent — running it again after a reboot or update is always safe.
 
 ## ⚙️ Configuration
 

@@ -111,22 +111,21 @@ Edit `docker-compose.go.yml`. The key variables:
 
 ```yaml
 environment:
-  - PASSWORD_HASH=          # bcrypt hash of your admin password (see below)
-  # WG_HOST is optional — public IP can be configured via Settings UI or auto-detected.
-  # Uncomment to override:
-  # - WG_HOST=1.2.3.4
+  - PASSWORD_HASH=          # leave empty for open mode — first user created via UI
+  - WG_HOST=1.2.3.4         # public IP or domain (can also be set in Settings UI)
   - PORT=8888               # Web UI port (listens on localhost only)
   - BIND_ADDR=127.0.0.1     # bind to localhost — Caddy proxies from outside
 ```
 
-**Generate password hash:**
+> **Open mode:** if `PASSWORD_HASH` is empty, the web UI shows a "Create First User" form on first visit.
+> Create your admin account there. After creation, the form disappears and login is required.
+
+**Optional — pre-set password hash (non-interactive / CI):**
 
 ```bash
 docker run --rm -it awg2-easy-go:latest /app/cascade hash
-# Enter password when prompted — copy the $2a$... hash
+# Enter password when prompted — copy the $2a$... hash into PASSWORD_HASH=
 ```
-
-Paste the hash as the value of `PASSWORD_HASH=`.
 
 ---
 
