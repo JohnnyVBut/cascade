@@ -389,3 +389,36 @@ func TestAutoAllocateIP_NoAddressError(t *testing.T) {
 		t.Error("expected error when interface has no address, got nil")
 	}
 }
+
+// ── ExportInterfaceParams ─────────────────────────────────────────────────────
+
+// TestExportInterfaceParams_DisableRoutes_HasAllowedIPs verifies that a transit
+// (S2S) interface with DisableRoutes=true exports AllowedIPs="0.0.0.0/0".
+// Without this, importPeerJSON on the remote side falls back to deriving /32
+// from the address field, which breaks S2S routing — the peer only accepts
+// packets for its own /32 instead of routing all traffic through the tunnel.
+func TestExportInterfaceParams_DisableRoutes_HasAllowedIPs(t *testing.T) {
+	iface := newTestIface()
+	iface.DisableRoutes = true
+
+	exp := iface.ExportInterfaceParams("")
+
+	if exp.AllowedIPs != "0.0.0.0/0" {
+		t.Errorf("ExportInterfaceParams DisableRoutes=true: AllowedIPs = %q, want '0.0.0.0/0'", exp.AllowedIPs)
+	}
+}
+
+// TestExportInterfaceParams_ClientInterface_NoAllowedIPs verifies that a
+// point-to-point client interface with DisableRoutes=false omits AllowedIPs
+// from the export. The importing side derives /32 from the address field,
+// which is the correct behaviour for client peers.
+func TestExportInterfaceParams_ClientInterface_NoAllowedIPs(t *testing.T) {
+	iface := newTestIface()
+	iface.DisableRoutes = false
+
+	exp := iface.ExportInterfaceParams("")
+
+	if exp.AllowedIPs != "" {
+		t.Errorf("ExportInterfaceParams DisableRoutes=false: AllowedIPs = %q, want '' (importer derives /32)", exp.AllowedIPs)
+	}
+}
