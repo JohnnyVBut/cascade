@@ -44,7 +44,7 @@
 
 - ✅ **Go-бинарник** — один статический бинарник, без Node.js, без npm, без зависимостей
 - ✅ **Несколько интерфейсов** — управление несколькими WireGuard/AWG интерфейсами из одного UI
-- ✅ **Полный AmneziaWG 2.0** — параметры S3, S4, I5, диапазонная обфускация H, 7 CPS-профилей
+- ✅ **Полный AmneziaWG 2.0** — параметры S3, S4, I5, диапазонная обфускация H, 7 CPS-профилей + browser fingerprint
 - ✅ **Policy-Based Routing** — маршрутизация трафика по источнику через разные шлюзы
 - ✅ **Мониторинг шлюзов** — ICMP ping + HTTP/S-пробы, автоматический fallback при отказе
 - ✅ **HTTPS по умолчанию** — Caddy + acme.sh, работает с bare IP через shortlived-сертификаты Let's Encrypt
@@ -56,6 +56,46 @@
 - Root-доступ
 - Публичный IP-адрес или доменное имя
 - Открытые порты: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
+
+---
+
+## 🚀 Быстрая установка
+
+### Userspace-режим — рекомендуется
+
+Работает на **любом VPS** без кастомного ядра. Перезагрузка не нужна, дедлоков нет.
+
+```bash
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+sudo bash deploy/setup.sh --yes
+```
+
+> `--yes` выбирает все значения по умолчанию: **userspace-режим**, автоопределение публичного IP, случайный секретный путь.
+
+### Режим kernel-модуля
+
+Максимальная производительность, но kernel-модуль AmneziaWG имеет **[известные проблемы с дедлоком](https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/issues/146)**,
+которые могут заморозить операции с туннелем. Рекомендуется только если нужна максимальная пропускная
+способность и вы готовы к периодическим перезапускам интерфейсов.
+
+```bash
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+# Интерактивная установка — выберите [2] Kernel module на шаге 2
+sudo bash deploy/setup.sh
+```
+
+### Переключение режима на работающей системе
+
+```bash
+sudo bash deploy/switch-mode.sh --userspace   # → amneziawg-go (стабильно)
+sudo bash deploy/switch-mode.sh --kernel      # → kernel-модуль (быстро)
+```
+
+Скрипт сам выгружает/устанавливает kernel-модуль, обновляет blacklist и перезапускает контейнер.
+
+---
 
 ## 🚀 Варианты деплоя
 
@@ -77,7 +117,7 @@ docker compose -f docker-compose.go.yml up -d
 
 ### Вариант Б — Полный стек (рекомендуется)
 
-Одна команда разворачивает всё: kernel-модуль AmneziaWG, TLS-сертификат, Caddy reverse proxy
+Одна команда разворачивает всё: AmneziaWG, TLS-сертификат, Caddy reverse proxy
 с decoy-сайтом и скрытым путём к панели управления. Роутер никогда не открывается напрямую в интернет.
 
 ```bash
@@ -90,7 +130,7 @@ sudo bash deploy/setup.sh
 |-----|----------------|
 | 0 | 1 ГБ swap (защита от OOM при сборке) |
 | 1 | Обновление ядра до HWE 6.x (только Ubuntu 22.04) — перезагрузка, затем повтор |
-| 2 | Установка kernel-модуля AmneziaWG |
+| 2 | **Режим AmneziaWG** — выбор Userspace (рекомендуется) или Kernel-модуль |
 | 3 | Установка Docker CE |
 | 4 | sysctl: `ip_forward`, UDP-буферы |
 | 5 | Сборка Docker-образа Cascade |
@@ -107,6 +147,23 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 Откройте в браузере, создайте первого администратора — готово.
 
 > **Повторный запуск безопасен:** `setup.sh` идемпотентен — можно запускать повторно после перезагрузки или обновления.
+> При повторном запуске шаг 2 спрашивает `Change run mode? [y/N]` — нажмите `y` для смены режима.
+
+---
+
+## ⚙️ Режимы работы AWG
+
+| | Userspace (`amneziawg-go`) | Kernel-модуль |
+|---|---|---|
+| Производительность | ~70% от ядра | Максимальная |
+| Стабильность | ✅ Стабильно | ⚠️ Известные дедлоки |
+| Нужен kernel-модуль | ❌ Нет | ✅ Да |
+| Работает на любом VPS | ✅ Да | Зависит от ядра |
+| Перезагрузка после установки | ❌ Нет | Иногда |
+
+Текущий режим отображается бэйджем в сайдбаре веб-интерфейса (синий = userspace, зелёный = kernel).
+
+---
 
 ## ⚙️ Конфигурация
 
@@ -119,6 +176,7 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 | `CASCADE_PORT` | `8888` | Внутренний порт Cascade (Caddy проксирует на него) |
 | `BIND_ADDR` | `127.0.0.1` | Адрес привязки Cascade (используйте `127.0.0.1` за Caddy) |
 | `ACME_EMAIL` | опционально | Email для уведомлений Let's Encrypt |
+| `AWG_USERSPACE_IMPL` | `amneziawg-go` | `amneziawg-go` или `kernel` |
 
 Дополнительные настройки (дефолты WireGuard, DNS и т.д.) настраиваются в веб-интерфейсе в разделе **Settings**.
 
@@ -138,7 +196,7 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 ```bash
 git pull origin feature/go-rewrite
 ./build-go.sh
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.go.yml down && docker compose -f docker-compose.go.yml up -d
 ```
 
 ## 📱 Совместимые VPN-клиенты
@@ -167,10 +225,23 @@ docker exec cascade awg show
 docker exec cascade wg show
 ```
 
+**Проверить режим работы AWG:**
+```bash
+docker exec cascade env | grep WG_QUICK
+# WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go  → userspace
+# (пусто или отсутствует)                         → kernel-модуль
+```
+
 **Проверить файрвол / NAT:**
 ```bash
 docker exec cascade iptables-nft -t nat -L -n -v
 docker exec cascade ip rule show
+```
+
+**Переключить режим AWG:**
+```bash
+sudo bash deploy/switch-mode.sh --userspace
+sudo bash deploy/switch-mode.sh --kernel
 ```
 
 **Перезапустить setup (например после перезагрузки или обновления сертификата):**
