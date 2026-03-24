@@ -69,6 +69,7 @@ ADMIN_PATH=${ADMIN_PATH:-}
 ACME_EMAIL=${ACME_EMAIL:-}
 CASCADE_PORT=${CASCADE_PORT:-8888}
 BIND_ADDR=${BIND_ADDR:-127.0.0.1}
+AWG_USERSPACE_IMPL=${AWG_USERSPACE_IMPL:-}
 EOF
   chmod 600 "$ENV_FILE"
 }
@@ -163,21 +164,64 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# STEP 2 — AmneziaWG
+# STEP 2 — AmneziaWG run mode (userspace vs kernel)
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""
-echo -e "${B}── Step 2: AmneziaWG kernel module${N}"
+echo -e "${B}── Step 2: AmneziaWG run mode${N}"
 
-if lsmod | grep -q amneziawg; then
-  ok "amneziawg already loaded"
+# Load saved mode from .env if present, otherwise ask
+if [[ "${AWG_USERSPACE_IMPL:-unset}" != "unset" ]]; then
+  if [[ "$AWG_USERSPACE_IMPL" == "amneziawg-go" ]]; then
+    ok "Run mode: Userspace (loaded from .env)"
+  else
+    ok "Run mode: Kernel module (loaded from .env)"
+    # Kernel mode: ensure module is still loaded after reboot
+    if ! lsmod | grep -q amneziawg; then
+      info "Re-loading amneziawg kernel module..."
+      modprobe amneziawg || warn "modprobe failed — kernel module may not be installed"
+    fi
+  fi
 else
-  info "Installing AmneziaWG..."
-  add-apt-repository -y ppa:amnezia/ppa > /dev/null 2>&1
-  apt-get update -qq
-  apt-get install -y amneziawg
-  modprobe amneziawg
-  echo "amneziawg" > /etc/modules-load.d/amneziawg.conf
-  ok "amneziawg installed and loaded"
+  echo ""
+  echo -e "  ${B}Choose AmneziaWG run mode:${N}"
+  echo -e "  ${G}[1] Userspace${N} (recommended)"
+  echo -e "      • No kernel module required — works on any VPS"
+  echo -e "      • No reboot needed, even on Ubuntu 22.04"
+  echo -e "      • Stable — no deadlocks"
+  echo -e "      • Performance: ~70% of kernel (sufficient for VPN routing)"
+  echo ""
+  echo -e "  ${Y}[2] Kernel module${N}"
+  echo -e "      • Maximum performance"
+  echo -e "      • Requires PPA install + reboot on Ubuntu 22.04"
+  echo -e "      • Known deadlock issues in AWG kernel module"
+  echo ""
+  if [[ $YES -eq 1 ]]; then
+    AWG_MODE_CHOICE="1"
+  else
+    read -rp "  Choice [1]: " AWG_MODE_CHOICE
+    AWG_MODE_CHOICE="${AWG_MODE_CHOICE:-1}"
+  fi
+
+  if [[ "$AWG_MODE_CHOICE" == "2" ]]; then
+    AWG_USERSPACE_IMPL="kernel"
+    echo ""
+    echo -e "${B}── Step 2a: AmneziaWG kernel module${N}"
+    if lsmod | grep -q amneziawg; then
+      ok "amneziawg already loaded"
+    else
+      info "Installing AmneziaWG kernel module (ppa:amnezia/ppa)..."
+      add-apt-repository -y ppa:amnezia/ppa > /dev/null 2>&1
+      apt-get update -qq
+      apt-get install -y amneziawg
+      modprobe amneziawg
+      echo "amneziawg" > /etc/modules-load.d/amneziawg.conf
+      ok "amneziawg installed and loaded"
+    fi
+  else
+    AWG_USERSPACE_IMPL="amneziawg-go"
+    ok "Run mode: Userspace (amneziawg-go)"
+    info "No kernel module installation needed"
+  fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════

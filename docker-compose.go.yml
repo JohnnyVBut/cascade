@@ -27,6 +27,12 @@ services:
       # Debug logging
       - DEBUG=true
 
+      # AmneziaWG run mode.
+      # "amneziawg-go" = userspace (no kernel module, stable, ~70% perf).
+      # ""             = kernel module (max perf, requires modprobe amneziawg on host).
+      # Set automatically by deploy/setup.sh via deploy/.env → AWG_USERSPACE_IMPL.
+      - WG_QUICK_USERSPACE_IMPLEMENTATION=${AWG_USERSPACE_IMPL:-}
+
       # ================================================================
       # NOTE: AWG2 obfuscation parameters (JC, JMIN, JMAX, S1-S4,
       # H1-H4, I1-I5) are now managed via the Web UI Settings page
@@ -49,6 +55,9 @@ services:
 
     cap_add:
       - NET_ADMIN
+      # SYS_MODULE is only required for kernel module mode (AWG_USERSPACE_IMPL="").
+      # In userspace mode (AWG_USERSPACE_IMPL=amneziawg-go) it can be omitted.
+      # Kept here for compatibility — harmless when kernel module is not used.
       - SYS_MODULE
 
     devices:

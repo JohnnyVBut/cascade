@@ -482,6 +482,14 @@ func (t *TunnelInterface) syncBin() string {
 	return "wg"
 }
 
+// isUserspaceMode reports whether AmneziaWG is running in userspace mode.
+// Userspace mode is active when WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go.
+// In userspace mode: awg syncconf is stable (no kernel deadlock), so
+// KernelRemovePeer can use Reload() instead of full Restart().
+func isUserspaceMode() bool {
+	return os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION") == "amneziawg-go"
+}
+
 // Start regenerates the config file and brings up the interface (FIX-2).
 //
 // With --network host, the WireGuard interface lives in the host kernel and
@@ -663,17 +671,25 @@ func (t *TunnelInterface) KernelSetPeer(p *peer.Peer) {
 	}()
 }
 
-// KernelRemovePeer removes a peer from the running kernel via a full Restart (FIX-8).
+// KernelRemovePeer removes a peer from the running kernel (FIX-8).
 //
-// Both `awg set peer remove` and `awg syncconf` deadlock in the AWG kernel module
-// after ~3–5 add/remove cycles. Restart (down + up) is the safe alternative:
-// the config file has already been regenerated without the removed peer, so after
-// `awg-quick up` the peer will not be present in the kernel.
+// Kernel mode: uses full Restart() (down + up).
+//   Both `awg set peer remove` and `awg syncconf` deadlock in the AWG kernel module
+//   after ~3–5 add/remove cycles. Restart is the safe alternative.
+//   Downside: per-peer transfer stats are reset on each restart.
 //
-// Downside: per-peer transfer stats are reset on each restart.
+// Userspace mode: uses Reload() (awg syncconf).
+//   The userspace daemon has no kernel deadlock — syncconf is stable and atomic.
+//   Transfer stats are preserved across reloads.
+//
 // Fire-and-forget: returns immediately.
 func (t *TunnelInterface) KernelRemovePeer(peerID string) {
 	if !t.Enabled {
+		return
+	}
+	if t.Protocol == "amneziawg-2.0" && isUserspaceMode() {
+		// Userspace: syncconf is stable — use Reload() to preserve transfer stats.
+		t.Reload()
 		return
 	}
 	go func() {
