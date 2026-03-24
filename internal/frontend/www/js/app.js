@@ -93,6 +93,11 @@ new Vue({
     showTOTPDisableModal: false,
     totpDisableCode: '',
 
+    // First-run setup (open mode — no users yet)
+    showFirstRunSetup: false,
+    firstRunForm: { username: 'admin', password: '', passwordConfirm: '' },
+    firstRunSaving: false,
+
     // Add user modal
     showAddUserModal: false,
     addUserForm: { username: '', password: '', passwordConfirm: '' },
@@ -2701,6 +2706,23 @@ new Vue({
       }
     },
 
+    async createFirstUser() {
+      const { username, password, passwordConfirm } = this.firstRunForm;
+      if (!username) { this.showToast('Username is required', 'error'); return; }
+      if (!password) { this.showToast('Password is required', 'error'); return; }
+      if (password.length < 8) { this.showToast('Password must be at least 8 characters', 'error'); return; }
+      if (password !== passwordConfirm) { this.showToast('Passwords do not match', 'error'); return; }
+      this.firstRunSaving = true;
+      try {
+        await this.api.createUser({ username, password });
+        // Open mode ended — reload to show login screen with real authentication.
+        window.location.reload();
+      } catch (err) {
+        this.showToast(err.message || 'Failed to create admin account', 'error');
+        this.firstRunSaving = false;
+      }
+    },
+
     async createUser() {
       const { username, password, passwordConfirm } = this.addUserForm;
       if (!username) { this.showToast('Username is required', 'error'); return; }
@@ -2878,6 +2900,8 @@ new Vue({
       .then((session) => {
         this.authenticated = session.authenticated;
         this.requiresPassword = session.requiresPassword;
+        // First run: no users → show setup modal (non-dismissible)
+        if (!session.requiresPassword) this.showFirstRunSetup = true;
         this.refresh({
           updateCharts: this.updateCharts,
         }).catch((err) => {
