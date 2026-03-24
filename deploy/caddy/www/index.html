@@ -68,12 +68,15 @@
     .hero-overlay {
       position: absolute;
       inset: 0;
+      bottom: 52px; /* leave room for player-controls bar */
       background: linear-gradient(to top, rgba(15,15,19,.9) 0%, rgba(15,15,19,.1) 50%, transparent 100%);
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
       padding: 32px 40px;
+      pointer-events: none; /* clicks pass through to controls */
     }
+    .hero-overlay .btn { pointer-events: all; }
 
     /* ── Buffering indicator ── */
     .buffering {
@@ -112,6 +115,7 @@
       flex-direction: column;
       gap: 6px;
       pointer-events: none;
+      z-index: 10;  /* above hero-overlay */
     }
     .progress-bar {
       height: 3px;
