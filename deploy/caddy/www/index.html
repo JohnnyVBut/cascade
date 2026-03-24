@@ -273,8 +273,10 @@
       <div class="ctrl-row">
         <!-- play icon -->
         <svg class="ctrl-icon" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-        <!-- volume icon -->
-        <svg class="ctrl-icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
+        <!-- volume icon — click to toggle mute -->
+        <svg id="vol-icon" class="ctrl-icon" viewBox="0 0 24 24" style="cursor:pointer;pointer-events:all;" title="Unmute">
+          <path id="vol-path" d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 18l2 2L21 18.73l-18-18zM12 4L9.91 6.09 12 8.18V4z"/>
+        </svg>
         <span class="time-display">00:14 / 09:57</span>
         <span class="ctrl-spacer"></span>
         <!-- fullscreen icon -->
@@ -476,6 +478,22 @@
       // If video fails to load (file not present), canvas stays — no error shown
       vid.addEventListener('error', () => {
         vid.style.display = 'none';
+      });
+    }
+
+    // ── Volume toggle ─────────────────────────────────────────────────────────
+    // Browsers require user gesture to unmute. Click on volume icon toggles mute.
+    const volIcon = document.getElementById('vol-icon');
+    const volPath = document.getElementById('vol-path');
+    // SVG paths: muted (crossed speaker) vs unmuted (speaker with waves)
+    const PATH_MUTED   = 'M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51A8.796 8.796 0 0 0 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 18l2 2L21 18.73l-18-18zM12 4L9.91 6.09 12 8.18V4z';
+    const PATH_UNMUTED = 'M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM18.5 12c0-2.77-1.5-5.16-3.75-6.47v13c2.25-1.32 3.75-3.69 3.75-6.53z';
+
+    if (volIcon && vid) {
+      volIcon.addEventListener('click', () => {
+        vid.muted = !vid.muted;
+        volPath.setAttribute('d', vid.muted ? PATH_MUTED : PATH_UNMUTED);
+        volIcon.title = vid.muted ? 'Unmute' : 'Mute';
       });
     }
   })();
