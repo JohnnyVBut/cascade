@@ -33,12 +33,6 @@ services:
       # Debug logging
       - DEBUG=true
 
-      # AmneziaWG run mode.
-      # "amneziawg-go" = userspace (no kernel module, stable, ~70% perf).
-      # ""             = kernel module (max perf, requires modprobe amneziawg on host).
-      # Set automatically by deploy/setup.sh via deploy/.env → AWG_USERSPACE_IMPL.
-      - WG_QUICK_USERSPACE_IMPLEMENTATION=${AWG_USERSPACE_IMPL:-}
-
       # ================================================================
       # NOTE: AWG2 obfuscation parameters (JC, JMIN, JMAX, S1-S4,
       # H1-H4, I1-I5) are now managed via the Web UI Settings page
