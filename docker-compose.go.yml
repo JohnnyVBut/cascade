@@ -4,6 +4,12 @@ services:
     container_name: awg-router
     restart: unless-stopped
 
+    # Load deploy config from deploy/.env (setup.sh writes here).
+    # Variables defined here override the defaults in environment: below.
+    env_file:
+      - path: deploy/.env
+        required: false   # OK if file doesn't exist (first run without setup.sh)
+
     environment:
       # Optional: Server public IP or domain for peer config Endpoint field.
       # If not set — configured via Settings UI or auto-detected from external services.
