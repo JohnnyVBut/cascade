@@ -178,8 +178,19 @@ echo -e "${B}── Step 2: AmneziaWG run mode${N}"
 if [[ "${AWG_USERSPACE_IMPL:-unset}" != "unset" ]]; then
   if [[ "$AWG_USERSPACE_IMPL" == "amneziawg-go" ]]; then
     ok "Run mode: Userspace (loaded from .env)"
+    # Unload kernel module if loaded — amneziawg-go defers to kernel when it's present
+    if lsmod | grep -q amneziawg; then
+      info "Unloading amneziawg kernel module (userspace mode selected)..."
+      modprobe -r amneziawg 2>/dev/null || warn "Could not unload amneziawg — reboot required"
+    fi
+    # Blacklist so it doesn't reload on reboot
+    echo "blacklist amneziawg" > /etc/modprobe.d/amneziawg-blacklist.conf
+    # Remove auto-load if it was set previously
+    rm -f /etc/modules-load.d/amneziawg.conf
   else
     ok "Run mode: Kernel module (loaded from .env)"
+    # Remove blacklist if switching from userspace to kernel
+    rm -f /etc/modprobe.d/amneziawg-blacklist.conf
     # Kernel mode: ensure module is still loaded after reboot
     if ! lsmod | grep -q amneziawg; then
       info "Re-loading amneziawg kernel module..."
@@ -225,6 +236,14 @@ else
   else
     AWG_USERSPACE_IMPL="amneziawg-go"
     ok "Run mode: Userspace (amneziawg-go)"
+    # Unload kernel module if loaded — amneziawg-go defers to kernel when it's present
+    if lsmod | grep -q amneziawg; then
+      info "Unloading amneziawg kernel module (userspace mode selected)..."
+      modprobe -r amneziawg 2>/dev/null || warn "Could not unload amneziawg — reboot required"
+    fi
+    # Blacklist so it doesn't reload on reboot
+    echo "blacklist amneziawg" > /etc/modprobe.d/amneziawg-blacklist.conf
+    rm -f /etc/modules-load.d/amneziawg.conf
     info "No kernel module installation needed"
   fi
 fi
