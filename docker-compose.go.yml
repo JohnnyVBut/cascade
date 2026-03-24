@@ -10,28 +10,16 @@ services:
       - path: deploy/.env
         required: false   # OK if file doesn't exist (first run without setup.sh)
 
+    # All runtime config comes from deploy/.env (written by setup.sh / switch-mode.sh).
+    # Do NOT add WG_HOST, PORT, BIND_ADDR, PASSWORD_HASH here — they live in deploy/.env
+    # so that git pull never conflicts with local changes.
     environment:
-      # Optional: Server public IP or domain for peer config Endpoint field.
-      # If not set — configured via Settings UI or auto-detected from external services.
-      # Uncomment and set to override:
-      # - WG_HOST=1.2.3.4
+      # Default WireGuard/AWG listen port (UDP) — used when creating interfaces.
+      # Override in deploy/.env if needed.
+      - WG_PORT=51820
 
-      # Web UI password (bcrypt hash)
-      - PASSWORD_HASH=$$2y$$05$$abcdefghijklmnopqrstuv
-
-      # Web UI port (TCP)
-      - PORT=8888
-
-      # Web UI bind address (default empty = 0.0.0.0 = all interfaces).
-      # Set to 127.0.0.1 when Caddy reverse proxy is running on the same host
-      # so the admin interface is NOT reachable directly from the internet.
-      - BIND_ADDR=127.0.0.1
-
-      # Default WireGuard/AWG listen port (UDP) — используется при создании интерфейсов
-      - WG_PORT=555
-
-      # Debug logging
-      - DEBUG=true
+      # Debug logging — set to false in production
+      - DEBUG=false
 
       # ================================================================
       # NOTE: AWG2 obfuscation parameters (JC, JMIN, JMAX, S1-S4,
