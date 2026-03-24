@@ -130,11 +130,11 @@ if $COMPOSE_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | grep -q .; then
   sleep 2
   echo ""
   echo -e "${B}── Verification${N}"
-  WG_QUICK_VAL=$(docker exec awg-router env 2>/dev/null | grep WG_QUICK || echo "(not found)")
+  WG_QUICK_VAL=$(docker exec cascade env 2>/dev/null | grep WG_QUICK || echo "(not found)")
   echo "  WG_QUICK_USERSPACE_IMPLEMENTATION: $(echo "$WG_QUICK_VAL" | cut -d= -f2)"
 
   if [[ "$MODE" == "userspace" ]]; then
-    PROC=$(docker exec awg-router ps aux 2>/dev/null | grep amneziawg-go | grep -v grep || echo "")
+    PROC=$(docker exec cascade ps aux 2>/dev/null | grep amneziawg-go | grep -v grep || echo "")
     [[ -n "$PROC" ]] && ok "amneziawg-go process running" || info "amneziawg-go will start when first interface is brought up"
   else
     lsmod | grep -q amneziawg && ok "amneziawg kernel module loaded" || warn "Module not loaded — check dmesg"

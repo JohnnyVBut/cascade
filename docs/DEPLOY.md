@@ -311,7 +311,7 @@ uname -r        # must be 6.x
 ### Cascade container exits immediately
 
 ```bash
-docker logs awg-router
+docker logs cascade
 ```
 
 Common causes:
@@ -324,7 +324,7 @@ Common causes:
 curl -k https://YOUR.SERVER.IP/YOUR_ADMIN_PATH/api/health
 
 # Check Cascade logs:
-docker logs awg-router | tail -30
+docker logs cascade | tail -30
 ```
 
 If the UI loads but the Interfaces page is empty — make sure you are accessing

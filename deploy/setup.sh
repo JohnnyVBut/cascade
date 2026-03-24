@@ -459,7 +459,7 @@ for i in $(seq 1 90); do
     break
   fi
   sleep 1
-  [[ $i -eq 90 ]] && fail "Cascade did not become healthy after 90s — check: docker logs awg-router"
+  [[ $i -eq 90 ]] && fail "Cascade did not become healthy after 90s — check: docker logs cascade"
 done
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -582,7 +582,7 @@ echo -e "    git pull origin feature/go-rewrite && ./build-go.sh"
 echo -e "    docker compose -f docker-compose.go.yml up -d"
 echo ""
 echo -e "  ${Y}Logs:${N}"
-echo -e "    docker logs awg-router"
+echo -e "    docker logs cascade"
 echo -e "    docker compose -f deploy/caddy/docker-compose.yml logs"
 echo ""
 echo -e "  Config saved: ${B}${ENV_FILE}${N}"

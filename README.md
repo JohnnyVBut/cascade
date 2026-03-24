@@ -214,27 +214,27 @@ docker compose -f docker-compose.go.yml down && docker compose -f docker-compose
 
 **Check container status:**
 ```bash
-docker logs awg-router
+docker logs cascade
 docker compose -f deploy/caddy/docker-compose.yml logs
 ```
 
 **Check WireGuard interfaces:**
 ```bash
-docker exec awg-router awg show
-docker exec awg-router wg show
+docker exec cascade awg show
+docker exec cascade wg show
 ```
 
 **Check AWG run mode:**
 ```bash
-docker exec awg-router env | grep WG_QUICK
+docker exec cascade env | grep WG_QUICK
 # WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go  → userspace
 # (empty or not present)                          → kernel module
 ```
 
 **Check firewall / NAT:**
 ```bash
-docker exec awg-router iptables-nft -t nat -L -n -v
-docker exec awg-router ip rule show
+docker exec cascade iptables-nft -t nat -L -n -v
+docker exec cascade ip rule show
 ```
 
 **Switch AWG mode:**

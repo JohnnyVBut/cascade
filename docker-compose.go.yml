@@ -1,7 +1,7 @@
 services:
-  awg-router:
+  cascade:
     image: cascade:latest
-    container_name: awg-router
+    container_name: cascade
     restart: unless-stopped
 
     # Load deploy config from deploy/.env (setup.sh writes here).

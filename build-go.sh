@@ -42,6 +42,6 @@ echo "  1. Edit docker-compose.go.yml with your settings (WG_HOST, PASSWORD_HASH
 echo "  2. Deploy:"
 echo "     ${COMPOSE} -f docker-compose.go.yml down && ${COMPOSE} -f docker-compose.go.yml up -d"
 echo "  3. Check logs:"
-echo "     docker logs awg-router"
+echo "     docker logs cascade"
 echo "  4. Healthcheck:"
 echo "     curl http://127.0.0.1:8888/api/health"
