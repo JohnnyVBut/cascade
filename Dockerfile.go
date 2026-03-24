@@ -1,5 +1,5 @@
 # ============================================================
-# AWG-Easy 3.0 — Go/Fiber build
+# Cascade — Go/Fiber build
 # ============================================================
 # Stage 1: Build Go binary
 FROM golang:1.23-alpine AS builder

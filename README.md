@@ -44,7 +44,7 @@
 
 - ✅ **Go binary** — single static binary, no Node.js, no npm, no dependencies
 - ✅ **Multi-interface** — manage multiple WireGuard/AWG interfaces from one UI
-- ✅ **Full AmneziaWG 2.0** — S3, S4, I5 parameters, H-range obfuscation, 7 CPS profiles
+- ✅ **Full AmneziaWG 2.0** — S3, S4, I5 parameters, H-range obfuscation, 7 CPS profiles + browser fingerprint
 - ✅ **Policy-based routing** — route traffic per-source through different gateways
 - ✅ **Gateway monitoring** — ICMP ping + HTTP/S probes, auto-fallback on failure
 - ✅ **HTTPS by default** — Caddy + acme.sh, works with bare IPs via Let's Encrypt shortlived certs
@@ -56,6 +56,45 @@
 - Root access
 - Public IP address or domain name
 - Ports: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
+
+---
+
+## 🚀 Quick Install
+
+### Userspace mode — recommended
+
+Works on **any VPS** without a custom kernel. No reboot needed, no deadlocks.
+
+```bash
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+sudo bash deploy/setup.sh --yes
+```
+
+> `--yes` picks all defaults: **userspace mode**, auto-detected public IP, random admin path.
+
+### Kernel module mode
+
+Maximum throughput, but the AmneziaWG kernel module has **[known deadlock issues](https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/issues/146)**
+that can freeze tunnel operations. Only recommended if you need peak performance and can tolerate occasional interface restarts.
+
+```bash
+git clone https://github.com/JohnnyVBut/cascade.git
+cd cascade
+# Interactive setup — choose [2] Kernel module at Step 2
+sudo bash deploy/setup.sh
+```
+
+### Switch mode on a running system
+
+```bash
+sudo bash deploy/switch-mode.sh --userspace   # → amneziawg-go (stable)
+sudo bash deploy/switch-mode.sh --kernel      # → kernel module (fast)
+```
+
+The script handles kernel module install/unload, blacklisting, and container restart automatically.
+
+---
 
 ## 🚀 Deployment Options
 
@@ -77,8 +116,8 @@ Step-by-step guide: [docs/DEPLOY.md](docs/DEPLOY.md)
 
 ### Option B — Full stack (recommended)
 
-One command sets up everything: AmneziaWG kernel module, TLS certificate, Caddy reverse proxy
-with a decoy streaming site and a hidden admin path. The router is never exposed directly to the internet.
+One command sets up everything: AmneziaWG, TLS certificate, Caddy reverse proxy with a decoy
+streaming site, and a hidden admin path. The router is never exposed directly to the internet.
 
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
@@ -90,7 +129,7 @@ sudo bash deploy/setup.sh
 |------|-------------|
 | 0 | 1 GB swap (prevents OOM during build) |
 | 1 | Kernel upgrade to HWE 6.x (Ubuntu 22.04 only) — reboot, then re-run |
-| 2 | AmneziaWG kernel module install |
+| 2 | **AmneziaWG run mode** — choose Userspace (recommended) or Kernel module |
 | 3 | Docker CE install |
 | 4 | sysctl: `ip_forward`, UDP buffers |
 | 5 | Build Cascade Docker image |
@@ -107,6 +146,23 @@ Admin URL: https://YOUR_IP/<secret-path>/
 Open it, create the first admin account, done.
 
 > **Re-run safe:** `setup.sh` is idempotent — safe to run again after a reboot or update.
+> On re-run, Step 2 asks `Change run mode? [y/N]` — press `y` to switch between modes.
+
+---
+
+## ⚙️ AWG Run Modes
+
+| | Userspace (`amneziawg-go`) | Kernel module |
+|---|---|---|
+| Performance | ~70% of kernel | Maximum |
+| Stability | ✅ Stable | ⚠️ Known deadlocks |
+| Kernel module required | ❌ No | ✅ Yes |
+| Works on any VPS | ✅ Yes | Depends on kernel |
+| Reboot after install | ❌ No | Sometimes |
+
+The current mode is shown as a badge in the sidebar of the web UI (blue = userspace, green = kernel).
+
+---
 
 ## ⚙️ Configuration
 
@@ -119,6 +175,7 @@ Configuration is collected interactively by `setup.sh` and saved to `deploy/.env
 | `CASCADE_PORT` | `8888` | Internal port for Cascade (Caddy proxies to this) |
 | `BIND_ADDR` | `127.0.0.1` | Bind address for Cascade (use `127.0.0.1` behind Caddy) |
 | `ACME_EMAIL` | optional | Email for Let's Encrypt notifications |
+| `AWG_USERSPACE_IMPL` | `amneziawg-go` | `amneziawg-go` or `kernel` |
 
 Additional settings (WireGuard defaults, DNS, etc.) are configurable in the Web UI under **Settings**.
 
@@ -138,7 +195,7 @@ Full threat model: [docs/SECURITY.md](docs/SECURITY.md)
 ```bash
 git pull origin feature/go-rewrite
 ./build-go.sh
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.go.yml down && docker compose -f docker-compose.go.yml up -d
 ```
 
 ## 📱 Compatible VPN Clients
@@ -167,10 +224,23 @@ docker exec awg-router awg show
 docker exec awg-router wg show
 ```
 
+**Check AWG run mode:**
+```bash
+docker exec awg-router env | grep WG_QUICK
+# WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go  → userspace
+# (empty or not present)                          → kernel module
+```
+
 **Check firewall / NAT:**
 ```bash
 docker exec awg-router iptables-nft -t nat -L -n -v
 docker exec awg-router ip rule show
+```
+
+**Switch AWG mode:**
+```bash
+sudo bash deploy/switch-mode.sh --userspace
+sudo bash deploy/switch-mode.sh --kernel
 ```
 
 **Re-run setup (e.g. after reboot or cert renewal):**

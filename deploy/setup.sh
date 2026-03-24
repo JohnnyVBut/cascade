@@ -383,8 +383,8 @@ fi
 info "Pulling latest changes..."
 git pull origin "$BRANCH" 2>&1 | tail -1
 
-if docker image inspect awg2-easy-go:latest &>/dev/null; then
-  ok "Image awg2-easy-go:latest already built"
+if docker image inspect cascade:latest &>/dev/null; then
+  ok "Image cascade:latest already built"
   if [[ $YES -eq 0 ]]; then
     read -rp "  Rebuild? [y/N]: " REBUILD
     [[ "${REBUILD,,}" == "y" ]] && bash build-go.sh

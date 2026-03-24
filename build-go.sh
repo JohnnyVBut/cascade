@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  Building AWG-Easy 3.0 (Go/Fiber)${NC}"
+echo -e "${BLUE}  Building Cascade (Go/Fiber)${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -21,7 +21,7 @@ if [[ "$BRANCH" != "feature/go-rewrite" ]]; then
 fi
 
 echo -e "${GREEN}Building Docker image (Go/Fiber)...${NC}"
-docker build --network=host -f Dockerfile.go -t awg2-easy-go:latest .
+docker build --network=host -f Dockerfile.go -t cascade:latest .
 
 # Detect compose command (v2 plugin vs v1 standalone)
 if docker compose version &>/dev/null 2>&1; then
@@ -35,7 +35,7 @@ fi
 echo ""
 echo -e "${GREEN}✓ Build complete!${NC}"
 echo ""
-echo "Image tag: awg2-easy-go:latest"
+echo "Image tag: cascade:latest"
 echo ""
 echo "Next steps:"
 echo "  1. Edit docker-compose.go.yml with your settings (WG_HOST, PASSWORD_HASH)"

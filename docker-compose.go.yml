@@ -1,6 +1,6 @@
 services:
   awg-router:
-    image: awg2-easy-go:latest
+    image: cascade:latest
     container_name: awg-router
     restart: unless-stopped
 
