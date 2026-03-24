@@ -110,6 +110,29 @@
                     style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#f59e0b; flex-shrink:0;">
               </span>
             </div>
+            <!-- AWG run mode badge -->
+            <div v-if="globalSettings.awgMode" style="margin-top:5px;">
+              <span v-if="globalSettings.awgMode === 'userspace'"
+                    title="Running amneziawg-go (userspace)"
+                    :style="{
+                      display:'inline-block', fontSize:'10px', fontWeight:'600',
+                      letterSpacing:'0.04em', padding:'1px 7px', borderRadius:'999px',
+                      background: theme === 'dark' ? '#1e3a5f' : '#dbeafe',
+                      color:      theme === 'dark' ? '#93c5fd' : '#1d4ed8'
+                    }">
+                USERSPACE
+              </span>
+              <span v-else
+                    title="Running AmneziaWG kernel module"
+                    :style="{
+                      display:'inline-block', fontSize:'10px', fontWeight:'600',
+                      letterSpacing:'0.04em', padding:'1px 7px', borderRadius:'999px',
+                      background: theme === 'dark' ? '#14532d' : '#d1fae5',
+                      color:      theme === 'dark' ? '#86efac' : '#065f46'
+                    }">
+                KERNEL
+              </span>
+            </div>
           </div>
           <!-- Menu items -->
           <div style="padding: 0 8px;" class="flex-grow">

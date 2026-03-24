@@ -27,13 +27,22 @@ func getHostname() string {
 	return h
 }
 
+// awgRunMode returns "userspace" when amneziawg-go is active, "kernel" otherwise.
+func awgRunMode() string {
+	if os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION") == "amneziawg-go" {
+		return "userspace"
+	}
+	return "kernel"
+}
+
 // SettingsResponse wraps GlobalSettings and adds runtime-only fields
-// (hostname, resolvedPublicIP, publicIPWarning) that are not stored in the DB.
+// (hostname, resolvedPublicIP, publicIPWarning, awgMode) that are not stored in the DB.
 type SettingsResponse struct {
 	settings.GlobalSettings
 	Hostname         string `json:"hostname"`
 	ResolvedPublicIP string `json:"resolvedPublicIP"`
 	PublicIPWarning  string `json:"publicIPWarning"`
+	AwgMode          string `json:"awgMode"` // "userspace" | "kernel"
 }
 
 // RegisterSettings registers all /api/settings and /api/templates routes.
@@ -67,6 +76,7 @@ func RegisterSettings(api fiber.Router) {
 			Hostname:         hostname,
 			ResolvedPublicIP: resolvedIP,
 			PublicIPWarning:  ipWarn,
+			AwgMode:          awgRunMode(),
 		})
 	})
 
