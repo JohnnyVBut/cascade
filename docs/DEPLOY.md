@@ -162,18 +162,46 @@ source ~/.bashrc
 
 Let's Encrypt supports TLS certificates for bare IP addresses, but **only** via the
 `shortlived` profile (6-day validity). Standard 90-day certificates for IPs are not
-available from Let's Encrypt.
+available from Let's Encrypt. Without `--certificate-profile shortlived` you will get:
+```
+Error creating new order :: Default profile does not permit IP address identifiers.
+```
 
 ```bash
 ~/.acme.sh/acme.sh --issue \
   --server letsencrypt \
   -d YOUR.SERVER.IP \
   --standalone \
-  --certificate-profile shortlived \
-  --days 3
+  --certificate-profile shortlived
 ```
 
 acme.sh installs a cron job that renews automatically every 3 days — no manual action needed.
+
+#### Testing with Let's Encrypt Staging CA
+
+Before going live, use the [LE staging environment](https://letsencrypt.org/docs/staging-environment/)
+to avoid hitting rate limits. Staging issues **untrusted** certificates — browsers will show a warning,
+but the full ACME flow is validated.
+
+```bash
+~/.acme.sh/acme.sh --issue \
+  --server letsencrypt_test \
+  -d YOUR.SERVER.IP \
+  --standalone \
+  --certificate-profile shortlived
+```
+
+> `--certificate-profile shortlived` is required for bare IPs on **both** staging and production.
+> Without it the order is rejected regardless of which CA is used.
+
+Via `setup.sh`:
+```bash
+bash deploy/setup.sh --staging          # interactive
+bash deploy/setup.sh --yes --staging    # non-interactive
+```
+
+When you are ready for production, set `ACME_STAGING=0` in `deploy/.env` and re-run `setup.sh` —
+it will detect the staging cert, delete it, and issue a trusted production certificate.
 
 ### Option B — domain name
 
@@ -336,7 +364,7 @@ Without the trailing slash, relative API paths resolve incorrectly.
 ```bash
 # Re-issue the certificate:
 ~/.acme.sh/acme.sh --issue --server letsencrypt -d YOUR.SERVER.IP \
-  --standalone --certificate-profile shortlived --days 3 --force
+  --standalone --certificate-profile shortlived --force
 
 # Reinstall:
 ~/.acme.sh/acme.sh --install-cert -d YOUR.SERVER.IP \
