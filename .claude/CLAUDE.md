@@ -259,6 +259,7 @@ Go рандомизирует порядок map → пиры перемешив
 - Admin Tunnel (wg0) — заглушка 501
 - Port Forwarding (DNAT)
 - One-time links (`/cnf/:link` не реализован)
+- **Накопление трафика между перезапусками** — миграция v11: добавить `transfer_rx_total`/`transfer_tx_total` в SQLite `peers`; в `GetStatus()` накапливать дельту (сброс счётчика при рестарте интерфейса детектировать как new < prev); сохранять в DB каждые ~30s; API возвращать `transferRxTotal`/`transferTxTotal`; frontend показывать total из API
 
 **Хотелки (не запланированы):**
 - INPUT chain в FirewallManager (управление доступом к серверу из UI)

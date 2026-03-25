@@ -43,11 +43,11 @@ func RegisterCompat(r fiber.Router) {
 	// ── UI-feature-flag stubs ────────────────────────────────────────────────
 
 	r.Get("/ui-traffic-stats", func(c *fiber.Ctx) error {
-		return c.JSON(false)
+		return c.JSON(true)
 	})
 
 	r.Get("/ui-chart-type", func(c *fiber.Ctx) error {
-		return c.JSON(0)
+		return c.JSON(1)
 	})
 
 	r.Get("/wg-enable-one-time-links", func(c *fiber.Ctx) error {
