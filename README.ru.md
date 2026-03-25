@@ -149,6 +149,14 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 > **Повторный запуск безопасен:** `setup.sh` идемпотентен — можно запускать повторно после перезагрузки или обновления.
 > При повторном запуске шаг 2 спрашивает `Change run mode? [y/N]` — нажмите `y` для смены режима.
 
+> **Тестирование TLS без rate limits:** используйте `--staging` для выпуска недоверенного сертификата от
+> [staging CA Let's Encrypt](https://letsencrypt.org/docs/staging-environment/). Браузер покажет предупреждение — это ожидаемо.
+> Для перехода на production удалите `ACME_STAGING=1` из `deploy/.env` и перезапустите `setup.sh`.
+> ```bash
+> sudo bash deploy/setup.sh --staging        # staging CA (браузер показывает предупреждение — норма)
+> sudo bash deploy/setup.sh --yes --staging  # неинтерактивно + staging
+> ```
+
 ---
 
 ## ⚙️ Режимы работы AWG
@@ -176,6 +184,7 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 | `CASCADE_PORT` | `8888` | Внутренний порт Cascade (Caddy проксирует на него) |
 | `BIND_ADDR` | `127.0.0.1` | Адрес привязки Cascade (используйте `127.0.0.1` за Caddy) |
 | `ACME_EMAIL` | опционально | Email для уведомлений Let's Encrypt |
+| `ACME_STAGING` | `0` | `1` = использовать staging CA от LE (недоверенный сертификат, без rate limits — для тестирования) |
 | `AWG_USERSPACE_IMPL` | `amneziawg-go` | `amneziawg-go` или `kernel` |
 
 Дополнительные настройки (дефолты WireGuard, DNS и т.д.) настраиваются в веб-интерфейсе в разделе **Settings**.

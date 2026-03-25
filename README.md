@@ -148,6 +148,14 @@ Open it, create the first admin account, done.
 > **Re-run safe:** `setup.sh` is idempotent — safe to run again after a reboot or update.
 > On re-run, Step 2 asks `Change run mode? [y/N]` — press `y` to switch between modes.
 
+> **Testing TLS without rate limits:** use `--staging` to issue an untrusted certificate from the
+> [Let's Encrypt staging CA](https://letsencrypt.org/docs/staging-environment/). Switch to production
+> later by removing `ACME_STAGING=1` from `deploy/.env` and re-running `setup.sh`.
+> ```bash
+> sudo bash deploy/setup.sh --staging        # staging CA (browser shows warning — expected)
+> sudo bash deploy/setup.sh --yes --staging  # non-interactive + staging
+> ```
+
 ---
 
 ## ⚙️ AWG Run Modes
@@ -175,6 +183,7 @@ Configuration is collected interactively by `setup.sh` and saved to `deploy/.env
 | `CASCADE_PORT` | `8888` | Internal port for Cascade (Caddy proxies to this) |
 | `BIND_ADDR` | `127.0.0.1` | Bind address for Cascade (use `127.0.0.1` behind Caddy) |
 | `ACME_EMAIL` | optional | Email for Let's Encrypt notifications |
+| `ACME_STAGING` | `0` | `1` = use LE staging CA (untrusted cert, no rate limits — for testing) |
 | `AWG_USERSPACE_IMPL` | `amneziawg-go` | `amneziawg-go` or `kernel` |
 
 Additional settings (WireGuard defaults, DNS, etc.) are configurable in the Web UI under **Settings**.
