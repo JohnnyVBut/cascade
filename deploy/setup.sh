@@ -528,10 +528,11 @@ fi
 if [[ ! -f "$CERT_DIR/server.crt" ]]; then
   info "Issuing TLS certificate for: $WG_HOST (server: $ACME_SERVER)"
 
-  # shortlived profile only for production (staging doesn't support it)
+  # shortlived profile required for bare IP identifiers — applies to both staging and production.
+  # Without it LE rejects IP identifiers with "Default profile does not permit IP address identifiers."
   SHORTLIVED_ARG=""
-  if is_ip "$WG_HOST" && [[ "$ACME_SERVER" == "letsencrypt" ]]; then
-    SHORTLIVED_ARG="--certificate-profile shortlived --days 3"
+  if is_ip "$WG_HOST"; then
+    SHORTLIVED_ARG="--certificate-profile shortlived"
   fi
 
   # Port 80 must be free for standalone mode
