@@ -116,8 +116,10 @@ this.tunnelInterfaces.splice(idx, 1, updatedIface); // НЕ array[idx] = item
 
 ## Правила работы
 
-- Активная ветка: **`feature/go-rewrite`** | Репо: `git@github.com:JohnnyVBut/cascade.git`
-- Коммитить и пушить только в `feature/go-rewrite`
+- Репо: `git@github.com:JohnnyVBut/cascade.git`
+- **`master`** — стабильная ветка. Прямые коммиты в неё запрещены.
+- Разработка ведётся в `feature/...` ветках, merge в `master` через явный запрос пользователя.
+- Текущая рабочая ветка: **`feature/go-rewrite`** (основная ветка разработки Go rewrite)
 - После каждого пуша напоминать команды деплоя на сервере
 - Каждый коммит — подробное сообщение (что, почему, какие файлы)
 
@@ -125,8 +127,8 @@ this.tunnelInterfaces.splice(idx, 1, updatedIface); // НЕ array[idx] = item
 
 ```bash
 cd /root/cascade
-git pull origin feature/go-rewrite
-./build.sh
+git pull origin master
+./build-go.sh
 docker compose -f docker-compose.go.yml down && docker compose -f docker-compose.go.yml up -d
 ```
 
