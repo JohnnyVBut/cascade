@@ -400,23 +400,16 @@ echo -e "${B}── Step 5: Build Cascade${N}"
 cd "$REPO_DIR"
 
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
-if [[ "$BRANCH" != "feature/go-rewrite" ]]; then
-  warn "Current branch: $BRANCH (expected feature/go-rewrite)"
-fi
 
-info "Pulling latest changes..."
-git pull origin "$BRANCH" 2>&1 | tail -1
+info "Pulling latest changes from master..."
+git pull origin master 2>&1 | tail -1
 
-if docker image inspect cascade:latest &>/dev/null; then
-  ok "Image cascade:latest already built"
-  if [[ $YES -eq 0 ]]; then
-    read -rp "  Rebuild? [y/N]: " REBUILD
-    [[ "${REBUILD,,}" == "y" ]] && bash build-go.sh
-  fi
+info "Pulling Cascade image from GHCR..."
+if $COMPOSE_CMD -f "$REPO_DIR/docker-compose.go.yml" pull; then
+  ok "Image pulled: ghcr.io/johnnybut/cascade:latest"
 else
-  info "Building Docker image..."
+  warn "Could not pull GHCR image — falling back to local build"
   bash build-go.sh
-  ok "Image built"
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -634,7 +627,8 @@ echo -e "    3. Create your admin account"
 echo -e "    4. Enable TOTP in Settings → Users for added security"
 echo ""
 echo -e "  ${Y}Update:${N}"
-echo -e "    git pull origin feature/go-rewrite && ./build-go.sh"
+echo -e "    git pull origin master"
+echo -e "    docker compose -f docker-compose.go.yml pull"
 echo -e "    docker compose -f docker-compose.go.yml up -d"
 echo ""
 echo -e "  ${Y}Logs:${N}"

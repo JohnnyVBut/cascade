@@ -14,10 +14,13 @@ echo ""
 
 cd "$(dirname "$0")"
 
-# Verify we're on the right branch
+# Verify we're not on master (local builds are for development only)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-if [[ "$BRANCH" != "feature/go-rewrite" ]]; then
-    echo -e "${YELLOW}Warning: not on feature/go-rewrite (current: $BRANCH)${NC}"
+if [[ "$BRANCH" == "master" ]]; then
+    echo -e "${YELLOW}Note: on master branch. Production deploys use the GHCR image:${NC}"
+    echo -e "  docker compose -f docker-compose.go.yml pull"
+    echo -e "  docker compose -f docker-compose.go.yml up -d"
+    echo -e "${YELLOW}Building locally anyway (e.g. for testing before push)...${NC}"
 fi
 
 echo -e "${GREEN}Building Docker image (Go/Fiber)...${NC}"
@@ -37,11 +40,13 @@ echo -e "${GREEN}✓ Build complete!${NC}"
 echo ""
 echo "Image tag: cascade:latest"
 echo ""
-echo "Next steps:"
-echo "  1. Edit docker-compose.go.yml with your settings (WG_HOST, PASSWORD_HASH)"
-echo "  2. Deploy:"
-echo "     ${COMPOSE} -f docker-compose.go.yml down && ${COMPOSE} -f docker-compose.go.yml up -d"
-echo "  3. Check logs:"
-echo "     docker logs cascade"
-echo "  4. Healthcheck:"
-echo "     curl http://127.0.0.1:8888/api/health"
+echo "Next steps (local dev with locally-built image):"
+echo "  ${COMPOSE} -f docker-compose.go.yml -f docker-compose.override.yml down"
+echo "  ${COMPOSE} -f docker-compose.go.yml -f docker-compose.override.yml up -d"
+echo ""
+echo "  docker logs cascade"
+echo "  curl http://127.0.0.1:8888/api/health"
+echo ""
+echo -e "${YELLOW}Production deploy (uses GHCR image built by CI):${NC}"
+echo "  ${COMPOSE} -f docker-compose.go.yml pull"
+echo "  ${COMPOSE} -f docker-compose.go.yml up -d"

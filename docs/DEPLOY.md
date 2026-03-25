@@ -90,18 +90,21 @@ sysctl --system
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
 cd cascade
-git checkout feature/go-rewrite
 ```
 
 ---
 
-## Step 6 — Build Cascade (Go binary + Docker image)
+## Step 6 — Pull Cascade image
+
+The Docker image is built by GitHub Actions on every merge to `master` and published
+to GitHub Container Registry. No local build required:
 
 ```bash
-./build-go.sh
+docker compose -f docker-compose.go.yml pull
 ```
 
-The script compiles the Go binary and builds the Docker image `awg2-easy-go:latest`.
+> **Local development only:** to use a locally-built image, run `./build-go.sh`
+> and add `-f docker-compose.override.yml` to your compose commands.
 
 ---
 
@@ -123,7 +126,7 @@ environment:
 **Optional — pre-set password hash (non-interactive / CI):**
 
 ```bash
-docker run --rm -it awg2-easy-go:latest /app/cascade hash
+docker run --rm -it ghcr.io/johnnybut/cascade:latest /app/cascade hash
 # Enter password when prompted — copy the $2a$... hash into PASSWORD_HASH=
 ```
 
@@ -316,10 +319,13 @@ The data directory is mounted into the container via `docker-compose.go.yml`.
 
 ```bash
 cd ~/cascade
-git pull origin feature/go-rewrite
-./build-go.sh
+git pull origin master
+docker compose -f docker-compose.go.yml pull
 docker compose -f docker-compose.go.yml up -d
 ```
+
+The image is pre-built by CI — `docker compose pull` fetches the latest version
+from GHCR without compiling anything on the server.
 
 Caddy does not need to be restarted for Cascade updates.
 
