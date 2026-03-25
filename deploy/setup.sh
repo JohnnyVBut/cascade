@@ -3,7 +3,9 @@
 # Cascade — Full deployment script
 # Ubuntu 22.04 / 24.04, run as root
 # Usage:  bash deploy/setup.sh
-#         bash deploy/setup.sh --yes   # non-interactive (reads all from .env)
+#         bash deploy/setup.sh --yes              # non-interactive (reads all from .env)
+#         bash deploy/setup.sh --staging          # use Let's Encrypt staging CA (testing)
+#         bash deploy/setup.sh --yes --staging    # non-interactive + staging
 # =============================================================================
 set -euo pipefail
 
@@ -40,7 +42,11 @@ fail() { echo -e "${R}  [✗]${N} $*"; exit 1; }
 
 # ── Parse args ───────────────────────────────────────────────────────────────
 YES=0
-for arg in "$@"; do [[ "$arg" == "--yes" ]] && YES=1; done
+ACME_STAGING=${ACME_STAGING:-0}   # overridable from .env; --staging flag sets to 1
+for arg in "$@"; do
+  [[ "$arg" == "--yes"     ]] && YES=1
+  [[ "$arg" == "--staging" ]] && ACME_STAGING=1
+done
 
 # ── Load .env ────────────────────────────────────────────────────────────────
 [[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
@@ -73,6 +79,7 @@ save_env() {
 WG_HOST=${WG_HOST:-}
 ADMIN_PATH=${ADMIN_PATH:-}
 ACME_EMAIL=${ACME_EMAIL:-}
+ACME_STAGING=${ACME_STAGING:-0}
 PORT=${CASCADE_PORT:-8888}
 BIND_ADDR=${BIND_ADDR:-127.0.0.1}
 PASSWORD_HASH=
@@ -468,6 +475,18 @@ done
 echo ""
 echo -e "${B}── Step 8: TLS certificate (acme.sh)${N}"
 
+# Select ACME server: staging or production
+# Staging issues untrusted certificates — useful for testing without hitting rate limits.
+# See: https://letsencrypt.org/docs/staging-environment/
+if [[ "${ACME_STAGING:-0}" == "1" ]]; then
+  ACME_SERVER="letsencrypt_test"
+  warn "STAGING MODE: certificate will be issued by Let's Encrypt STAGING CA"
+  warn "  → Browser will show 'Not secure' — this is expected for testing"
+  warn "  → To switch to production: remove ACME_STAGING=1 from deploy/.env and re-run"
+else
+  ACME_SERVER="letsencrypt"
+fi
+
 mkdir -p "$CERT_DIR"
 
 # Install acme.sh if needed
@@ -486,22 +505,46 @@ ACME="$HOME/.acme.sh/acme.sh"
 # Check if cert already exists and is valid
 if [[ -f "$CERT_DIR/server.crt" ]]; then
   EXPIRY=$(openssl x509 -in "$CERT_DIR/server.crt" -noout -enddate 2>/dev/null | cut -d= -f2 || true)
-  ok "Certificate already present (expires: $EXPIRY)"
-  info "Skipping issuance — to reissue: $ACME --issue --force ..."
-else
-  info "Issuing TLS certificate for: $WG_HOST"
+  # Detect if existing cert is staging vs production
+  ISSUER=$(openssl x509 -in "$CERT_DIR/server.crt" -noout -issuer 2>/dev/null || true)
+  if echo "$ISSUER" | grep -qi "staging\|fake\|bogus"; then
+    CERT_MODE="staging"
+  else
+    CERT_MODE="production"
+  fi
+  ok "Certificate already present (expires: $EXPIRY, mode: $CERT_MODE)"
+  if [[ "$CERT_MODE" == "staging" && "${ACME_STAGING:-0}" != "1" ]]; then
+    warn "Existing cert is STAGING but ACME_STAGING=0 — deleting and reissuing production cert"
+    rm -f "$CERT_DIR/server.crt" "$CERT_DIR/server.key"
+    "$ACME" --remove -d "$WG_HOST" 2>/dev/null || true
+  elif [[ "$CERT_MODE" == "production" && "${ACME_STAGING:-0}" == "1" ]]; then
+    warn "Existing cert is PRODUCTION but --staging requested — keeping production cert"
+    info "To force staging reissue: rm -f $CERT_DIR/server.crt $CERT_DIR/server.key && re-run setup"
+  else
+    info "Skipping issuance — to reissue: $ACME --issue --force --server $ACME_SERVER -d $WG_HOST ..."
+  fi
+fi
+
+if [[ ! -f "$CERT_DIR/server.crt" ]]; then
+  info "Issuing TLS certificate for: $WG_HOST (server: $ACME_SERVER)"
+
+  # shortlived profile only for production (staging doesn't support it)
+  SHORTLIVED_ARG=""
+  if is_ip "$WG_HOST" && [[ "$ACME_SERVER" == "letsencrypt" ]]; then
+    SHORTLIVED_ARG="--certificate-profile shortlived --days 3"
+  fi
 
   # Port 80 must be free for standalone mode
   if ss -tlnp 2>/dev/null | grep -q ':80 '; then
     warn "Port 80 is already in use — attempting webroot mode via /srv/acme"
     mkdir -p /srv/acme
-    "$ACME" --issue --server letsencrypt \
+    "$ACME" --issue --server "$ACME_SERVER" \
       -d "$WG_HOST" --webroot /srv/acme \
-      $(is_ip "$WG_HOST" && echo "--certificate-profile shortlived --days 3" || true)
+      $SHORTLIVED_ARG
   else
-    "$ACME" --issue --server letsencrypt \
+    "$ACME" --issue --server "$ACME_SERVER" \
       -d "$WG_HOST" --standalone \
-      $(is_ip "$WG_HOST" && echo "--certificate-profile shortlived --days 3" || true)
+      $SHORTLIVED_ARG
   fi
 
   "$ACME" --install-cert -d "$WG_HOST" \
