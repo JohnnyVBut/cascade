@@ -1,0 +1,12 @@
+# Local development override — use locally-built image instead of GHCR.
+#
+# Usage:
+#   ./build-go.sh                          # builds cascade:latest locally
+#   docker compose -f docker-compose.go.yml -f docker-compose.override.yml up -d
+#
+# This file is NOT used in production (server pulls from ghcr.io).
+# It is git-ignored by default — copy to your working dir as needed.
+
+services:
+  cascade:
+    image: cascade:latest
