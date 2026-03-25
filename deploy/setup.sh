@@ -329,6 +329,20 @@ SYSCTL
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STEP 4b — TCP/network stack tuning
+# ═══════════════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "${B}── Step 4b: TCP/network tuning${N}"
+
+TCP_TUNE_SCRIPT="$SCRIPT_DIR/tcp_tune.sh"
+if [[ -f "$TCP_TUNE_SCRIPT" ]]; then
+  bash "$TCP_TUNE_SCRIPT" && ok "TCP tuning applied (BBR, FQ, buffers, VPN-safe rp_filter)" \
+    || warn "TCP tuning script exited with errors (non-fatal)"
+else
+  warn "deploy/tcp_tune.sh not found — skipping TCP tuning"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STEP 5a — Generate decoy video (QUIC streaming bait)
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""
