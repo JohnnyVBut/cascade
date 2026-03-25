@@ -1,6 +1,8 @@
 services:
   cascade:
-    image: cascade:latest
+    # Pre-built image from GitHub Actions CI (pushed on every merge to master).
+    # To use a locally-built image instead, run ./build-go.sh and set image: cascade:latest
+    image: ghcr.io/johnnybut/cascade:latest
     container_name: cascade
     restart: unless-stopped
 
