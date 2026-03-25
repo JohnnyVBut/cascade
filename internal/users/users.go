@@ -158,6 +158,9 @@ func Create(username, password string) (*User, error) {
 	if password == "" {
 		return nil, errors.New("password is required")
 	}
+	if len(password) < 8 {
+		return nil, errors.New("password must be at least 8 characters")
+	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
@@ -190,6 +193,9 @@ func Create(username, password string) (*User, error) {
 func UpdatePassword(id, newPassword string) error {
 	if newPassword == "" {
 		return errors.New("password is required")
+	}
+	if len(newPassword) < 8 {
+		return errors.New("password must be at least 8 characters")
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcryptCost)
 	if err != nil {

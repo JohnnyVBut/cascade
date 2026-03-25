@@ -2716,6 +2716,7 @@ new Vue({
       try {
         await this.api.createUser({ username, password });
         // Open mode ended — reload to show login screen with real authentication.
+        this.firstRunSaving = false;
         window.location.reload();
       } catch (err) {
         this.showToast(err.message || 'Failed to create admin account', 'error');
@@ -2727,6 +2728,7 @@ new Vue({
       const { username, password, passwordConfirm } = this.addUserForm;
       if (!username) { this.showToast('Username is required', 'error'); return; }
       if (!password) { this.showToast('Password is required', 'error'); return; }
+      if (password.length < 8) { this.showToast('Password must be at least 8 characters', 'error'); return; }
       if (password !== passwordConfirm) { this.showToast('Passwords do not match', 'error'); return; }
       try {
         await this.api.createUser({ username, password });

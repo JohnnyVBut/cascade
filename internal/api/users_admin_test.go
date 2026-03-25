@@ -98,7 +98,7 @@ func newTestApp(t *testing.T) *testApp {
 	InitAuth("")
 
 	// Create admin user.
-	adminUser, err := users.Create("admin", "adminpass")
+	adminUser, err := users.Create("admin", "adminpass1")
 	if err != nil {
 		t.Fatalf("Create admin: %v", err)
 	}
@@ -119,7 +119,7 @@ func newTestApp(t *testing.T) *testApp {
 	}
 
 	// Create two regular users.
-	alice, err := users.Create("alice", "alicepass")
+	alice, err := users.Create("alice", "alicepass1")
 	if err != nil {
 		t.Fatalf("Create alice: %v", err)
 	}
@@ -128,7 +128,7 @@ func newTestApp(t *testing.T) *testApp {
 		t.Fatalf("tokens.Create(alice): %v", err)
 	}
 
-	bob, err := users.Create("bob", "bobpass")
+	bob, err := users.Create("bob", "bobpass1")
 	if err != nil {
 		t.Fatalf("Create bob: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestCreateUser_AdminGets201(t *testing.T) {
 
 	resp := ta.do("POST", "/api/users",
 		ta.adminToken,
-		map[string]string{"username": "charlie", "password": "charliepass"},
+		map[string]string{"username": "charlie", "password": "charliepass1"},
 	)
 	if resp.StatusCode != http.StatusCreated {
 		body := decodeBody(resp)
@@ -238,7 +238,7 @@ func TestCreateUser_NonAdminGets403(t *testing.T) {
 
 	resp := ta.do("POST", "/api/users",
 		ta.aliceToken,
-		map[string]string{"username": "eve", "password": "evepass"},
+		map[string]string{"username": "eve", "password": "evepass1"},
 	)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-admin POST /api/users: expected 403, got %d", resp.StatusCode)
@@ -253,7 +253,7 @@ func TestUpdateUser_OwnerCanUpdateSelf(t *testing.T) {
 	// SEC-2: owner must provide their current password when changing password.
 	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
 		ta.aliceToken,
-		map[string]string{"password": "newAlicePass", "currentPassword": "alicepass"},
+		map[string]string{"password": "newAlicePass", "currentPassword": "alicepass1"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -267,7 +267,7 @@ func TestUpdateUser_NonOwnerNonAdminGets403(t *testing.T) {
 	// Alice tries to update Bob's account.
 	resp := ta.do("PATCH", "/api/users/"+ta.bob.ID,
 		ta.aliceToken,
-		map[string]string{"password": "hackbob"},
+		map[string]string{"password": "hackbob123"},
 	)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("non-owner non-admin PATCH other user: expected 403, got %d", resp.StatusCode)
@@ -280,7 +280,7 @@ func TestUpdateUser_AdminCanUpdateAnyUser(t *testing.T) {
 	// SEC-2: admin must provide their own current password when resetting another user's password.
 	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
 		ta.adminToken,
-		map[string]string{"password": "newPassForAlice", "currentPassword": "adminpass"},
+		map[string]string{"password": "newPassForAlice", "currentPassword": "adminpass1"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -450,7 +450,7 @@ func TestUpdateUser_NonexistentIDGets404(t *testing.T) {
 
 	resp := ta.do("PATCH", "/api/users/"+ghostID,
 		ta.adminToken,
-		map[string]string{"password": "irrelevant"},
+		map[string]string{"password": "irrelevant1"},
 	)
 	if resp.StatusCode != http.StatusNotFound {
 		body := decodeBody(resp)
@@ -529,7 +529,7 @@ func TestUpdateMe_PasswordChange_CorrectCurrentPassword(t *testing.T) {
 
 	resp := ta.do("PATCH", "/api/users/me",
 		ta.aliceToken,
-		map[string]string{"password": "brandnewpass", "currentPassword": "alicepass"},
+		map[string]string{"password": "brandnewpass", "currentPassword": "alicepass1"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -576,7 +576,7 @@ func TestUpdateUser_SelfPasswordChange_CorrectCurrentPassword(t *testing.T) {
 
 	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
 		ta.aliceToken,
-		map[string]string{"password": "brandnewpass", "currentPassword": "alicepass"},
+		map[string]string{"password": "brandnewpass", "currentPassword": "alicepass1"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -627,7 +627,7 @@ func TestUpdateUser_AdminResetOtherPassword_CorrectAdminPassword(t *testing.T) {
 
 	resp := ta.do("PATCH", "/api/users/"+ta.alice.ID,
 		ta.adminToken,
-		map[string]string{"password": "aliceNewPass", "currentPassword": "adminpass"},
+		map[string]string{"password": "aliceNewPass", "currentPassword": "adminpass1"},
 	)
 	if resp.StatusCode != http.StatusOK {
 		body := decodeBody(resp)
@@ -639,8 +639,8 @@ func TestUpdateUser_AdminResetOtherPassword_CorrectAdminPassword(t *testing.T) {
 		t.Errorf("alice's password should have been updated to 'aliceNewPass': %v", err)
 	}
 
-	// Admin's password must still be "adminpass" (unchanged).
-	if err := users.VerifyPasswordByID(ta.admin.ID, "adminpass"); err != nil {
+	// Admin's password must still be "adminpass1" (unchanged).
+	if err := users.VerifyPasswordByID(ta.admin.ID, "adminpass1"); err != nil {
 		t.Errorf("admin's password should remain 'adminpass' after resetting alice's password: %v", err)
 	}
 }

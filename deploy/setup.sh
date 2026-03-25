@@ -58,12 +58,12 @@ ask() {
   local current="${!var:-}"
   [[ -n "$current" ]] && { ok "$prompt: (loaded from .env: $current)"; return; }
   if [[ $YES -eq 1 ]]; then
-    [[ -n "$default" ]] && eval "$var='$default'" && return
+    [[ -n "$default" ]] && printf -v "$var" '%s' "$default" && return
     fail "$prompt is required — set in $ENV_FILE"
   fi
   local hint=""; [[ -n "$default" ]] && hint=" [$default]"
   read -rp "  $prompt$hint: " val
-  eval "$var='${val:-$default}'"
+  printf -v "$var" '%s' "${val:-$default}"
 }
 
 save_env() {
@@ -492,9 +492,9 @@ mkdir -p "$CERT_DIR"
 # Install acme.sh if needed
 if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
   info "Installing acme.sh..."
-  EMAIL_ARG=""
-  [[ -n "${ACME_EMAIL:-}" ]] && EMAIL_ARG="email=${ACME_EMAIL}"
-  curl -fsSL https://get.acme.sh | sh -s $EMAIL_ARG
+  ACME_INSTALL_ARGS=()
+  [[ -n "${ACME_EMAIL:-}" ]] && ACME_INSTALL_ARGS=("email=${ACME_EMAIL}")
+  curl -fsSL https://get.acme.sh | sh -s "${ACME_INSTALL_ARGS[@]}"
   ok "acme.sh installed"
 else
   ok "acme.sh already installed"
@@ -530,10 +530,8 @@ if [[ ! -f "$CERT_DIR/server.crt" ]]; then
 
   # shortlived profile required for bare IP identifiers — applies to both staging and production.
   # Without it LE rejects IP identifiers with "Default profile does not permit IP address identifiers."
-  SHORTLIVED_ARG=""
-  if is_ip "$WG_HOST"; then
-    SHORTLIVED_ARG="--certificate-profile shortlived"
-  fi
+  SHORTLIVED_ARGS=()
+  is_ip "$WG_HOST" && SHORTLIVED_ARGS=(--certificate-profile shortlived)
 
   # Port 80 must be free for standalone mode
   if ss -tlnp 2>/dev/null | grep -q ':80 '; then
@@ -541,11 +539,11 @@ if [[ ! -f "$CERT_DIR/server.crt" ]]; then
     mkdir -p /srv/acme
     "$ACME" --issue --server "$ACME_SERVER" \
       -d "$WG_HOST" --webroot /srv/acme \
-      $SHORTLIVED_ARG
+      "${SHORTLIVED_ARGS[@]}"
   else
     "$ACME" --issue --server "$ACME_SERVER" \
       -d "$WG_HOST" --standalone \
-      $SHORTLIVED_ARG
+      "${SHORTLIVED_ARGS[@]}"
   fi
 
   "$ACME" --install-cert -d "$WG_HOST" \

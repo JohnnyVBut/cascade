@@ -84,72 +84,76 @@
 <body class="bg-gray-50 dark:bg-neutral-800">
   <div id="app">
     <div v-cloak>
-      <div v-if="authenticated === true" class="flex h-screen">
-
-        <!-- ==================== First-Run Setup Modal ==================== -->
-        <!-- Non-dismissible: shown when no users exist (open mode). Cannot be closed. -->
-        <div v-if="showFirstRunSetup"
-          style="position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.75);
-                 display:flex; align-items:center; justify-content:center; padding:24px;">
-          <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl"
-               style="width:100%; max-width:440px;">
-            <!-- Header -->
-            <div style="padding:28px 28px 0;">
-              <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                <h2 class="text-xl font-bold dark:text-white">Welcome to Cascade</h2>
-              </div>
-              <p class="text-sm text-gray-500 dark:text-neutral-400" style="margin-bottom:4px;">
-                Create your administrator account to secure access to this panel.
-              </p>
+      <!-- ==================== First-Run Setup ==================== -->
+      <!-- Shown INSTEAD of the main app when no users exist (open mode).          -->
+      <!-- The main UI (sidebar + content) is NOT rendered — no DOM to reach via   -->
+      <!-- devtools, no background content accessible behind an overlay.           -->
+      <div v-if="authenticated === true && showFirstRunSetup"
+        class="bg-gray-50 dark:bg-neutral-900"
+        style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
+        <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl"
+             role="dialog" aria-modal="true" aria-labelledby="setup-title"
+             style="width:100%; max-width:440px;">
+          <!-- Header -->
+          <div style="padding:28px 28px 0;">
+            <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              <h2 id="setup-title" class="text-xl font-bold dark:text-white">Welcome to Cascade</h2>
             </div>
-            <!-- Body -->
-            <div style="padding:20px 28px; display:flex; flex-direction:column; gap:14px;">
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Username</label>
-                <input v-model="firstRunForm.username" type="text" autocomplete="username"
-                  placeholder="admin"
-                  class="w-full rounded border dark:border-neutral-600 bg-white dark:bg-neutral-700 dark:text-white text-sm"
-                  style="padding:8px 10px;"
-                  :disabled="firstRunSaving"
-                  @keyup.enter="createFirstUser()" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Password</label>
-                <input v-model="firstRunForm.password" type="password" autocomplete="new-password"
-                  placeholder="Minimum 8 characters"
-                  class="w-full rounded border dark:border-neutral-600 bg-white dark:bg-neutral-700 dark:text-white text-sm"
-                  style="padding:8px 10px;"
-                  :disabled="firstRunSaving"
-                  @keyup.enter="createFirstUser()" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Confirm Password</label>
-                <input v-model="firstRunForm.passwordConfirm" type="password" autocomplete="new-password"
-                  placeholder="Repeat password"
-                  class="w-full rounded border dark:border-neutral-600 bg-white dark:bg-neutral-700 dark:text-white text-sm"
-                  style="padding:8px 10px;"
-                  :disabled="firstRunSaving"
-                  @keyup.enter="createFirstUser()" />
-              </div>
+            <p class="text-sm text-gray-500 dark:text-neutral-400" style="margin-bottom:4px;">
+              Create your administrator account to secure access to this panel.
+            </p>
+          </div>
+          <!-- Body -->
+          <div style="padding:20px 28px; display:flex; flex-direction:column; gap:14px;">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Username</label>
+              <input v-model="firstRunForm.username" type="text" autocomplete="username"
+                placeholder="admin"
+                class="w-full rounded border dark:border-neutral-600 bg-white dark:bg-neutral-700 dark:text-white text-sm"
+                style="padding:8px 10px;"
+                :disabled="firstRunSaving"
+                @keyup.enter="createFirstUser()" />
             </div>
-            <!-- Footer -->
-            <div style="padding:0 28px 24px;">
-              <button @click="createFirstUser()" :disabled="firstRunSaving"
-                class="w-full bg-purple-600 text-white rounded font-semibold text-sm"
-                style="padding:10px; opacity: 1;"
-                :style="firstRunSaving ? 'opacity:0.6; cursor:not-allowed;' : ''">
-                {{ firstRunSaving ? 'Creating account…' : 'Create Admin Account' }}
-              </button>
-              <p class="text-xs text-gray-400 dark:text-neutral-500 text-center" style="margin-top:10px;">
-                You will be redirected to the login page after account creation.
-              </p>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Password</label>
+              <input v-model="firstRunForm.password" type="password" autocomplete="new-password"
+                placeholder="Minimum 8 characters"
+                class="w-full rounded border dark:border-neutral-600 bg-white dark:bg-neutral-700 dark:text-white text-sm"
+                style="padding:8px 10px;"
+                :disabled="firstRunSaving"
+                @keyup.enter="createFirstUser()" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">Confirm Password</label>
+              <input v-model="firstRunForm.passwordConfirm" type="password" autocomplete="new-password"
+                placeholder="Repeat password"
+                class="w-full rounded border dark:border-neutral-600 bg-white dark:bg-neutral-700 dark:text-white text-sm"
+                style="padding:8px 10px;"
+                :disabled="firstRunSaving"
+                @keyup.enter="createFirstUser()" />
             </div>
           </div>
+          <!-- Footer -->
+          <div style="padding:0 28px 24px;">
+            <button @click="createFirstUser()" :disabled="firstRunSaving"
+              class="w-full bg-purple-600 text-white rounded font-semibold text-sm"
+              style="padding:10px;"
+              :style="firstRunSaving ? 'opacity:0.6; cursor:not-allowed;' : ''">
+              {{ firstRunSaving ? 'Creating account…' : 'Create Admin Account' }}
+            </button>
+            <p class="text-xs text-gray-400 dark:text-neutral-500 text-center" style="margin-top:10px;">
+              You will be redirected to the login page after account creation.
+            </p>
+          </div>
         </div>
-        <!-- ==================== /First-Run Setup Modal ==================== -->
+      </div>
+      <!-- ==================== /First-Run Setup ==================== -->
+
+      <!-- ==================== Main App ==================== -->
+      <div v-else-if="authenticated === true" class="flex h-screen">
 
         <!-- ==================== Sidebar ==================== -->
         <nav class="w-64 flex-shrink-0 bg-gray-50 dark:bg-neutral-800 overflow-y-auto flex flex-col"
@@ -4877,7 +4881,7 @@
         </div>
 
         </main><!-- /Content Area -->
-      </div><!-- /authenticated === true (flex h-screen) -->
+      </div><!-- /authenticated === true && !showFirstRunSetup (flex h-screen) -->
 
       <div v-if="authenticated === false">
         <div class="text-center" style="margin-top:80px; margin-bottom:12px;">

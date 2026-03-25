@@ -272,7 +272,7 @@ func TestCreate_DefaultIsAdminFalse(t *testing.T) {
 		t.Fatalf("SeedAdminIfEmpty: %v", err)
 	}
 
-	u, err := Create("bob", "hunter2")
+	u, err := Create("bob", "hunter2!")
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -302,10 +302,10 @@ func TestCountAdmins_MultipleUsersOnlyOneAdmin(t *testing.T) {
 	}
 
 	// Add two regular users.
-	if _, err := Create("alice", "alicepass"); err != nil {
+	if _, err := Create("alice", "alicepass1"); err != nil {
 		t.Fatalf("Create alice: %v", err)
 	}
-	if _, err := Create("bob", "bobpass"); err != nil {
+	if _, err := Create("bob", "bobpass1"); err != nil {
 		t.Fatalf("Create bob: %v", err)
 	}
 
