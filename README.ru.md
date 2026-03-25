@@ -107,7 +107,7 @@ sudo bash deploy/switch-mode.sh --kernel      # → kernel-модуль (быс�
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
 cd cascade
-./build-go.sh
+docker compose -f docker-compose.go.yml pull
 docker compose -f docker-compose.go.yml up -d
 # UI доступен на http://127.0.0.1:8888/
 ```
@@ -203,9 +203,9 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 ## 🔄 Обновление
 
 ```bash
-git pull origin feature/go-rewrite
-./build-go.sh
-docker compose -f docker-compose.go.yml down && docker compose -f docker-compose.go.yml up -d
+git pull origin master
+docker compose -f docker-compose.go.yml pull
+docker compose -f docker-compose.go.yml up -d
 ```
 
 ## 📱 Совместимые VPN-клиенты
