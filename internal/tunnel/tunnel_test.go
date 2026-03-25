@@ -463,10 +463,73 @@ func TestIsUserspaceMode_WhenEnvOtherValue(t *testing.T) {
 	}
 }
 
-// ── KernelRemovePeer ──────────────────────────────────────────────────────────
+// ── txqueuelen ────────────────────────────────────────────────────────────────
 
-// TestKernelRemovePeer_DisabledInterface verifies that KernelRemovePeer is a
-// no-op (no panic, returns immediately) when the interface is not enabled.
+// PostUp must set txqueuelen 500 on the WireGuard interface.
+// Rationale: default txqueuelen=1000 holds ~11ms at 1 Gbps (BDP: 4138 packets
+// at 47ms RTT). 500 → ~5.7ms buffer. With BBR+fq pacing, queue rarely fills →
+// no throughput impact; reduces bufferbloat for interactive traffic.
+func TestGenerateWgConfig_PostUpSetsTxqueuelen(t *testing.T) {
+	iface := newTestIface()
+	cfg := iface.generateWgConfig()
+
+	want := "ip link set wg10 txqueuelen 500"
+	if !strings.Contains(cfg, want) {
+		t.Errorf("PostUp must contain %q for bufferbloat prevention", want)
+	}
+}
+
+// txqueuelen must appear in PostUp, not PostDown (no cleanup needed on down).
+func TestGenerateWgConfig_TxqueuelenInPostUpNotPostDown(t *testing.T) {
+	iface := newTestIface()
+	cfg := iface.generateWgConfig()
+
+	for _, line := range strings.Split(cfg, "\n") {
+		if strings.HasPrefix(line, "PostDown") && strings.Contains(line, "txqueuelen") {
+			t.Error("txqueuelen must NOT appear in PostDown — interface teardown makes it irrelevant")
+		}
+	}
+}
+
+// txqueuelen must appear before iptables rules in PostUp.
+// Ordering convention: interface configuration commands before firewall rules.
+// Note: iptables-nft itself does not require the interface to exist, but grouping
+// interface-config (txqueuelen) before firewall rules is cleaner and consistent.
+func TestGenerateWgConfig_TxqueuelenBeforeIptables(t *testing.T) {
+	iface := newTestIface()
+	cfg := iface.generateWgConfig()
+
+	for _, line := range strings.Split(cfg, "\n") {
+		if !strings.HasPrefix(line, "PostUp") {
+			continue
+		}
+		qPos := strings.Index(line, "txqueuelen")
+		iPos := strings.Index(line, "iptables-nft")
+		if qPos == -1 {
+			t.Fatal("PostUp missing txqueuelen — ordering check is meaningless without it")
+		}
+		if iPos == -1 {
+			t.Fatal("PostUp missing iptables-nft — ordering check is meaningless without it")
+		}
+		if qPos > iPos {
+			t.Error("txqueuelen must appear before iptables-nft in PostUp")
+		}
+	}
+}
+
+// txqueuelen must be applied on S2S/transit interfaces (DisableRoutes=true) too —
+// they carry forwarded flows and benefit from bufferbloat reduction equally.
+func TestGenerateWgConfig_PostUpSetsTxqueuelen_DisableRoutes(t *testing.T) {
+	iface := newTestIface()
+	iface.DisableRoutes = true
+	cfg := iface.generateWgConfig()
+
+	want := "ip link set wg10 txqueuelen 500"
+	if !strings.Contains(cfg, want) {
+		t.Errorf("PostUp must contain %q even for DisableRoutes=true (S2S) interfaces", want)
+	}
+}
+
 // This is a smoke test: the disabled-interface guard at the top of KernelRemovePeer
 // must fire before any exec or goroutine is launched.
 func TestKernelRemovePeer_DisabledInterface(t *testing.T) {

@@ -747,9 +747,18 @@ func (t *TunnelInterface) generateWgConfig() string {
 		subnet := cidrToSubnet(t.Address)
 		// Dynamic ISP interface: name varies per host (eth0, ens3, ens18, ...).
 		getISP := `ISP=$(ip -4 route show default | awk 'NR==1{print $5}')`
+		// ip link set txqueuelen 500: reduces bufferbloat on WireGuard egress.
+		// Default txqueuelen=1000 holds ~11ms at 1 Gbps; 500 → ~5.7ms.
+		// Effective with BBR congestion control (set by tcp_tune.sh) which paces
+		// traffic and rarely fills the queue — no throughput impact at 1 Gbps.
+		//
+		// Lifecycle note: txqueuelen is set at interface creation (PostUp = wg-quick up).
+		// doReload() uses syncconf which does NOT tear down the interface, so the value
+		// from Start() survives peer changes. Only a full Stop()+Start() resets it,
+		// which re-executes PostUp and reapplies the setting.
 		postUp := fmt.Sprintf(
-			"PostUp = %s; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE\n",
-			getISP, t.ID, t.ID, subnet,
+			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE\n",
+			getISP, t.ID, t.ID, t.ID, subnet,
 		)
 		postDown := fmt.Sprintf(
 			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true; iptables-nft -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true\n",
