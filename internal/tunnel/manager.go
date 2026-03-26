@@ -119,12 +119,18 @@ func (m *Manager) load() error {
 	return nil
 }
 
-// startPolling launches a goroutine that calls GetStatus on every enabled interface
-// once per second. Stops when Stop() is called (closes stopCh).
+// startPolling launches a goroutine that:
+//   - calls GetStatus on every enabled interface once per second (runtime stats)
+//   - flushes dirty traffic totals to SQLite every 60 s (persistence)
+//   - performs a final flush on shutdown before returning
+//
+// Stops when Stop() is called (closes stopCh).
 func (m *Manager) startPolling() {
 	go func() {
 		ticker := time.NewTicker(time.Second)
+		flushTicker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
+		defer flushTicker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -133,7 +139,20 @@ func (m *Manager) startPolling() {
 					t.GetStatus() // updates runtime peer fields; no-op when !t.Enabled
 				}
 				m.mu.RUnlock()
+			case <-flushTicker.C:
+				// Periodic flush: max data loss on crash = 60 s of traffic.
+				m.mu.RLock()
+				for _, t := range m.interfaces {
+					t.FlushTrafficTotals()
+				}
+				m.mu.RUnlock()
 			case <-m.stopCh:
+				// Final flush before exit (graceful shutdown path).
+				m.mu.RLock()
+				for _, t := range m.interfaces {
+					t.FlushTrafficTotals()
+				}
+				m.mu.RUnlock()
 				return
 			}
 		}

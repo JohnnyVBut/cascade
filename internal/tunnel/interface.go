@@ -36,10 +36,23 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
+// peerTrafficState tracks per-peer traffic accumulation in memory.
+// lastSeenRx/Tx: kernel counter value at the previous poll tick (for delta).
+// totalRx/Tx:   lifetime accumulated bytes (loaded from DB on startup, flushed periodically).
+// dirty:        true when totalRx/Tx changed since the last DB flush.
+type peerTrafficState struct {
+	lastSeenRx int64
+	lastSeenTx int64
+	totalRx    int64
+	totalTx    int64
+	dirty      bool
+}
+
 // TunnelInterface represents a single WireGuard or AmneziaWG tunnel interface.
 type TunnelInterface struct {
-	reloadMu sync.Mutex   // serializes Reload/Restart — concurrent syncconf = kernel deadlock (FIX-8, FIX-9)
-	peersMu  sync.RWMutex // protects peers map: written by AddPeer/Remove, read by GetStatus goroutine
+	reloadMu  sync.Mutex   // serializes Reload/Restart — concurrent syncconf = kernel deadlock (FIX-8, FIX-9)
+	peersMu   sync.RWMutex // protects peers map: written by AddPeer/Remove, read by GetStatus goroutine
+	trafficMu sync.Mutex   // protects trafficState map
 
 	// ── Persisted (SQLite interfaces table) ──────────────────────────────────
 	ID            string             `json:"id"`
@@ -55,7 +68,8 @@ type TunnelInterface struct {
 	CreatedAt     string             `json:"createdAt"`
 
 	// ── Runtime (in-memory, not persisted) ───────────────────────────────────
-	peers map[string]*peer.Peer // keyed by peer.ID; protected by peersMu
+	peers        map[string]*peer.Peer        // keyed by peer.ID; protected by peersMu
+	trafficState map[string]*peerTrafficState // keyed by peer.ID; protected by trafficMu
 }
 
 // InterfaceInput is the payload for creating a new interface.
@@ -256,6 +270,8 @@ func (t *TunnelInterface) save() error {
 // ── Peer cache ────────────────────────────────────────────────────────────────
 
 // LoadPeers fetches all peers for this interface from SQLite into the in-memory map.
+// Also initialises trafficState from persisted total_rx/total_tx (migration v11)
+// so that lifetime totals survive container restarts.
 // Called at startup; kept in sync by AddPeer / UpdatePeer / RemovePeer.
 func (t *TunnelInterface) LoadPeers() error {
 	ps, err := peer.GetPeers(t.ID)
@@ -268,6 +284,19 @@ func (t *TunnelInterface) LoadPeers() error {
 		t.peers[ps[i].ID] = &ps[i]
 	}
 	t.peersMu.Unlock()
+
+	// Initialise trafficState from DB totals.
+	// lastSeenRx/Tx starts at 0: after container restart the kernel counter
+	// resets to 0 too, so the first delta is always 0 (no phantom traffic spike).
+	t.trafficMu.Lock()
+	t.trafficState = make(map[string]*peerTrafficState, len(ps))
+	for i := range ps {
+		t.trafficState[ps[i].ID] = &peerTrafficState{
+			totalRx: ps[i].TotalRx,
+			totalTx: ps[i].TotalTx,
+		}
+	}
+	t.trafficMu.Unlock()
 	return nil
 }
 
@@ -404,6 +433,14 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 	t.peers[p.ID] = p
 	t.peersMu.Unlock()
 
+	// Initialise traffic state for new peer (starts at zero, no prior traffic).
+	t.trafficMu.Lock()
+	if t.trafficState == nil {
+		t.trafficState = make(map[string]*peerTrafficState)
+	}
+	t.trafficState[p.ID] = &peerTrafficState{}
+	t.trafficMu.Unlock()
+
 	if err := t.RegenerateConfig(); err != nil {
 		return p, err
 	}
@@ -454,6 +491,10 @@ func (t *TunnelInterface) RemovePeer(peerID string) error {
 	t.peersMu.Lock()
 	delete(t.peers, peerID)
 	t.peersMu.Unlock()
+
+	t.trafficMu.Lock()
+	delete(t.trafficState, peerID)
+	t.trafficMu.Unlock()
 
 	if err := t.RegenerateConfig(); err != nil {
 		return err
@@ -540,7 +581,11 @@ func (t *TunnelInterface) Start() error {
 // Stop brings down the interface and ignores benign errors (FIX-3):
 //   - interface already stopped ("not a WireGuard/AmneziaWG interface")
 //   - iptables rule not found at PostDown time ("Bad rule", "does a matching rule exist")
+//
+// Flushes traffic totals to DB before bringing the interface down so that the
+// kernel counters (which reset on wg-quick down) are not lost.
 func (t *TunnelInterface) Stop() error {
+	t.FlushTrafficTotals()
 	_, err := util.ExecDefault(fmt.Sprintf("%s down %s", t.quickBin(), t.ID))
 	if err != nil {
 		ignored := []string{
@@ -888,6 +933,9 @@ func (t *TunnelInterface) GetStatus() {
 	t.peersMu.RLock()
 	defer t.peersMu.RUnlock()
 
+	t.trafficMu.Lock()
+	defer t.trafficMu.Unlock()
+
 	for _, line := range lines[1:] { // lines[0] is the interface row
 		fields := strings.Split(line, "\t")
 		if len(fields) < 7 {
@@ -909,17 +957,74 @@ func (t *TunnelInterface) GetStatus() {
 			} else {
 				p.LatestHandshakeAt = nil
 			}
+
+			var newRx, newTx int64
 			if rx, e := strconv.ParseInt(rxStr, 10, 64); e == nil {
 				p.TransferRx = rx
+				newRx = rx
 			}
 			if tx, e := strconv.ParseInt(txStr, 10, 64); e == nil {
 				p.TransferTx = tx
+				newTx = tx
 			}
+
+			// Accumulate traffic delta into lifetime totals.
+			// delta = max(0, newKernel - lastSeen): negative means counter reset
+			// (wg-quick down was called), treat as 0 to avoid subtracting from total.
+			if st := t.trafficState[p.ID]; st != nil {
+				dRx := newRx - st.lastSeenRx
+				if dRx < 0 {
+					dRx = 0
+				}
+				dTx := newTx - st.lastSeenTx
+				if dTx < 0 {
+					dTx = 0
+				}
+				if dRx > 0 || dTx > 0 {
+					st.totalRx += dRx
+					st.totalTx += dTx
+					st.dirty = true
+				}
+				st.lastSeenRx = newRx
+				st.lastSeenTx = newTx
+				p.TotalRx = st.totalRx
+				p.TotalTx = st.totalTx
+			} else {
+				// trafficState not yet initialised for this peer (race during AddPeer).
+				// Copy kernel counter as initial baseline — no delta yet.
+				if t.trafficState == nil {
+					t.trafficState = make(map[string]*peerTrafficState)
+				}
+				t.trafficState[p.ID] = &peerTrafficState{
+					lastSeenRx: newRx,
+					lastSeenTx: newTx,
+				}
+			}
+
 			if endpoint != "" && endpoint != "(none)" {
 				p.RuntimeEndpoint = endpoint
 			}
 			break
 		}
+	}
+}
+
+// FlushTrafficTotals persists dirty traffic totals to SQLite.
+// Called before wg-quick down (in Stop) and every 60 s by the polling goroutine.
+// No-op if trafficState is nil or nothing is dirty.
+func (t *TunnelInterface) FlushTrafficTotals() {
+	t.trafficMu.Lock()
+	defer t.trafficMu.Unlock()
+
+	for peerID, st := range t.trafficState {
+		if !st.dirty {
+			continue
+		}
+		if err := peer.SaveTrafficTotals(peerID, st.totalRx, st.totalTx); err != nil {
+			log.Printf("tunnel: flush traffic %s/%s: %v", t.ID, peerID, err)
+			continue
+		}
+		st.dirty = false
 	}
 }
 

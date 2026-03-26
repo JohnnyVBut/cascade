@@ -856,8 +856,8 @@
                           <!-- Address + AllowedIPs -->
                           <div class="block md:inline-block pb-1 md:pb-0 text-gray-500 dark:text-neutral-400 text-xs">
                             <span v-if="peer.address">{{peer.address}}</span><span v-else>{{peer.allowedIPs}}</span><span v-if="peer.address && peer.allowedIPs !== peer.address" class="text-gray-400 dark:text-neutral-500"> · {{peer.allowedIPs}}</span>
-                            <!-- Inline Transfer TX -->
-                            <span v-if="!uiTrafficStats && peer.transferTx" class="whitespace-nowrap" :title="'Total download: ' + bytes(peer.transferTx)">
+                            <!-- Inline Transfer TX (speed uses kernel counter; total uses persisted totalTx) -->
+                            <span v-if="!uiTrafficStats && peer.transferTxCurrent" class="whitespace-nowrap" :title="'Total download: ' + bytes(peer.totalTx)">
                               ·
                               <svg class="align-middle h-3 inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M16.707 10.293a1 1 0 010 1.414l-6 6a1 1 0 01-1.414 0l-6-6a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l4.293-4.293a1 1 0 011.414 0z" clip-rule="evenodd" />
@@ -865,7 +865,7 @@
                               {{peer.transferTxCurrent | bytes}}/s
                             </span>
                             <!-- Inline Transfer RX -->
-                            <span v-if="!uiTrafficStats && peer.transferRx" class="whitespace-nowrap" :title="'Total upload: ' + bytes(peer.transferRx)">
+                            <span v-if="!uiTrafficStats && peer.transferRxCurrent" class="whitespace-nowrap" :title="'Total upload: ' + bytes(peer.totalRx)">
                               ·
                               <svg class="align-middle h-3 inline" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />

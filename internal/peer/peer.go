@@ -60,7 +60,15 @@ type Peer struct {
 	// Computed from PrivateKey (not stored separately)
 	DownloadableConfig bool `json:"downloadableConfig"`
 
+	// Persisted traffic totals (migration v11) — lifetime accumulated bytes.
+	// Flushed to SQLite every 60 s and before wg-quick down.
+	// Updated each poll tick by TunnelInterface.GetStatus().
+	TotalRx int64 `json:"totalRx"`
+	TotalTx int64 `json:"totalTx"`
+
 	// Runtime fields — populated by TunnelInterface.GetStatus(), NOT persisted.
+	// TransferRx/Tx are the raw kernel counters (reset on wg-quick down).
+	// Use TotalRx/TotalTx for lifetime totals displayed in the UI.
 	TransferRx        int64   `json:"transferRx"`
 	TransferTx        int64   `json:"transferTx"`
 	LatestHandshakeAt *string `json:"latestHandshakeAt"`
@@ -140,7 +148,8 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, persistent_keepalive, enabled,
-		       created_at, updated_at, expired_at, one_time_link
+		       created_at, updated_at, expired_at, one_time_link,
+		       total_rx, total_tx
 		FROM peers
 		WHERE interface_id = ?
 		ORDER BY created_at
@@ -167,7 +176,8 @@ func GetPeer(id string) (*Peer, error) {
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, persistent_keepalive, enabled,
-		       created_at, updated_at, expired_at, one_time_link
+		       created_at, updated_at, expired_at, one_time_link,
+		       total_rx, total_tx
 		FROM peers WHERE id = ?
 	`, id)
 	p, err := scanPeerRow(row)
@@ -269,6 +279,19 @@ func DeletePeer(id string) error {
 	}
 	log.Printf("peer: deleted %q (%s)", p.Name, id)
 	return nil
+}
+
+// ── Traffic accumulation ──────────────────────────────────────────────────────
+
+// SaveTrafficTotals persists lifetime accumulated RX/TX bytes for a peer.
+// Called by TunnelInterface.FlushTrafficTotals() every 60 s and before wg-quick down.
+// UPDATE on a non-existent peer is a no-op (returns nil) — safe after peer deletion.
+func SaveTrafficTotals(peerID string, totalRx, totalTx int64) error {
+	_, err := db.DB().Exec(
+		`UPDATE peers SET total_rx = ?, total_tx = ? WHERE id = ?`,
+		totalRx, totalTx, peerID,
+	)
+	return err
 }
 
 // ── Key generation ────────────────────────────────────────────────────────────
@@ -581,6 +604,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 		&p.Endpoint, &p.AllowedIPs, &p.Address, &p.ClientAllowedIPs,
 		&p.PeerType, &p.PersistentKeepalive, &enabled,
 		&p.CreatedAt, &p.UpdatedAt, &p.ExpiredAt, &p.OneTimeLink,
+		&p.TotalRx, &p.TotalTx,
 	)
 	if err != nil {
 		return nil, err

@@ -102,8 +102,8 @@ func TestOpen_MigrationVersionIsLatest(t *testing.T) {
 		t.Fatalf("query schema_migrations: %v", err)
 	}
 
-	// Current latest migration is v9 (is_admin column on users).
-	want := len(migrations) // should equal 9
+	// Current latest migration is v11 (traffic accumulation columns on peers).
+	want := len(migrations) // should equal 11
 	if version != want {
 		t.Errorf("schema version = %d, want %d", version, want)
 	}
@@ -244,5 +244,62 @@ func TestMigration_v10_IdempotentWhenAdminExists(t *testing.T) {
 	}
 	if isAdmin != 0 {
 		t.Errorf("expected is_admin=0 for second user after v10 migration (admin already existed), got %d", isAdmin)
+	}
+}
+
+// ── Migration v11: traffic accumulation columns ───────────────────────────────
+
+// TestMigration_v11_TrafficColumnsExist verifies that migration v11 adds
+// total_rx and total_tx columns to the peers table with correct defaults.
+func TestMigration_v11_TrafficColumnsExist(t *testing.T) {
+	dir, err := os.MkdirTemp("", "cascade-db-v11-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	defer Close()
+
+	d := DB()
+
+	// Insert a minimal interface row (required for the peers FK).
+	if _, err := d.Exec(`
+		INSERT INTO interfaces (id, name, address, listen_port, protocol, enabled,
+		                        disable_routes, private_key, public_key, created_at)
+		VALUES ('wg10','test','10.8.0.1/24',51830,'wireguard-1.0',0,0,'priv','pub',datetime('now'))
+	`); err != nil {
+		t.Fatalf("insert interface: %v", err)
+	}
+
+	// Insert a minimal peer row — total_rx/total_tx should default to 0.
+	if _, err := d.Exec(`
+		INSERT INTO peers (id, interface_id, name, public_key, allowed_ips)
+		VALUES ('p1','wg10','alice','AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=','10.8.0.2/32')
+	`); err != nil {
+		t.Fatalf("insert peer: %v", err)
+	}
+
+	var totalRx, totalTx int64
+	if err := d.QueryRow(`SELECT total_rx, total_tx FROM peers WHERE id='p1'`).Scan(&totalRx, &totalTx); err != nil {
+		t.Fatalf("query total_rx/total_tx (columns may be missing): %v", err)
+	}
+	if totalRx != 0 {
+		t.Errorf("default total_rx = %d, want 0", totalRx)
+	}
+	if totalTx != 0 {
+		t.Errorf("default total_tx = %d, want 0", totalTx)
+	}
+
+	// Verify the columns can be updated.
+	if _, err := d.Exec(`UPDATE peers SET total_rx=1024, total_tx=2048 WHERE id='p1'`); err != nil {
+		t.Fatalf("update total_rx/total_tx: %v", err)
+	}
+	if err := d.QueryRow(`SELECT total_rx, total_tx FROM peers WHERE id='p1'`).Scan(&totalRx, &totalTx); err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if totalRx != 1024 || totalTx != 2048 {
+		t.Errorf("updated values: got rx=%d tx=%d, want 1024/2048", totalRx, totalTx)
 	}
 }
