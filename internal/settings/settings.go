@@ -31,6 +31,9 @@ type GlobalSettings struct {
 	RouterName     string `json:"routerName"`     // human-readable name, e.g. "Moscow-01"
 	PublicIPMode   string `json:"publicIPMode"`   // "auto" | "manual"
 	PublicIPManual string `json:"publicIPManual"` // used when PublicIPMode == "manual"
+
+	// UI preferences
+	ChartType int `json:"chartType"` // 0=none, 1=line, 2=area, 3=bar
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -93,6 +96,7 @@ var defaults = GlobalSettings{
 	GatewayHealthyThreshold:    95,
 	GatewayDegradedThreshold:   90,
 	PublicIPMode:               "auto",
+	ChartType:                  2, // area by default
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -522,6 +526,12 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 		}
 	case "publicIPManual":
 		s.PublicIPManual = v
+	case "chartType":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n >= 0 && n <= 3 {
+			s.ChartType = n
+		}
 	}
 }
 

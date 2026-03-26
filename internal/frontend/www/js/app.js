@@ -2457,6 +2457,9 @@ new Vue({
     async loadSettings() {
       try {
         this.globalSettings = await this.api.getSettings();
+        if (typeof this.globalSettings.chartType === 'number') {
+          this.uiChartType = this.globalSettings.chartType;
+        }
         const { templates } = await this.api.getTemplates();
         this.templates = templates;
       } catch (err) {
@@ -2958,13 +2961,7 @@ new Vue({
         this.uiTrafficStats = false;
       });
 
-    this.api.getChartType()
-      .then((res) => {
-        this.uiChartType = parseInt(res, 10);
-      })
-      .catch(() => {
-        this.uiChartType = 0;
-      });
+    // uiChartType is now loaded via loadSettings() from globalSettings.chartType
 
     this.api.getWGEnableOneTimeLinks()
       .then((res) => {
