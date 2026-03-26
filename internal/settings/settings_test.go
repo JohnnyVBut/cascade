@@ -301,6 +301,52 @@ func TestGetPeerDefaults(t *testing.T) {
 	}
 }
 
+// ── ChartType ─────────────────────────────────────────────────────────────────
+
+func TestGetSettings_ChartTypeDefault(t *testing.T) {
+	initTestDB(t)
+
+	s, err := GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.ChartType != 2 {
+		t.Errorf("ChartType default = %d, want 2 (area)", s.ChartType)
+	}
+}
+
+func TestUpdateSettings_ChartType(t *testing.T) {
+	initTestDB(t)
+
+	for _, valid := range []int{0, 1, 2, 3} {
+		s, err := UpdateSettings(map[string]any{"chartType": valid})
+		if err != nil {
+			t.Fatalf("UpdateSettings chartType=%d: %v", valid, err)
+		}
+		if s.ChartType != valid {
+			t.Errorf("ChartType = %d, want %d", s.ChartType, valid)
+		}
+	}
+}
+
+func TestUpdateSettings_ChartType_InvalidIgnored(t *testing.T) {
+	initTestDB(t)
+
+	// Set to known good value first.
+	UpdateSettings(map[string]any{"chartType": 1})
+
+	// Invalid values (out of range) should be ignored — field stays at previous value.
+	for _, invalid := range []int{-1, 4, 99} {
+		s, err := UpdateSettings(map[string]any{"chartType": invalid})
+		if err != nil {
+			t.Fatalf("UpdateSettings chartType=%d: %v", invalid, err)
+		}
+		if s.ChartType != 1 {
+			t.Errorf("ChartType should remain 1 after invalid value %d, got %d", invalid, s.ChartType)
+		}
+	}
+}
+
 // ── generateRandomHRanges ─────────────────────────────────────────────────────
 
 func TestGenerateRandomHRanges_NonOverlapping(t *testing.T) {

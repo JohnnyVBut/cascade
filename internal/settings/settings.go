@@ -31,6 +31,9 @@ type GlobalSettings struct {
 	RouterName     string `json:"routerName"`     // human-readable name, e.g. "Moscow-01"
 	PublicIPMode   string `json:"publicIPMode"`   // "auto" | "manual"
 	PublicIPManual string `json:"publicIPManual"` // used when PublicIPMode == "manual"
+
+	// UI preferences
+	ChartType int `json:"chartType"` // 0=none, 1=line, 2=area, 3=bar
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -93,6 +96,7 @@ var defaults = GlobalSettings{
 	GatewayHealthyThreshold:    95,
 	GatewayDegradedThreshold:   90,
 	PublicIPMode:               "auto",
+	ChartType:                  2, // area by default
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -126,6 +130,11 @@ func UpdateSettings(updates map[string]any) (*GlobalSettings, error) {
 
 	for k, raw := range updates {
 		v := fmt.Sprintf("%v", raw)
+		// Validate before writing — invalid values are silently skipped
+		// so they cannot overwrite a previously valid setting in the DB.
+		if !isValidSettingValue(k, v) {
+			continue
+		}
 		_, err := d.Exec(
 			`INSERT INTO settings(key, value) VALUES(?,?)
 			 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
@@ -491,6 +500,20 @@ func generateRandomHRanges() hRanges {
 	}
 }
 
+// isValidSettingValue returns false for values that would be rejected by applySettingKey,
+// preventing invalid data from overwriting valid settings in the DB.
+func isValidSettingValue(k, v string) bool {
+	switch k {
+	case "publicIPMode":
+		return v == "auto" || v == "manual"
+	case "chartType":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		return n >= 0 && n <= 3
+	}
+	return true // unknown keys pass through (applySettingKey will ignore them)
+}
+
 // applySettingKey applies a single k/v row from the settings table to a GlobalSettings struct.
 func applySettingKey(s *GlobalSettings, k, v string) {
 	switch k {
@@ -522,6 +545,12 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 		}
 	case "publicIPManual":
 		s.PublicIPManual = v
+	case "chartType":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n >= 0 && n <= 3 {
+			s.ChartType = n
+		}
 	}
 }
 
