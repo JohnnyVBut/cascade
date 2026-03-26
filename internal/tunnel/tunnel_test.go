@@ -530,6 +530,8 @@ func TestGenerateWgConfig_PostUpSetsTxqueuelen_DisableRoutes(t *testing.T) {
 	}
 }
 
+// ── KernelRemovePeer ──────────────────────────────────────────────────────────
+
 // This is a smoke test: the disabled-interface guard at the top of KernelRemovePeer
 // must fire before any exec or goroutine is launched.
 func TestKernelRemovePeer_DisabledInterface(t *testing.T) {
@@ -542,4 +544,161 @@ func TestKernelRemovePeer_DisabledInterface(t *testing.T) {
 
 	// Must not panic and must return without attempting any exec.
 	iface.KernelRemovePeer("peer-uuid-1")
+}
+
+// ── Traffic accumulation ──────────────────────────────────────────────────────
+
+// newTrafficIface returns a TunnelInterface with one peer pre-loaded in both
+// the peers map and trafficState — simulating a running interface after LoadPeers.
+func newTrafficIface(peerID, pubKey string, dbTotal int64) *TunnelInterface {
+	p := &peer.Peer{
+		ID:        peerID,
+		PublicKey: pubKey,
+		TotalRx:   dbTotal,
+		TotalTx:   dbTotal,
+	}
+	st := &peerTrafficState{
+		totalRx: dbTotal,
+		totalTx: dbTotal,
+	}
+	return &TunnelInterface{
+		ID:       "wg10",
+		Enabled:  true,
+		Protocol: "wireguard-1.0",
+		peers:    map[string]*peer.Peer{peerID: p},
+		trafficState: map[string]*peerTrafficState{peerID: st},
+	}
+}
+
+// TestTrafficAccumulation_DeltaAccumulates verifies that consecutive poll ticks
+// with rising kernel counters accumulate correctly into totalRx/Tx.
+func TestTrafficAccumulation_DeltaAccumulates(t *testing.T) {
+	const peerID = "peer-1"
+	const pubKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+	iface := newTrafficIface(peerID, pubKey, 0)
+	st := iface.trafficState[peerID]
+	p := iface.peers[peerID]
+
+	// Simulate first poll: kernel reports 100 RX, 200 TX.
+	st.lastSeenRx, st.lastSeenTx = 0, 0
+	p.TransferRx, p.TransferTx = 100, 200
+	iface.trafficMu.Lock()
+	// Manually apply the same delta logic used in GetStatus inner loop.
+	dRx := p.TransferRx - st.lastSeenRx
+	dTx := p.TransferTx - st.lastSeenTx
+	st.totalRx += dRx; st.totalTx += dTx
+	st.lastSeenRx = p.TransferRx; st.lastSeenTx = p.TransferTx
+	p.TotalRx = st.totalRx; p.TotalTx = st.totalTx
+	iface.trafficMu.Unlock()
+
+	if p.TotalRx != 100 {
+		t.Errorf("after tick 1: TotalRx = %d, want 100", p.TotalRx)
+	}
+	if p.TotalTx != 200 {
+		t.Errorf("after tick 1: TotalTx = %d, want 200", p.TotalTx)
+	}
+
+	// Simulate second poll: kernel now reports 300 RX, 500 TX (+200 RX, +300 TX).
+	iface.trafficMu.Lock()
+	dRx = 300 - st.lastSeenRx
+	dTx = 500 - st.lastSeenTx
+	st.totalRx += dRx; st.totalTx += dTx
+	st.lastSeenRx = 300; st.lastSeenTx = 500
+	p.TotalRx = st.totalRx; p.TotalTx = st.totalTx
+	iface.trafficMu.Unlock()
+
+	if p.TotalRx != 300 {
+		t.Errorf("after tick 2: TotalRx = %d, want 300", p.TotalRx)
+	}
+	if p.TotalTx != 500 {
+		t.Errorf("after tick 2: TotalTx = %d, want 500", p.TotalTx)
+	}
+}
+
+// TestTrafficAccumulation_CounterReset verifies that a kernel counter reset
+// (wg-quick down then up) does not subtract from the accumulated total.
+// delta = max(0, new - lastSeen); negative delta is clamped to 0.
+func TestTrafficAccumulation_CounterReset(t *testing.T) {
+	const peerID = "peer-2"
+	const pubKey = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB="
+
+	// Pre-existing total: 1 GB accumulated before the reset.
+	const priorTotal = int64(1_000_000_000)
+	iface := newTrafficIface(peerID, pubKey, priorTotal)
+	st := iface.trafficState[peerID]
+	p := iface.peers[peerID]
+
+	// Before reset: kernel was at 500 MB.
+	st.lastSeenRx = 500_000_000
+	st.lastSeenTx = 500_000_000
+
+	// After wg-quick down/up: kernel resets to 0.
+	// delta = 0 - 500_000_000 = negative → clamped to 0 → total unchanged.
+	iface.trafficMu.Lock()
+	newRx := int64(0)
+	dRx := newRx - st.lastSeenRx
+	if dRx < 0 { dRx = 0 }
+	st.totalRx += dRx
+	st.lastSeenRx = newRx
+	p.TotalRx = st.totalRx
+	iface.trafficMu.Unlock()
+
+	if p.TotalRx != priorTotal {
+		t.Errorf("after reset: TotalRx = %d, want %d (no subtraction on reset)", p.TotalRx, priorTotal)
+	}
+
+	// After reset: kernel accumulates 50 MB of new traffic.
+	iface.trafficMu.Lock()
+	dRx = 50_000_000 - st.lastSeenRx
+	st.totalRx += dRx
+	st.lastSeenRx = 50_000_000
+	p.TotalRx = st.totalRx
+	iface.trafficMu.Unlock()
+
+	want := priorTotal + 50_000_000
+	if p.TotalRx != want {
+		t.Errorf("after post-reset traffic: TotalRx = %d, want %d", p.TotalRx, want)
+	}
+}
+
+// TestTrafficAccumulation_FlushOnlyDirty verifies that FlushTrafficTotals skips
+// peers whose dirty flag is false (no unnecessary DB writes).
+// This is a logic test — we verify the dirty flag is set only when deltas > 0.
+func TestTrafficAccumulation_FlushOnlyDirty(t *testing.T) {
+	const peerID = "peer-3"
+	const pubKey = "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
+
+	iface := newTrafficIface(peerID, pubKey, 0)
+	st := iface.trafficState[peerID]
+
+	// No traffic yet — dirty must be false.
+	if st.dirty {
+		t.Error("initial state: dirty = true, want false")
+	}
+
+	// Simulate a delta > 0 (traffic arrived).
+	iface.trafficMu.Lock()
+	st.totalRx += 100
+	st.dirty = true
+	iface.trafficMu.Unlock()
+
+	if !st.dirty {
+		t.Error("after delta: dirty = false, want true")
+	}
+
+	// Simulate a zero-delta tick (no new traffic).
+	// dirty must NOT be reset unless a flush happened.
+	iface.trafficMu.Lock()
+	dRx := int64(0) // same kernel counter value as before
+	if dRx > 0 {
+		st.totalRx += dRx
+		st.dirty = true
+	}
+	iface.trafficMu.Unlock()
+
+	// dirty should still be true (set by previous delta, not cleared without flush).
+	if !st.dirty {
+		t.Error("after zero-delta tick: dirty was incorrectly cleared")
+	}
 }

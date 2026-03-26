@@ -28,7 +28,8 @@ type Manager struct {
 	mu         sync.RWMutex
 	interfaces map[string]*TunnelInterface
 
-	stopCh chan struct{} // closed by Stop() to end the polling goroutine
+	stopCh chan struct{} // closed by Stop() to signal the polling goroutine to exit
+	doneCh chan struct{} // closed by the polling goroutine after final flush completes
 
 	WGHost string // WG_HOST value — used in ExportInterfaceParams calls
 }
@@ -60,6 +61,7 @@ func Init(wgHost string) (*Manager, error) {
 		m := &Manager{
 			interfaces: make(map[string]*TunnelInterface),
 			stopCh:     make(chan struct{}),
+			doneCh:     make(chan struct{}),
 			WGHost:     wgHost,
 		}
 		managerErr = m.load()
@@ -76,9 +78,12 @@ func Get() *Manager {
 	return managerInst
 }
 
-// Stop cancels the status polling goroutine. Call on graceful shutdown.
+// Stop signals the polling goroutine to exit and blocks until it has completed
+// its final FlushTrafficTotals() call. Safe to call only once.
+// Call before db.Close() on graceful shutdown so traffic totals are saved.
 func (m *Manager) Stop() {
 	close(m.stopCh)
+	<-m.doneCh // wait for the goroutine to finish the final flush
 }
 
 // load reads all interfaces from SQLite and auto-starts enabled ones.
@@ -119,12 +124,18 @@ func (m *Manager) load() error {
 	return nil
 }
 
-// startPolling launches a goroutine that calls GetStatus on every enabled interface
-// once per second. Stops when Stop() is called (closes stopCh).
+// startPolling launches a goroutine that:
+//   - calls GetStatus on every enabled interface once per second (runtime stats)
+//   - flushes dirty traffic totals to SQLite every 60 s (persistence)
+//   - performs a final flush on shutdown before returning
+//
+// Stops when Stop() is called (closes stopCh).
 func (m *Manager) startPolling() {
 	go func() {
 		ticker := time.NewTicker(time.Second)
+		flushTicker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
+		defer flushTicker.Stop()
 		for {
 			select {
 			case <-ticker.C:
@@ -133,7 +144,22 @@ func (m *Manager) startPolling() {
 					t.GetStatus() // updates runtime peer fields; no-op when !t.Enabled
 				}
 				m.mu.RUnlock()
+			case <-flushTicker.C:
+				// Periodic flush: max data loss on crash = 60 s of traffic.
+				m.mu.RLock()
+				for _, t := range m.interfaces {
+					t.FlushTrafficTotals()
+				}
+				m.mu.RUnlock()
 			case <-m.stopCh:
+				// Final flush before exit (graceful shutdown path).
+				// Must complete before Stop() returns so db.Close() is safe.
+				m.mu.RLock()
+				for _, t := range m.interfaces {
+					t.FlushTrafficTotals()
+				}
+				m.mu.RUnlock()
+				close(m.doneCh) // unblocks Stop()
 				return
 			}
 		}

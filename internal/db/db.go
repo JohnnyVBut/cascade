@@ -374,6 +374,18 @@ WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)
   AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1);
 `,
 	},
+	{
+		version: 11,
+		sql: `
+-- Traffic accumulation across container restarts.
+-- total_rx / total_tx: lifetime accumulated bytes per peer, flushed to DB
+--   every 60 s by the polling goroutine and before every wg-quick down.
+-- Initialised to 0; never decremented.  Delta is computed in-memory:
+--   delta = max(0, kernelCounter - lastSeen)  — negative means counter reset.
+ALTER TABLE peers ADD COLUMN total_rx INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peers ADD COLUMN total_tx INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
