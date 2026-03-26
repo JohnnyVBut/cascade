@@ -130,6 +130,11 @@ func UpdateSettings(updates map[string]any) (*GlobalSettings, error) {
 
 	for k, raw := range updates {
 		v := fmt.Sprintf("%v", raw)
+		// Validate before writing — invalid values are silently skipped
+		// so they cannot overwrite a previously valid setting in the DB.
+		if !isValidSettingValue(k, v) {
+			continue
+		}
 		_, err := d.Exec(
 			`INSERT INTO settings(key, value) VALUES(?,?)
 			 ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
@@ -493,6 +498,20 @@ func generateRandomHRanges() hRanges {
 		H3: randRange(2),
 		H4: randRange(3),
 	}
+}
+
+// isValidSettingValue returns false for values that would be rejected by applySettingKey,
+// preventing invalid data from overwriting valid settings in the DB.
+func isValidSettingValue(k, v string) bool {
+	switch k {
+	case "publicIPMode":
+		return v == "auto" || v == "manual"
+	case "chartType":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		return n >= 0 && n <= 3
+	}
+	return true // unknown keys pass through (applySettingKey will ignore them)
 }
 
 // applySettingKey applies a single k/v row from the settings table to a GlobalSettings struct.
