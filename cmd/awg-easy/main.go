@@ -229,9 +229,18 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down gracefully...")
+
+	// Stop tunnel manager first: closes stopCh → polling goroutine runs final
+	// FlushTrafficTotals() before exiting → traffic totals saved to SQLite.
+	// Must happen before db.Close() so the DB is still open during the flush.
+	if mgr := tunnel.Get(); mgr != nil {
+		mgr.Stop()
+	}
+
 	if err := app.Shutdown(); err != nil {
 		log.Printf("shutdown error: %v", err)
 	}
+	db.Close()
 	log.Println("Bye.")
 }
 
