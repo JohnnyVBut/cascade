@@ -1915,39 +1915,36 @@
 
             <!-- Template list -->
             <div v-for="tmpl in templates" :key="tmpl.id"
-              class="border-b last:border-b-0 dark:border-neutral-600 px-5 py-4 flex items-start gap-4">
-              <div class="flex-grow min-w-0">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span class="font-medium dark:text-neutral-200">{{ tmpl.name }}</span>
-                  <span v-if="tmpl.isDefault"
-                    class="text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full font-medium">
-                    Default
-                  </span>
-                </div>
-                <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1 font-mono">
-                  Jc={{ tmpl.jc }} Jmin={{ tmpl.jmin }} Jmax={{ tmpl.jmax }}
-                  &nbsp;|&nbsp; S1={{ tmpl.s1 }} S2={{ tmpl.s2 }} S3={{ tmpl.s3 }} S4={{ tmpl.s4 }}
-                </p>
-                <p v-if="tmpl.i1" class="text-xs text-gray-400 dark:text-neutral-500 mt-0.5 font-mono truncate">
-                  I1={{ tmpl.i1 }}
-                </p>
+              class="border-b last:border-b-0 dark:border-neutral-600 flex items-center gap-3"
+              style="padding:8px 20px;">
+              <div class="flex-grow min-w-0 flex items-center gap-2">
+                <span class="font-medium dark:text-neutral-200 text-sm">{{ tmpl.name }}</span>
+                <span v-if="tmpl.isDefault"
+                  class="text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-full font-medium"
+                  style="padding:1px 8px;">
+                  Default
+                </span>
               </div>
-              <div class="flex gap-2 flex-shrink-0">
+              <div class="flex gap-1.5 flex-shrink-0">
                 <button v-if="!tmpl.isDefault" @click="setDefaultTemplate(tmpl.id)"
-                  class="px-3 py-1.5 text-xs border border-purple-400 text-purple-600 dark:text-purple-400 rounded hover:bg-purple-50 dark:hover:bg-purple-900 transition">
+                  class="text-xs border border-purple-400 text-purple-600 dark:text-purple-400 rounded transition"
+                  style="padding:2px 8px;">
                   Set Default
                 </button>
                 <button @click="openTemplateEdit(tmpl)"
-                  class="px-3 py-1.5 text-xs border dark:border-neutral-500 text-gray-600 dark:text-neutral-300 rounded hover:bg-gray-50 dark:hover:bg-neutral-600 transition">
+                  class="text-xs border dark:border-neutral-500 text-gray-600 dark:text-neutral-300 rounded transition"
+                  style="padding:2px 8px;">
                   Edit
                 </button>
                 <button @click="exportTemplateJSON(tmpl)"
-                  class="px-3 py-1.5 text-xs border border-purple-300 text-purple-600 dark:text-purple-400 dark:border-purple-600 rounded transition"
-                  title="Download as JSON file">
-                  Export JSON
+                  class="text-xs border border-purple-300 text-purple-600 dark:text-purple-400 dark:border-purple-600 rounded transition"
+                  title="Download as JSON file"
+                  style="padding:2px 8px;">
+                  Export
                 </button>
                 <button @click="deleteTemplate(tmpl.id)"
-                  class="px-3 py-1.5 text-xs border border-red-300 text-red-600 dark:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900 transition">
+                  class="text-xs border border-red-300 text-red-600 dark:text-red-400 rounded transition"
+                  style="padding:2px 8px;">
                   Delete
                 </button>
               </div>
