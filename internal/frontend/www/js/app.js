@@ -223,6 +223,8 @@ new Vue({
       dns: '1.1.1.1, 8.8.8.8',
       defaultPersistentKeepalive: 25,
       defaultClientAllowedIPs: '0.0.0.0/0, ::/0',
+      subnetPool: '192.168.0.0/16',
+      portPool:   '51831-65535',
       gatewayWindowSeconds:     30,
       gatewayHealthyThreshold:  95,
       gatewayDegradedThreshold: 90,
