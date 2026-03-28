@@ -5,6 +5,7 @@ package api
 
 import (
 	"log"
+	"net"
 	"os"
 	"strings"
 
@@ -82,12 +83,31 @@ func RegisterSettings(api fiber.Router) {
 
 	// PUT /api/settings — partial update
 	// Body: { dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?,
+	//         subnetPool?, portPool?,
 	//         gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?,
 	//         routerName?, publicIPMode?, publicIPManual? }
 	api.Put("/settings", func(c *fiber.Ctx) error {
 		var body map[string]any
 		if err := c.BodyParser(&body); err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "Invalid JSON body")
+		}
+
+		// Validate pool fields explicitly so the user gets a clear error message
+		// instead of a silent revert to the previous (default) value.
+		if v, ok := body["portPool"].(string); ok {
+			if _, err := settings.ParsePortPool(v); err != nil {
+				return fiber.NewError(fiber.StatusBadRequest, "portPool: "+err.Error())
+			}
+		}
+		if v, ok := body["subnetPool"].(string); ok {
+			ip, network, err := net.ParseCIDR(v)
+			if err != nil {
+				return fiber.NewError(fiber.StatusBadRequest, "subnetPool: "+err.Error())
+			}
+			if !ip.Equal(network.IP) {
+				return fiber.NewError(fiber.StatusBadRequest,
+					"subnetPool: host bits are set — use a network address (e.g. 192.168.0.0/16)")
+			}
 		}
 
 		updated, err := settings.UpdateSettings(body)

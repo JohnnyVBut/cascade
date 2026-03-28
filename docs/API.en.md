@@ -91,6 +91,7 @@ curl -H "Authorization: Bearer ws_<token>" \
 |--------|------|-------------|
 | `GET` | `/api/tunnel-interfaces` | List interfaces. Returns `{ interfaces: [...] }` |
 | `POST` | `/api/tunnel-interfaces` | Create. Body: `{ name, address, listenPort, protocol, disableRoutes?, settings? }` |
+| `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: create and start a client interface in one step. Body: `{ name?: string, protocol?: string }`. Address and port are auto-assigned from SubnetPool/PortPool settings. AWG2 params come from the default template or a random profile. Response: `{ interface, started: bool, startError?: string }` |
 | `GET` | `/api/tunnel-interfaces/:id` | Get interface |
 | `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: partial fields |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Delete interface |

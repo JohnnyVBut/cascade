@@ -1337,170 +1337,234 @@
               <h2 class="text-2xl font-medium dark:text-neutral-200">Create Interface</h2>
             </div>
 
-            <div style="padding:16px 24px 24px;">
-              <div class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Interface Name</label>
-                <input v-model="interfaceCreate.name"
-                  type="text"
-                  placeholder="e.g., Main VPN Hub"
-                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+            <div style="padding:16px 24px 24px; overflow-y:auto;">
+
+              <!-- Quick / Manual mode toggle -->
+              <div class="mb-4" style="display:flex; justify-content:center;">
+                <div class="rounded overflow-hidden dark:border-neutral-500" style="display:flex; width:fit-content; border-width:1px;">
+                  <button @click="createMode='quick'"
+                    :style="createMode==='quick'
+                      ? 'padding:4px 20px; background:#7c3aed; color:#fff;'
+                      : 'padding:4px 20px; color:#6b7280;'"
+                    class="text-sm font-medium transition dark:text-neutral-300">
+                    Quick
+                  </button>
+                  <button @click="createMode='manual'"
+                    :style="createMode==='manual'
+                      ? 'padding:4px 20px; background:#7c3aed; color:#fff;'
+                      : 'padding:4px 20px; color:#6b7280;'"
+                    class="text-sm font-medium transition dark:text-neutral-300">
+                    Manual
+                  </button>
+                </div>
               </div>
 
-              <div class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Protocol</label>
-                <select v-model="interfaceCreate.protocol"
-                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                  <option value="wireguard-1.0">WireGuard 1.0</option>
-                  <option value="amneziawg-2.0">AmneziaWG 2.0</option>
-                </select>
-              </div>
+              <!-- ── QUICK form ───────────────────────────────────────── -->
+              <div v-if="createMode==='quick'">
+                <div class="mb-4 text-center">
+                  <p class="text-sm text-gray-500 dark:text-neutral-400">
+                    Creates a client interface instantly with auto-assigned address and port.
+                  </p>
+                </div>
 
-              <div class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
-                  Tunnel Address <span class="text-red-500">*</span>
-                </label>
-                <input v-model="interfaceCreate.address"
-                  type="text"
-                  placeholder="e.g., 10.100.0.1/24"
-                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Required. Used for peer IP allocation and NAT rules.</p>
-              </div>
+                <div class="mb-4">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Interface Name <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional, defaults to ID)</span></label>
+                  <input v-model="interfaceCreate.name"
+                    type="text"
+                    placeholder="e.g., Main VPN"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                </div>
 
-              <div class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Listen Port (optional, auto-assigned)</label>
-                <input v-model="interfaceCreate.listenPort"
-                  type="number"
-                  placeholder="e.g., 51830"
-                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-              </div>
+                <div class="mb-4">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Protocol</label>
+                  <select v-model="interfaceCreate.protocol"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    <option value="wireguard-1.0">WireGuard 1.0</option>
+                    <option value="amneziawg-2.0">AmneziaWG 2.0</option>
+                  </select>
+                </div>
 
-              <!-- Disable Routes -->
-              <div class="mb-4">
-                <label class="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" v-model="interfaceCreate.disableRoutes" class="w-4 h-4">
-                  <span class="text-sm font-medium dark:text-neutral-300">Disable Routes (Table = off)</span>
-                </label>
-                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1" style="margin-left: 24px;">
-                  Prevents WireGuard from adding automatic routes. Use when you manage routing yourself.
+                <p class="text-xs text-gray-400 dark:text-neutral-500 text-center">
+                  Address and port will be assigned automatically from the pool.<br>
+                  AWG2 obfuscation params will be set from your default template (or random).
                 </p>
               </div>
 
-              <!-- AWG 2.0 settings -->
-              <div v-if="interfaceCreate.protocol === 'amneziawg-2.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
-                <h3 class="font-medium dark:text-neutral-200 mb-3">AmneziaWG 2.0 Parameters</h3>
+              <!-- ── MANUAL form ─────────────────────────────────────── -->
+              <div v-if="createMode==='manual'">
+                <div class="mb-4">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Interface Name <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional, defaults to ID)</span></label>
+                  <input v-model="interfaceCreate.name"
+                    type="text"
+                    placeholder="e.g., Main VPN Hub"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                </div>
 
-                <!-- Profile selector: выбор шаблона обфускации -->
-                <div class="mb-3">
-                  <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Obfuscation Profile</label>
-                  <select v-model="interfaceCreate.selectedTemplateId"
-                    @change="onInterfaceTemplateSelect(interfaceCreate.selectedTemplateId)"
-                    class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                    <option value="">— Manual entry —</option>
-                    <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                <div class="mb-4">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Protocol</label>
+                  <select v-model="interfaceCreate.protocol"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    <option value="wireguard-1.0">WireGuard 1.0</option>
+                    <option value="amneziawg-2.0">AmneziaWG 2.0</option>
                   </select>
-                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
-                    Select a saved profile to fill parameters automatically, or enter manually below.
+                </div>
+
+                <div class="mb-4">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                    Tunnel Address <span class="text-red-500">*</span>
+                  </label>
+                  <input v-model="interfaceCreate.address"
+                    type="text"
+                    placeholder="e.g., 10.100.0.1/24"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Required. Used for peer IP allocation and NAT rules.</p>
+                </div>
+
+                <div class="mb-4">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Listen Port (optional, auto-assigned)</label>
+                  <input v-model="interfaceCreate.listenPort"
+                    type="number"
+                    placeholder="e.g., 51830"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                </div>
+
+                <!-- Disable Routes -->
+                <div class="mb-4">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="interfaceCreate.disableRoutes" class="w-4 h-4">
+                    <span class="text-sm font-medium dark:text-neutral-300">Disable Routes (Table = off)</span>
+                  </label>
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1" style="margin-left: 24px;">
+                    Prevents WireGuard from adding automatic routes. Use when you manage routing yourself.
                   </p>
                 </div>
 
-                <div class="grid grid-cols-3 gap-3 mb-3">
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Jc</label>
-                    <input v-model.number="interfaceCreate.settings.jc" type="number"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                <!-- AWG 2.0 settings -->
+                <div v-if="interfaceCreate.protocol === 'amneziawg-2.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                    <h3 class="font-medium dark:text-neutral-200">AmneziaWG 2.0 Parameters</h3>
+                    <button @click="generateAndFillInterfaceParams()"
+                      class="text-sm font-medium text-purple-600 dark:text-purple-400 rounded"
+                      style="padding:3px 10px; border:1px solid #9333ea;"
+                      title="Generate random AWG2 params and fill fields">
+                      Generate ⚡
+                    </button>
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Jmin</label>
-                    <input v-model.number="interfaceCreate.settings.jmin" type="number"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Jmax</label>
-                    <input v-model.number="interfaceCreate.settings.jmax" type="number"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                  </div>
-                </div>
 
-                <div class="grid grid-cols-4 gap-3 mb-3">
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S1</label>
-                    <input v-model.number="interfaceCreate.settings.s1" type="number"
+                  <!-- Profile selector -->
+                  <div class="mb-3">
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Obfuscation Profile</label>
+                    <select v-model="interfaceCreate.selectedTemplateId"
+                      @change="onInterfaceTemplateSelect(interfaceCreate.selectedTemplateId)"
                       class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                      <option value="">— Manual entry —</option>
+                      <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                    </select>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                      Select a saved profile to fill parameters automatically, or enter manually below.
+                    </p>
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S2</label>
-                    <input v-model.number="interfaceCreate.settings.s2" type="number"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S3</label>
-                    <input v-model.number="interfaceCreate.settings.s3" type="number"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S4</label>
-                    <input v-model.number="interfaceCreate.settings.s4" type="number"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-                  </div>
-                </div>
 
-                <div class="grid grid-cols-2 gap-3 mb-3">
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H1</label>
-                    <input v-model="interfaceCreate.settings.h1" type="text"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  <div class="grid grid-cols-3 gap-3 mb-3">
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Jc</label>
+                      <input v-model.number="interfaceCreate.settings.jc" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Jmin</label>
+                      <input v-model.number="interfaceCreate.settings.jmin" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Jmax</label>
+                      <input v-model.number="interfaceCreate.settings.jmax" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
                   </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H2</label>
-                    <input v-model="interfaceCreate.settings.h2" type="text"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H3</label>
-                    <input v-model="interfaceCreate.settings.h3" type="text"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
-                  </div>
-                  <div>
-                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H4</label>
-                    <input v-model="interfaceCreate.settings.h4" type="text"
-                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
-                  </div>
-                </div>
 
-                <!-- I1-I5: protocol imitation (optional) -->
-                <div class="mt-3 pt-3 dark:border-purple-700" style="border-top: 1px solid #e9d5ff;">
-                  <p class="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
-                    I1–I5 — Protocol Imitation <span class="font-normal opacity-75">(optional, leave empty to disable)</span>
-                  </p>
-                  <div class="grid grid-cols-5 gap-2">
+                  <div class="grid grid-cols-4 gap-3 mb-3">
                     <div>
-                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I1</label>
-                      <input v-model="interfaceCreate.settings.i1" type="text" placeholder="e.g. 1-100"
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S1</label>
+                      <input v-model.number="interfaceCreate.settings.s1" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S2</label>
+                      <input v-model.number="interfaceCreate.settings.s2" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S3</label>
+                      <input v-model.number="interfaceCreate.settings.s3" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">S4</label>
+                      <input v-model.number="interfaceCreate.settings.s4" type="number"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H1</label>
+                      <input v-model="interfaceCreate.settings.h1" type="text"
                         class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                     </div>
                     <div>
-                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I2</label>
-                      <input v-model="interfaceCreate.settings.i2" type="text" placeholder="e.g. 1-100"
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H2</label>
+                      <input v-model="interfaceCreate.settings.h2" type="text"
                         class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                     </div>
                     <div>
-                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I3</label>
-                      <input v-model="interfaceCreate.settings.i3" type="text" placeholder="e.g. 1-100"
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H3</label>
+                      <input v-model="interfaceCreate.settings.h3" type="text"
                         class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                     </div>
                     <div>
-                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I4</label>
-                      <input v-model="interfaceCreate.settings.i4" type="text" placeholder="e.g. 1-100"
-                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
-                    </div>
-                    <div>
-                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I5</label>
-                      <input v-model="interfaceCreate.settings.i5" type="text" placeholder="e.g. 1-100"
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">H4</label>
+                      <input v-model="interfaceCreate.settings.h4" type="text"
                         class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                     </div>
                   </div>
+
+                  <!-- I1-I5: protocol imitation (optional) -->
+                  <div class="mt-3 pt-3 dark:border-purple-700" style="border-top: 1px solid #e9d5ff;">
+                    <p class="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
+                      I1–I5 — Protocol Imitation <span class="font-normal opacity-75">(optional, leave empty to disable)</span>
+                    </p>
+                    <div class="grid grid-cols-5 gap-2">
+                      <div>
+                        <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I1</label>
+                        <input v-model="interfaceCreate.settings.i1" type="text" placeholder="e.g. 1-100"
+                          class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I2</label>
+                        <input v-model="interfaceCreate.settings.i2" type="text" placeholder="e.g. 1-100"
+                          class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I3</label>
+                        <input v-model="interfaceCreate.settings.i3" type="text" placeholder="e.g. 1-100"
+                          class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I4</label>
+                        <input v-model="interfaceCreate.settings.i4" type="text" placeholder="e.g. 1-100"
+                          class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium dark:text-neutral-300 mb-1">I5</label>
+                        <input v-model="interfaceCreate.settings.i5" type="text" placeholder="e.g. 1-100"
+                          class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </div><!-- end manual form -->
+
             </div>
 
             <div class="modal-section dark:border-neutral-600">
@@ -1509,9 +1573,12 @@
                   class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded hover:bg-gray-50 dark:hover:bg-neutral-600 dark:text-neutral-200 transition">
                   Cancel
                 </button>
-                <button @click="createTunnelInterface"
-                  class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
-                  Create
+                <!-- Create button calls the appropriate method based on createMode -->
+                <button @click="createMode==='quick' ? quickCreateTunnelInterface() : createTunnelInterface()"
+                  :class="createMode==='quick'
+                    ? 'px-4 py-2 bg-purple-600 text-white rounded transition'
+                    : 'px-4 py-2 bg-green-600 text-white rounded transition'">
+                  {{ createMode === 'quick' ? 'Create &amp; Start' : 'Create' }}
                 </button>
               </div>
             </div>
@@ -1821,6 +1888,28 @@
                 <input v-model="globalSettings.defaultClientAllowedIPs" type="text" placeholder="0.0.0.0/0, ::/0"
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono text-sm">
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">What the client routes through the VPN (full tunnel = 0.0.0.0/0, ::/0).</p>
+              </div>
+
+              <!-- Quick Interface Creation Pool -->
+              <div style="border-top-width:1px; padding-top:12px;" class="dark:border-neutral-600">
+                <p class="text-sm font-semibold dark:text-neutral-300 mb-3">Quick Interface Pool</p>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Subnet Pool</label>
+                  <input v-model="globalSettings.subnetPool" type="text" placeholder="192.168.0.0/16"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono text-sm">
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                    IPv4 CIDR. Quick-create auto-assigns the first free /24 from this range (e.g. 192.168.0.1/24).
+                  </p>
+                </div>
+                <div style="margin-top:12px;">
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Port Pool</label>
+                  <input v-model="globalSettings.portPool" type="text" placeholder="51831-65535"
+                    class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono text-sm">
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                    Ranges and/or individual ports: <span class="font-mono">51831-51840, 52000, 54321-54330</span>.
+                    Quick-create picks the first available port with a UDP bind test.
+                  </p>
+                </div>
               </div>
 
               <!-- Gateway Monitor -->

@@ -91,6 +91,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 |-------|------|----------|
 | `GET` | `/api/tunnel-interfaces` | Список интерфейсов. Возвращает `{ interfaces: [...] }` |
 | `POST` | `/api/tunnel-interfaces` | Создать. Body: `{ name, address, listenPort, protocol, disableRoutes?, settings? }` |
+| `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: создать и запустить клиентский интерфейс одной командой. Body: `{ name?: string, protocol?: string }`. Адрес и порт назначаются автоматически из SubnetPool/PortPool. AWG2 параметры — из шаблона по умолчанию или random. Ответ: `{ interface, started: bool, startError?: string }` |
 | `GET` | `/api/tunnel-interfaces/:id` | Получить интерфейс |
 | `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: частичные поля |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Удалить интерфейс |

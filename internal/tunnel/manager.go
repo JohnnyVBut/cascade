@@ -15,10 +15,12 @@ package tunnel
 import (
 	"fmt"
 	"log"
+	"net"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 )
@@ -39,9 +41,17 @@ type CreateInput struct {
 	Name          string
 	Protocol      string             // default: "wireguard-1.0"
 	Address       string             // CIDR e.g. "10.8.0.1/24"
-	ListenPort    int                // 0 = auto-assign starting from 51830
+	ListenPort    int                // 0 = auto-assign; if PortPool is also set, pool takes priority
+	PortPool      string             // when non-empty and ListenPort==0: select port from pool under lock
 	DisableRoutes bool
 	AWG2          *peer.AWG2Settings // required for amneziawg-2.0
+}
+
+// QuickCreateResult is returned by Manager.QuickCreate.
+type QuickCreateResult struct {
+	Interface  *TunnelInterface
+	Started    bool
+	StartError error
 }
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
@@ -172,10 +182,8 @@ func (m *Manager) startPolling() {
 // interface ID (wg10, wg11, …) and listen port (51830+), inserts into SQLite,
 // writes the initial config file, and returns the new TunnelInterface.
 // The interface is NOT started; call StartInterface explicitly.
+// If inp.Name is empty it defaults to the assigned interface ID.
 func (m *Manager) CreateInterface(inp CreateInput) (*TunnelInterface, error) {
-	if inp.Name == "" {
-		return nil, fmt.Errorf("interface name is required")
-	}
 	if inp.Protocol == "" {
 		inp.Protocol = "wireguard-1.0"
 	}
@@ -197,14 +205,33 @@ func (m *Manager) CreateInterface(inp CreateInput) (*TunnelInterface, error) {
 	defer m.mu.Unlock()
 
 	id := m.nextInterfaceID()
+
+	// Default name to interface ID if not provided.
+	name := inp.Name
+	if name == "" {
+		name = id
+	}
+
+	// Port selection happens under the lock to prevent concurrent QuickCreate calls
+	// from assigning the same port to two different interfaces.
 	port := inp.ListenPort
 	if port == 0 {
-		port = m.nextListenPort()
+		if inp.PortPool != "" {
+			// Pool-based selection with UDP bind test — runs under the lock so two
+			// concurrent QuickCreate calls cannot select the same port.
+			var portErr error
+			port, portErr = m.nextListenPortFromPoolLocked(inp.PortPool)
+			if portErr != nil {
+				return nil, fmt.Errorf("select port from pool: %w", portErr)
+			}
+		} else {
+			port = m.nextListenPort()
+		}
 	}
 
 	t, err := Create(InterfaceInput{
 		ID:            id,
-		Name:          inp.Name,
+		Name:          name,
 		Protocol:      inp.Protocol,
 		Address:       inp.Address,
 		ListenPort:    port,
@@ -225,6 +252,65 @@ func (m *Manager) CreateInterface(inp CreateInput) (*TunnelInterface, error) {
 	m.interfaces[id] = t
 	log.Printf("tunnel: interface %s created (protocol=%s port=%d)", id, inp.Protocol, port)
 	return t, nil
+}
+
+// QuickCreate creates and immediately starts a client interface (disableRoutes=false).
+// Address is auto-assigned from settings.SubnetPool (/24 block, first host X.X.X.1/24).
+// Port is auto-assigned from settings.PortPool with a UDP bind test performed under
+// the Manager lock — preventing two concurrent QuickCreate calls from racing to the
+// same port.
+// For amneziawg-2.0, AWG2 params come from the default template or a random profile.
+// Returns QuickCreateResult with StartError set (non-nil) if creation succeeded but start failed.
+func (m *Manager) QuickCreate(name, protocol string) (*QuickCreateResult, error) {
+	if protocol == "" {
+		protocol = "wireguard-1.0"
+	}
+
+	gs, err := settings.GetSettings()
+	if err != nil {
+		return nil, fmt.Errorf("get settings: %w", err)
+	}
+
+	// Auto-assign subnet from pool.  Done outside the lock — nextSubnet takes its
+	// own snapshot. Address collisions are benign because the DB unique constraint
+	// will catch them, and subnet exhaustion is checked freshly here before calling
+	// CreateInterface (which will recheck under the lock for port selection anyway).
+	address, err := m.nextSubnet(gs.SubnetPool)
+	if err != nil {
+		return nil, fmt.Errorf("no available subnet in pool %q: %w", gs.SubnetPool, err)
+	}
+
+	// Build AWG2 params before acquiring the lock (may hit the DB / generator).
+	var awg2 *peer.AWG2Settings
+	if protocol == "amneziawg-2.0" {
+		awg2, err = m.buildAWG2Params()
+		if err != nil {
+			return nil, fmt.Errorf("build AWG2 params: %w", err)
+		}
+	}
+
+	// Port selection is delegated to CreateInterface via PortPool field so that it
+	// happens under the Manager write lock, preventing two concurrent QuickCreate
+	// calls from selecting the same port.
+	iface, err := m.CreateInterface(CreateInput{
+		Name:          name,
+		Protocol:      protocol,
+		Address:       address,
+		PortPool:      gs.PortPool, // port selected under lock inside CreateInterface
+		DisableRoutes: false,       // Quick mode is always client interface
+		AWG2:          awg2,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create interface: %w", err)
+	}
+
+	// Start the interface — failure is non-fatal (returned separately).
+	startErr := iface.Start()
+	return &QuickCreateResult{
+		Interface:  iface,
+		Started:    startErr == nil,
+		StartError: startErr,
+	}, nil
 }
 
 // GetInterface returns the TunnelInterface for the given ID, or nil if not found.
@@ -431,6 +517,7 @@ func (m *Manager) nextInterfaceID() string {
 }
 
 // nextListenPort returns the lowest available UDP port starting from 51830.
+// Used by CreateInterface when ListenPort == 0 and no portPool context.
 // Must be called with m.mu held (at least RLock).
 func (m *Manager) nextListenPort() int {
 	used := make(map[int]bool, len(m.interfaces))
@@ -441,5 +528,171 @@ func (m *Manager) nextListenPort() int {
 		if !used[port] {
 			return port
 		}
+	}
+}
+
+// nextListenPortFromPoolLocked finds the first port from portPool that is:
+//  1. Not already used by an existing interface.
+//  2. Bindable via UDP (net.ListenPacket test).
+//
+// Must be called with m.mu held (write or read lock) — reads m.interfaces directly
+// without acquiring a separate lock.  Used by CreateInterface under m.mu.Lock().
+func (m *Manager) nextListenPortFromPoolLocked(portPool string) (int, error) {
+	ports, err := settings.ParsePortPool(portPool)
+	if err != nil {
+		return 0, fmt.Errorf("parse port pool: %w", err)
+	}
+
+	used := make(map[int]bool, len(m.interfaces))
+	for _, t := range m.interfaces {
+		used[t.ListenPort] = true
+	}
+
+	for _, p := range ports {
+		if used[p] {
+			continue
+		}
+		// UDP bind test — verifies the port is actually free in the OS.
+		conn, err := net.ListenPacket("udp", fmt.Sprintf(":%d", p))
+		if err != nil {
+			continue // port in use by another process
+		}
+		conn.Close()
+		return p, nil
+	}
+	return 0, fmt.Errorf("all ports in pool are in use")
+}
+
+// nextSubnet finds the first /24 block inside pool whose network address is not
+// already occupied by an existing interface, and returns "X.X.X.1/24".
+//
+// Algorithm: enumerate all /24 blocks within the pool CIDR in address order;
+// skip any whose network address is already a prefix of an existing interface address.
+// Does NOT require m.mu (reads a snapshot).
+func (m *Manager) nextSubnet(pool string) (string, error) {
+	_, poolNet, err := net.ParseCIDR(pool)
+	if err != nil {
+		return "", fmt.Errorf("invalid subnet pool CIDR %q: %w", pool, err)
+	}
+
+	// Build a set of /24 network addresses already in use.
+	m.mu.RLock()
+	usedNets := make(map[[4]byte]bool, len(m.interfaces))
+	for _, t := range m.interfaces {
+		ip, _, parseErr := net.ParseCIDR(t.Address)
+		if parseErr != nil {
+			continue
+		}
+		ip4 := ip.To4()
+		if ip4 == nil {
+			continue
+		}
+		// /24 network address: zero last octet.
+		key := [4]byte{ip4[0], ip4[1], ip4[2], 0}
+		usedNets[key] = true
+	}
+	m.mu.RUnlock()
+
+	// Iterate /24 blocks inside the pool.
+	base := poolNet.IP.To4()
+	if base == nil {
+		return "", fmt.Errorf("subnet pool must be an IPv4 CIDR")
+	}
+	poolOnes, _ := poolNet.Mask.Size()
+
+	// Number of /24 blocks in the pool: 2^(24-poolOnes) if poolOnes <= 24.
+	if poolOnes > 24 {
+		return "", fmt.Errorf("subnet pool /%d is smaller than /24", poolOnes)
+	}
+
+	start := ipToUint32(base)
+	// Round start down to a /24 boundary.
+	start = start &^ 0xFF
+
+	// Compute the last address in the pool using arithmetic (avoids casting
+	// net.IPMask to net.IP, which is semantically fragile).
+	poolEnd := start | (uint32(1)<<(32-uint(poolOnes)) - 1)
+
+	for cur := start; cur < poolEnd; cur += 256 {
+		curIP := net.IP([]byte{byte(cur >> 24), byte(cur >> 16), byte(cur >> 8), byte(cur)})
+		// Check that this /24 is contained in the pool.
+		if !poolNet.Contains(curIP) {
+			continue
+		}
+		key := [4]byte{curIP[0], curIP[1], curIP[2], 0}
+		if usedNets[key] {
+			continue
+		}
+		// Return the first host (.1) in this /24.
+		return fmt.Sprintf("%d.%d.%d.1/24", curIP[0], curIP[1], curIP[2]), nil
+	}
+	return "", fmt.Errorf("all /24 subnets in pool are in use")
+}
+
+// ipToUint32 converts a 4-byte IPv4 address to a uint32 (big-endian).
+func ipToUint32(ip net.IP) uint32 {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return 0
+	}
+	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
+}
+
+// buildAWG2Params returns AWG2 params for QuickCreate.
+// Priority: default template → random generated profile.
+func (m *Manager) buildAWG2Params() (*peer.AWG2Settings, error) {
+	p, err := settings.ApplyDefaultTemplate()
+	if err != nil {
+		return nil, fmt.Errorf("apply default template: %w", err)
+	}
+	if p != nil {
+		return awg2ParamsFromTemplate(p), nil
+	}
+	// No default template — generate a random profile.
+	generated := awgparams.Generate(awgparams.Options{Profile: "random", Intensity: "medium"})
+	return awg2ParamsFromGenerated(&generated), nil
+}
+
+// awg2ParamsFromTemplate converts settings.AWG2Params to peer.AWG2Settings.
+func awg2ParamsFromTemplate(p *settings.AWG2Params) *peer.AWG2Settings {
+	return &peer.AWG2Settings{
+		Jc:   p.Jc,
+		Jmin: p.Jmin,
+		Jmax: p.Jmax,
+		S1:   p.S1,
+		S2:   p.S2,
+		S3:   p.S3,
+		S4:   p.S4,
+		H1:   p.H1,
+		H2:   p.H2,
+		H3:   p.H3,
+		H4:   p.H4,
+		I1:   p.I1,
+		I2:   p.I2,
+		I3:   p.I3,
+		I4:   p.I4,
+		I5:   p.I5,
+	}
+}
+
+// awg2ParamsFromGenerated converts awgparams.Params to peer.AWG2Settings.
+func awg2ParamsFromGenerated(p *awgparams.Params) *peer.AWG2Settings {
+	return &peer.AWG2Settings{
+		Jc:   p.Jc,
+		Jmin: p.Jmin,
+		Jmax: p.Jmax,
+		S1:   p.S1,
+		S2:   p.S2,
+		S3:   p.S3,
+		S4:   p.S4,
+		H1:   p.H1,
+		H2:   p.H2,
+		H3:   p.H3,
+		H4:   p.H4,
+		I1:   p.I1,
+		I2:   p.I2,
+		I3:   p.I3,
+		I4:   p.I4,
+		I5:   p.I5,
 	}
 }

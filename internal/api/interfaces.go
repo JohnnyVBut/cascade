@@ -4,6 +4,7 @@
 //
 //	GET    /api/tunnel-interfaces
 //	POST   /api/tunnel-interfaces
+//	POST   /api/tunnel-interfaces/quick-create   ← MUST be registered before /:id
 //	GET    /api/tunnel-interfaces/:id
 //	PATCH  /api/tunnel-interfaces/:id
 //	DELETE /api/tunnel-interfaces/:id
@@ -37,6 +38,10 @@ func RegisterInterfaces(api fiber.Router) {
 
 	g.Get("", listInterfaces)
 	g.Post("", createInterface)
+
+	// quick-create MUST be registered before /:id to avoid Fiber routing
+	// the literal path segment "quick-create" as a parameter value.
+	g.Post("/quick-create", quickCreateInterface)
 
 	g.Get("/:id", getInterface)
 	g.Patch("/:id", updateInterface)
@@ -147,6 +152,49 @@ func createInterface(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	return c.Status(fiber.StatusCreated).JSON(ifaceJSON(t, false))
+}
+
+// POST /api/tunnel-interfaces/quick-create
+// Body: { name?: string, protocol?: string }
+// Creates and starts a client interface (disableRoutes=false) in one step.
+// Address and port are auto-assigned from SubnetPool / PortPool settings.
+// AWG2 params come from the default template, or a random profile if no default is set.
+//
+// Response: { interface: {...}, started: bool, startError?: string }
+// HTTP 200: always (even if start failed), so the UI can show the toast regardless.
+// HTTP 400: if creation itself failed (pool exhausted, key-gen error, etc.).
+func quickCreateInterface(c *fiber.Ctx) error {
+	var body struct {
+		Name     string `json:"name"`
+		Protocol string `json:"protocol"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+
+	result, err := mgr().QuickCreate(strings.TrimSpace(body.Name), body.Protocol)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	// Rebuild firewall PBR routing tables now that the interface is up.
+	// Same pattern as startInterface (FIX-GO-9): wg-quick up creates the
+	// kernel interface, so "ip route replace ... dev wgX table N" can succeed.
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after quick-create %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	resp := fiber.Map{
+		"interface": ifaceJSON(result.Interface, false),
+		"started":   result.Started,
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
+	}
+	return c.JSON(resp)
 }
 
 // PATCH /api/tunnel-interfaces/:id

@@ -347,6 +347,203 @@ func TestUpdateSettings_ChartType_InvalidIgnored(t *testing.T) {
 	}
 }
 
+// ── SubnetPool + PortPool ─────────────────────────────────────────────────────
+
+func TestGetSettings_SubnetPoolDefault(t *testing.T) {
+	initTestDB(t)
+	s, err := GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.SubnetPool != "192.168.0.0/16" {
+		t.Errorf("SubnetPool default = %q, want '192.168.0.0/16'", s.SubnetPool)
+	}
+}
+
+func TestGetSettings_PortPoolDefault(t *testing.T) {
+	initTestDB(t)
+	s, err := GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.PortPool != "51831-65535" {
+		t.Errorf("PortPool default = %q, want '51831-65535'", s.PortPool)
+	}
+}
+
+func TestUpdateSettings_SubnetPool_Valid(t *testing.T) {
+	initTestDB(t)
+	s, err := UpdateSettings(map[string]any{"subnetPool": "10.0.0.0/8"})
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if s.SubnetPool != "10.0.0.0/8" {
+		t.Errorf("SubnetPool = %q, want '10.0.0.0/8'", s.SubnetPool)
+	}
+}
+
+func TestUpdateSettings_SubnetPool_InvalidIgnored(t *testing.T) {
+	initTestDB(t)
+	// Invalid CIDR should be ignored — default stays.
+	s, err := UpdateSettings(map[string]any{"subnetPool": "not-a-cidr"})
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if s.SubnetPool != "192.168.0.0/16" {
+		t.Errorf("SubnetPool should stay default on invalid value, got %q", s.SubnetPool)
+	}
+}
+
+func TestUpdateSettings_PortPool_Valid(t *testing.T) {
+	initTestDB(t)
+	s, err := UpdateSettings(map[string]any{"portPool": "51831-51840, 52000"})
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if s.PortPool != "51831-51840, 52000" {
+		t.Errorf("PortPool = %q, want '51831-51840, 52000'", s.PortPool)
+	}
+}
+
+func TestUpdateSettings_PortPool_InvalidIgnored(t *testing.T) {
+	initTestDB(t)
+	s, err := UpdateSettings(map[string]any{"portPool": "not-a-port"})
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if s.PortPool != "51831-65535" {
+		t.Errorf("PortPool should stay default on invalid value, got %q", s.PortPool)
+	}
+}
+
+func TestParsePortPool_Range(t *testing.T) {
+	ports, err := ParsePortPool("51831-51835")
+	if err != nil {
+		t.Fatalf("ParsePortPool: %v", err)
+	}
+	if len(ports) != 5 {
+		t.Errorf("expected 5 ports, got %d", len(ports))
+	}
+	if ports[0] != 51831 || ports[4] != 51835 {
+		t.Errorf("unexpected ports: %v", ports)
+	}
+}
+
+func TestParsePortPool_Single(t *testing.T) {
+	ports, err := ParsePortPool("52000")
+	if err != nil {
+		t.Fatalf("ParsePortPool: %v", err)
+	}
+	if len(ports) != 1 || ports[0] != 52000 {
+		t.Errorf("expected [52000], got %v", ports)
+	}
+}
+
+func TestParsePortPool_Mixed(t *testing.T) {
+	ports, err := ParsePortPool("51831-51833, 52000, 54321-54322")
+	if err != nil {
+		t.Fatalf("ParsePortPool: %v", err)
+	}
+	// 3 + 1 + 2 = 6 ports
+	if len(ports) != 6 {
+		t.Errorf("expected 6 ports, got %d: %v", len(ports), ports)
+	}
+}
+
+func TestParsePortPool_Sorted(t *testing.T) {
+	ports, err := ParsePortPool("54321, 51831-51833, 52000")
+	if err != nil {
+		t.Fatalf("ParsePortPool: %v", err)
+	}
+	for i := 1; i < len(ports); i++ {
+		if ports[i] <= ports[i-1] {
+			t.Errorf("ports not sorted at index %d: %v", i, ports)
+		}
+	}
+}
+
+func TestParsePortPool_Deduplication(t *testing.T) {
+	ports, err := ParsePortPool("51831-51833, 51832-51834")
+	if err != nil {
+		t.Fatalf("ParsePortPool: %v", err)
+	}
+	// 51831,51832,51833,51834 — 4 unique
+	if len(ports) != 4 {
+		t.Errorf("expected 4 unique ports, got %d: %v", len(ports), ports)
+	}
+}
+
+func TestParsePortPool_InvalidRange(t *testing.T) {
+	if _, err := ParsePortPool("abc-def"); err == nil {
+		t.Error("expected error for invalid range 'abc-def'")
+	}
+}
+
+func TestParsePortPool_OutOfRange(t *testing.T) {
+	if _, err := ParsePortPool("0"); err == nil {
+		t.Error("expected error for port 0 (below 1)")
+	}
+	if _, err := ParsePortPool("70000"); err == nil {
+		t.Error("expected error for port 70000 (above 65535)")
+	}
+}
+
+func TestParsePortPool_PrivilegedPortsAllowed(t *testing.T) {
+	// Ports 1–1023 (privileged) must be accepted — running in Docker/root context.
+	ports, err := ParsePortPool("433-442")
+	if err != nil {
+		t.Fatalf("ParsePortPool 433-442: %v", err)
+	}
+	if len(ports) != 10 {
+		t.Errorf("expected 10 ports, got %d: %v", len(ports), ports)
+	}
+	if ports[0] != 433 {
+		t.Errorf("expected first port 433, got %d", ports[0])
+	}
+}
+
+func TestParsePortPool_Empty(t *testing.T) {
+	if _, err := ParsePortPool(""); err == nil {
+		t.Error("expected error for empty pool")
+	}
+}
+
+func TestParsePortPool_StartGreaterThanEnd(t *testing.T) {
+	if _, err := ParsePortPool("51840-51831"); err == nil {
+		t.Error("expected error for range where start > end")
+	}
+}
+
+func TestParsePortPool_NegativeNumber(t *testing.T) {
+	// "-1" starts with '-' at index 0, so idx == 0 — treated as single port, not range.
+	if _, err := ParsePortPool("-1"); err == nil {
+		t.Error("expected error for negative port -1")
+	}
+}
+
+func TestParsePortPool_WhitespaceOnlySegment(t *testing.T) {
+	// "51831, , 52000" has an empty segment after trim — should be silently skipped.
+	ports, err := ParsePortPool("51831, , 52000")
+	if err != nil {
+		t.Fatalf("ParsePortPool: %v", err)
+	}
+	if len(ports) != 2 {
+		t.Errorf("expected 2 ports, got %d: %v", len(ports), ports)
+	}
+}
+
+func TestUpdateSettings_SubnetPool_HostBitsSet(t *testing.T) {
+	initTestDB(t)
+	// "192.168.1.5/16" has host bits set — must be rejected (FINDING-3).
+	s, err := UpdateSettings(map[string]any{"subnetPool": "192.168.1.5/16"})
+	if err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	if s.SubnetPool != "192.168.0.0/16" {
+		t.Errorf("SubnetPool with host bits should be rejected, got %q", s.SubnetPool)
+	}
+}
+
 // ── generateRandomHRanges ─────────────────────────────────────────────────────
 
 func TestGenerateRandomHRanges_NonOverlapping(t *testing.T) {
