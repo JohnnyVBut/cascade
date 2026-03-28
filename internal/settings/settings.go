@@ -511,9 +511,9 @@ func generateRandomHRanges() hRanges {
 }
 
 // ParsePortPool parses a port pool string into a sorted list of unique port numbers.
-// Accepts: single ports ("51831"), ranges ("51831-51840"), comma-separated combinations.
-// All ports must be in the range 1024–65535.
-// Example: "51831-51840, 52000, 54321-54330"
+// Accepts: single ports ("433"), ranges ("433-442"), comma-separated combinations.
+// All ports must be in the range 1–65535.
+// Example: "433-442, 8080, 51831-65535"
 func ParsePortPool(s string) ([]int, error) {
 	seen := make(map[int]struct{})
 	for _, part := range strings.Split(s, ",") {
@@ -532,11 +532,11 @@ func ParsePortPool(s string) ([]int, error) {
 			if err1 != nil || err2 != nil {
 				return nil, fmt.Errorf("invalid port range %q", part)
 			}
-			if lo < 1024 || lo > 65535 {
-				return nil, fmt.Errorf("port %d out of range 1024-65535", lo)
+			if lo < 1 || lo > 65535 {
+				return nil, fmt.Errorf("port %d out of range 1-65535", lo)
 			}
-			if hi < 1024 || hi > 65535 {
-				return nil, fmt.Errorf("port %d out of range 1024-65535", hi)
+			if hi < 1 || hi > 65535 {
+				return nil, fmt.Errorf("port %d out of range 1-65535", hi)
 			}
 			if lo > hi {
 				return nil, fmt.Errorf("port range %q: start > end", part)
@@ -549,8 +549,8 @@ func ParsePortPool(s string) ([]int, error) {
 			if err != nil {
 				return nil, fmt.Errorf("invalid port %q", part)
 			}
-			if p < 1024 || p > 65535 {
-				return nil, fmt.Errorf("port %d out of range 1024-65535", p)
+			if p < 1 || p > 65535 {
+				return nil, fmt.Errorf("port %d out of range 1-65535", p)
 			}
 			seen[p] = struct{}{}
 		}

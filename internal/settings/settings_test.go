@@ -480,11 +480,25 @@ func TestParsePortPool_InvalidRange(t *testing.T) {
 }
 
 func TestParsePortPool_OutOfRange(t *testing.T) {
-	if _, err := ParsePortPool("100"); err == nil {
-		t.Error("expected error for port 100 (below 1024)")
+	if _, err := ParsePortPool("0"); err == nil {
+		t.Error("expected error for port 0 (below 1)")
 	}
 	if _, err := ParsePortPool("70000"); err == nil {
 		t.Error("expected error for port 70000 (above 65535)")
+	}
+}
+
+func TestParsePortPool_PrivilegedPortsAllowed(t *testing.T) {
+	// Ports 1–1023 (privileged) must be accepted — running in Docker/root context.
+	ports, err := ParsePortPool("433-442")
+	if err != nil {
+		t.Fatalf("ParsePortPool 433-442: %v", err)
+	}
+	if len(ports) != 10 {
+		t.Errorf("expected 10 ports, got %d: %v", len(ports), ports)
+	}
+	if ports[0] != 433 {
+		t.Errorf("expected first port 433, got %d", ports[0])
 	}
 }
 
