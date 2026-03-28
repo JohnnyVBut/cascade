@@ -160,6 +160,7 @@ new Vue({
     selectedInterfacePeers: [],
     allPeers: [],            // dashboard: flat list of peers from all interfaces
     showInterfaceCreate: false,
+    createMode: 'quick',        // 'quick' | 'manual' — controls which form is shown in the create modal
     showInterfaceEdit: false,
     interfaceEdit: {
       id: null,
@@ -861,11 +862,7 @@ new Vue({
 
         const newIface = await res.json();
         this.showInterfaceCreate = false;
-        this.interfaceCreate = {
-          name: '', protocol: 'wireguard-1.0', address: '', listenPort: '', disableRoutes: false,
-          selectedTemplateId: '',
-          settings: { jc: 6, jmin: 10, jmax: 50, s1: 64, s2: 67, s3: 64, s4: 4, h1: '', h2: '', h3: '', h4: '', i1: '', i2: '', i3: '', i4: '', i5: '' },
-        };
+        this._resetInterfaceCreate();
 
         await this.loadTunnelInterfaces();
         // Auto-switch to the new interface tab
@@ -876,6 +873,114 @@ new Vue({
         console.error('Failed to create interface:', err);
         this.showToast(`Failed: ${err.message}`, 'error');
       }
+    },
+
+    // ========================================================================
+    // Quick Create Interface
+    // ========================================================================
+
+    async quickCreateTunnelInterface() {
+      try {
+        const body = {
+          protocol: this.interfaceCreate.protocol,
+        };
+        // Name is optional — server defaults to interface ID when omitted.
+        const trimmedName = (this.interfaceCreate.name || '').trim();
+        if (trimmedName) {
+          body.name = trimmedName;
+        }
+
+        const res = await fetch('./api/tunnel-interfaces/quick-create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.message || res.statusText);
+        }
+
+        const data = await res.json();
+        this.showInterfaceCreate = false;
+        this._resetInterfaceCreate();
+        await this.loadTunnelInterfaces();
+
+        const iface = data.interface || {};
+        const addr  = iface.address    || '';
+        const port  = iface.listenPort || '';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : '';
+
+        if (data.started) {
+          this.showToast(`✅ ${iface.id} created & started\n${addr} · UDP ${port}${proto}`, 'success');
+          this.activeInterfaceId = iface.id;
+        } else {
+          this.showToast(
+            `⚠️ ${iface.id} created but failed to start\n${data.startError || 'Unknown error'}`,
+            'error'
+          );
+        }
+      } catch (err) {
+        console.error('Quick create failed:', err);
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    // generateAndFillInterfaceParams — fills AWG2 fields in the Manual form
+    // by generating a random profile via the /templates/generate endpoint.
+    async generateAndFillInterfaceParams() {
+      try {
+        const res = await fetch('./api/templates/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ profile: 'random', intensity: 'medium' }),
+        });
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.message || res.statusText);
+        }
+        const params = await res.json();
+        // Merge generated params into interfaceCreate.settings.
+        Object.assign(this.interfaceCreate.settings, {
+          jc:   params.jc   ?? this.interfaceCreate.settings.jc,
+          jmin: params.jmin ?? this.interfaceCreate.settings.jmin,
+          jmax: params.jmax ?? this.interfaceCreate.settings.jmax,
+          s1:   params.s1   ?? this.interfaceCreate.settings.s1,
+          s2:   params.s2   ?? this.interfaceCreate.settings.s2,
+          s3:   params.s3   ?? this.interfaceCreate.settings.s3,
+          s4:   params.s4   ?? this.interfaceCreate.settings.s4,
+          h1:   params.h1   ?? this.interfaceCreate.settings.h1,
+          h2:   params.h2   ?? this.interfaceCreate.settings.h2,
+          h3:   params.h3   ?? this.interfaceCreate.settings.h3,
+          h4:   params.h4   ?? this.interfaceCreate.settings.h4,
+          i1:   params.i1   ?? this.interfaceCreate.settings.i1,
+          i2:   params.i2   ?? this.interfaceCreate.settings.i2,
+          i3:   params.i3   ?? this.interfaceCreate.settings.i3,
+          i4:   params.i4   ?? this.interfaceCreate.settings.i4,
+          i5:   params.i5   ?? this.interfaceCreate.settings.i5,
+        });
+        this.showToast('AWG2 params generated ✓', 'success');
+      } catch (err) {
+        console.error('generateAndFillInterfaceParams failed:', err);
+        this.showToast(`Failed to generate params: ${err.message}`, 'error');
+      }
+    },
+
+    // _resetInterfaceCreate resets the create-modal state including createMode.
+    // Called after both quick-create and manual create complete.
+    _resetInterfaceCreate() {
+      this.createMode = 'quick';
+      this.interfaceCreate = {
+        name: '', protocol: 'wireguard-1.0', address: '', listenPort: '',
+        disableRoutes: false, selectedTemplateId: '',
+        settings: {
+          jc: 6, jmin: 10, jmax: 50, s1: 64, s2: 67, s3: 64, s4: 4,
+          h1: '', h2: '', h3: '', h4: '',
+          i1: '', i2: '', i3: '', i4: '', i5: '',
+        },
+      };
     },
 
     // ========================================================================
