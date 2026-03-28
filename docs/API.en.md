@@ -65,8 +65,12 @@ curl -H "Authorization: Bearer ws_<token>" \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/settings` | Global settings |
-| `PUT` | `/api/settings` | Partial update. Body: `{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold? }` |
+| `GET` | `/api/settings` | Global settings + runtime info. Returns `GlobalSettings` extended with `{ hostname, resolvedPublicIP, publicIPWarning, awgMode }` |
+| `PUT` | `/api/settings` | Partial update. Returns same shape as GET. Body fields (all optional): `{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, routerName?, publicIPMode? ("auto"\|"manual"), publicIPManual?, chartType? (0–3), subnetPool?, portPool? }` |
+
+`subnetPool` — CIDR block for auto-assigning /24 subnets in Quick-Create (e.g. `"192.168.0.0/16"`). Must be a network address (no host bits set). Invalid value → **400**.
+
+`portPool` — Port ranges/list for auto-assigning listen ports (e.g. `"51831-65535"`, `"433-442, 8080"`). Ports 1–65535 accepted. Invalid value → **400**.
 
 ---
 

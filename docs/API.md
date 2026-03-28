@@ -65,8 +65,12 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| `GET` | `/api/settings` | Глобальные настройки |
-| `PUT` | `/api/settings` | Частичное обновление. Body: `{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold? }` |
+| `GET` | `/api/settings` | Глобальные настройки + runtime-данные. Возвращает `GlobalSettings` расширенный полями `{ hostname, resolvedPublicIP, publicIPWarning, awgMode }` |
+| `PUT` | `/api/settings` | Частичное обновление. Возвращает то же что GET. Поля body (все опциональны): `{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, routerName?, publicIPMode? ("auto"\|"manual"), publicIPManual?, chartType? (0–3), subnetPool?, portPool? }` |
+
+`subnetPool` — CIDR-блок для автоматического назначения /24-подсетей при Quick-Create (например `"192.168.0.0/16"`). Должен быть сетевым адресом (без установленных хост-битов). Невалидное значение → **400**.
+
+`portPool` — Диапазоны/список портов для автоматического назначения listen-порта (например `"51831-65535"`, `"433-442, 8080"`). Разрешены порты 1–65535. Невалидное значение → **400**.
 
 ---
 
