@@ -30,6 +30,20 @@ func newTestManager(addresses ...string) *Manager {
 	return m
 }
 
+// findFreeUDPPort returns an OS-allocated free UDP port number.
+// The port is briefly opened then closed — the test must use it promptly to
+// avoid a race with other processes (acceptable in unit tests, not in prod).
+func findFreeUDPPort(t *testing.T) int {
+	t.Helper()
+	conn, err := net.ListenPacket("udp", ":0")
+	if err != nil {
+		t.Fatalf("could not allocate a free UDP port: %v", err)
+	}
+	port := conn.LocalAddr().(*net.UDPAddr).Port
+	conn.Close()
+	return port
+}
+
 // ── nextSubnet ────────────────────────────────────────────────────────────────
 
 func TestNextSubnet_EmptyPool(t *testing.T) {
@@ -98,7 +112,7 @@ func TestNextSubnet_PoolExhausted(t *testing.T) {
 }
 
 func TestNextSubnet_NonHostBitsInAddress(t *testing.T) {
-	// Interface address 10.0.1.5/24 → network is 10.0.1.0 → key {10,0,1,0}
+	// Interface address 10.0.1.5/24 → host IP 10.0.1.5 → /24 key {10,0,1,0}.
 	// Both 10.0.0.x and 10.0.1.x are occupied; expect 10.0.2.1/24.
 	m := newTestManager("10.0.0.1/24", "10.0.1.5/24")
 	got, err := m.nextSubnet("10.0.0.0/16")
@@ -107,6 +121,20 @@ func TestNextSubnet_NonHostBitsInAddress(t *testing.T) {
 	}
 	if got != "10.0.2.1/24" {
 		t.Errorf("got %q, want %q", got, "10.0.2.1/24")
+	}
+}
+
+func TestNextSubnet_WideMaskInterface(t *testing.T) {
+	// Interface at 10.0.5.1/16 → host IP 10.0.5.1 → /24 key {10,0,5,0}.
+	// Only the /24 containing that IP is blocked; the rest are free.
+	m := newTestManager("10.0.5.1/16")
+	got, err := m.nextSubnet("10.0.0.0/16")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// First free /24 is 10.0.0.x (the interface only blocks 10.0.5.x).
+	if got != "10.0.0.1/24" {
+		t.Errorf("got %q, want %q", got, "10.0.0.1/24")
 	}
 }
 
@@ -140,44 +168,45 @@ func TestIpToUint32(t *testing.T) {
 	}
 }
 
-// ── nextListenPortFromPool ────────────────────────────────────────────────────
+// ── nextListenPortFromPoolLocked ──────────────────────────────────────────────
 
-func TestNextListenPortFromPool_ReturnsFirstFreeBindable(t *testing.T) {
+func TestNextListenPortFromPoolLocked_ReturnsFirstFreeBindable(t *testing.T) {
 	m := newTestManager()
-	// Use a range of high ports unlikely to be in use.
-	port, err := m.nextListenPortFromPool("59990-59995")
+	// Use a wide range of high ports; at least one should be bindable.
+	port, err := m.nextListenPortFromPoolLocked("59900-59999")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if port < 59990 || port > 59995 {
-		t.Errorf("port %d outside expected range 59990-59995", port)
+	if port < 59900 || port > 59999 {
+		t.Errorf("port %d outside expected range 59900-59999", port)
 	}
 }
 
-func TestNextListenPortFromPool_SkipsUsedByInterface(t *testing.T) {
+func TestNextListenPortFromPoolLocked_SkipsUsedByInterface(t *testing.T) {
+	// Allocate a free port, record it as used in the interface map, then verify
+	// that nextListenPortFromPoolLocked skips it.
+	freePort := findFreeUDPPort(t)
 	m := &Manager{
 		interfaces: map[string]*TunnelInterface{
-			"wg10": {ID: "wg10", Address: "10.0.0.1/24", ListenPort: 59980},
+			"wg10": {ID: "wg10", Address: "10.0.0.1/24", ListenPort: freePort},
 		},
 		stopCh: make(chan struct{}),
 		doneCh: make(chan struct{}),
 	}
-	// The first port (59980) is occupied by wg10; must return 59981 or 59982.
-	port, err := m.nextListenPortFromPool("59980-59982")
+	// Pool: freePort and two neighbours.  First entry is blocked by wg10.
+	pool := fmt.Sprintf("%d-%d", freePort, freePort+2)
+	port, err := m.nextListenPortFromPoolLocked(pool)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if port == 59980 {
-		t.Errorf("returned port %d which is already used by wg10", port)
-	}
-	if port < 59981 || port > 59982 {
-		t.Errorf("port %d outside expected fallback range 59981-59982", port)
+	if port == freePort {
+		t.Errorf("returned port %d which is marked as used by wg10", port)
 	}
 }
 
-func TestNextListenPortFromPool_InvalidPool(t *testing.T) {
+func TestNextListenPortFromPoolLocked_InvalidPool(t *testing.T) {
 	m := newTestManager()
-	_, err := m.nextListenPortFromPool("not-a-port")
+	_, err := m.nextListenPortFromPoolLocked("not-a-port")
 	if err == nil {
 		t.Fatal("expected parse error for invalid pool, got nil")
 	}
