@@ -8,6 +8,10 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"net"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,6 +38,10 @@ type GlobalSettings struct {
 
 	// UI preferences
 	ChartType int `json:"chartType"` // 0=none, 1=line, 2=area, 3=bar
+
+	// Quick-create pools
+	SubnetPool string `json:"subnetPool"` // CIDR block for auto-assigning /24 subnets, e.g. "192.168.0.0/16"
+	PortPool   string `json:"portPool"`   // Port ranges/list for auto-assigning listen ports, e.g. "51831-65535"
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -96,7 +104,9 @@ var defaults = GlobalSettings{
 	GatewayHealthyThreshold:    95,
 	GatewayDegradedThreshold:   90,
 	PublicIPMode:               "auto",
-	ChartType:                  2, // area by default
+	ChartType:                  2,              // area by default
+	SubnetPool:                 "192.168.0.0/16",
+	PortPool:                   "51831-65535",
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -500,6 +510,62 @@ func generateRandomHRanges() hRanges {
 	}
 }
 
+// ParsePortPool parses a port pool string into a sorted list of unique port numbers.
+// Accepts: single ports ("51831"), ranges ("51831-51840"), comma-separated combinations.
+// All ports must be in the range 1024–65535.
+// Example: "51831-51840, 52000, 54321-54330"
+func ParsePortPool(s string) ([]int, error) {
+	seen := make(map[int]struct{})
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// A range is "lo-hi" where lo is a positive decimal integer.
+		// Guard: part must not start with '-' (negative number) and must
+		// contain '-' only after at least one digit (e.g. "51831-51840").
+		if idx := strings.Index(part, "-"); idx > 0 {
+			loStr := strings.TrimSpace(part[:idx])
+			hiStr := strings.TrimSpace(part[idx+1:])
+			lo, err1 := strconv.Atoi(loStr)
+			hi, err2 := strconv.Atoi(hiStr)
+			if err1 != nil || err2 != nil {
+				return nil, fmt.Errorf("invalid port range %q", part)
+			}
+			if lo < 1024 || lo > 65535 {
+				return nil, fmt.Errorf("port %d out of range 1024-65535", lo)
+			}
+			if hi < 1024 || hi > 65535 {
+				return nil, fmt.Errorf("port %d out of range 1024-65535", hi)
+			}
+			if lo > hi {
+				return nil, fmt.Errorf("port range %q: start > end", part)
+			}
+			for p := lo; p <= hi; p++ {
+				seen[p] = struct{}{}
+			}
+		} else {
+			p, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid port %q", part)
+			}
+			if p < 1024 || p > 65535 {
+				return nil, fmt.Errorf("port %d out of range 1024-65535", p)
+			}
+			seen[p] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil, fmt.Errorf("port pool is empty")
+	}
+	out := make([]int, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	sort.Ints(out)
+	return out, nil
+}
+
 // isValidSettingValue returns false for values that would be rejected by applySettingKey,
 // preventing invalid data from overwriting valid settings in the DB.
 func isValidSettingValue(k, v string) bool {
@@ -510,6 +576,15 @@ func isValidSettingValue(k, v string) bool {
 		var n int
 		fmt.Sscanf(v, "%d", &n)
 		return n >= 0 && n <= 3
+	case "subnetPool":
+		// Require a proper network address (no host bits set).
+		// net.ParseCIDR("192.168.1.5/16") succeeds but returns network 192.168.0.0/16.
+		// We compare the input IP to the masked network IP to catch this.
+		ip, network, err := net.ParseCIDR(v)
+		return err == nil && ip.Equal(network.IP)
+	case "portPool":
+		_, err := ParsePortPool(v)
+		return err == nil
 	}
 	return true // unknown keys pass through (applySettingKey will ignore them)
 }
@@ -550,6 +625,14 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 		fmt.Sscanf(v, "%d", &n)
 		if n >= 0 && n <= 3 {
 			s.ChartType = n
+		}
+	case "subnetPool":
+		if ip, network, err := net.ParseCIDR(v); err == nil && ip.Equal(network.IP) {
+			s.SubnetPool = v
+		}
+	case "portPool":
+		if _, err := ParsePortPool(v); err == nil {
+			s.PortPool = v
 		}
 	}
 }
