@@ -943,7 +943,7 @@ new Vue({
           const error = await res.json().catch(() => ({}));
           throw new Error(error.message || res.statusText);
         }
-        const params = await res.json();
+        const { params } = await res.json();
         // Merge generated params into interfaceCreate.settings.
         Object.assign(this.interfaceCreate.settings, {
           jc:   params.jc   ?? this.interfaceCreate.settings.jc,
