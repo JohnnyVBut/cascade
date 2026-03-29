@@ -61,6 +61,22 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 ---
 
+## Версия и обновления
+
+| Метод | Путь | Auth | Описание |
+|-------|------|------|----------|
+| `GET` | `/api/version` | ❌ публичный | Текущая версия + инфо о последнем релизе с GitHub. Ответ: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `GET` | `/api/health` | ❌ публичный | Health-check. Ответ: `{ status: "ok", version, host }` |
+
+`version` равен `"dev"` для локальных сборок без ldflags. Инжектируется при сборке через:
+```
+-ldflags "-X ...version.Version=v1.2.3 -X ...version.GitCommit=abc1234"
+```
+Проверка обновлений поллит `https://api.github.com/repos/JohnnyVBut/cascade/releases/latest` раз в 24 ч.
+Первая проверка — через 10 с после старта. Результат кэшируется в памяти — `/api/version` всегда отвечает мгновенно.
+
+---
+
 ## Настройки
 
 | Метод | Путь | Описание |

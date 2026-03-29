@@ -27,6 +27,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/routing"
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
 	"github.com/JohnnyVBut/cascade/internal/users"
+	"github.com/JohnnyVBut/cascade/internal/version"
 )
 
 // Config holds all runtime configuration resolved from flags and ENV.
@@ -43,6 +44,13 @@ type Config struct {
 
 func main() {
 	cfg := parseConfig()
+
+	log.Printf("Cascade %s (%s)", version.Version, version.GitCommit)
+
+	// Start background update checker — polls GitHub Releases API every 24 h.
+	// Runs in a goroutine; first check happens after a 10 s delay so the
+	// container is fully online before making the outbound request.
+	version.Start()
 
 	// ── Database ──────────────────────────────────────────────────────────────
 	// Must be first: all managers depend on db.DB().
@@ -104,13 +112,16 @@ func main() {
 	apiGroup.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status":  "ok",
-			"version": "3.0.0-alpha",
+			"version": version.Version,
 			"host":    cfg.Host,
 		})
 	})
 
 	// Session login/logout — intentionally not behind AuthMiddleware.
 	api.RegisterAuth(apiGroup)
+
+	// Version + update status — unauthenticated so the UI can show it before login.
+	api.RegisterVersion(apiGroup)
 
 	// Legacy shims that are safe without auth (lang, release, feature flags).
 	api.RegisterCompat(apiGroup)

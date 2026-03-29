@@ -23,8 +23,15 @@ if [[ "$BRANCH" == "master" ]]; then
     echo -e "${YELLOW}Building locally anyway (e.g. for testing before push)...${NC}"
 fi
 
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 echo -e "${GREEN}Building Docker image (Go/Fiber)...${NC}"
-docker build --network=host -f Dockerfile.go -t cascade:latest .
+echo -e "  Version:    ${VERSION}"
+echo -e "  Git commit: ${GIT_COMMIT}"
+docker build --network=host -f Dockerfile.go -t cascade:latest \
+  --build-arg VERSION="${VERSION}" \
+  --build-arg GIT_COMMIT="${GIT_COMMIT}" \
+  .
 
 # Detect compose command (v2 plugin vs v1 standalone)
 if docker compose version &>/dev/null 2>&1; then

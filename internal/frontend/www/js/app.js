@@ -66,6 +66,7 @@ new Vue({
   data: {
     authenticated: null,
     authenticating: false,
+    versionInfo: null,       // populated by loadVersionInfo() — version + update status
     username: 'admin',     // login form username field
     password: null,
     requiresPassword: null,
@@ -983,6 +984,21 @@ new Vue({
           i1: '', i2: '', i3: '', i4: '', i5: '',
         },
       };
+    },
+
+    // ========================================================================
+    // Version / Update check
+    // ========================================================================
+
+    async loadVersionInfo() {
+      try {
+        const res = await fetch('./api/version');
+        if (res.ok) {
+          this.versionInfo = await res.json();
+        }
+      } catch (_) {
+        // silently ignore — non-critical
+      }
     },
 
     // ========================================================================
@@ -3038,6 +3054,11 @@ new Vue({
       .then((rememberMeEnabled) => {
         this.rememberMeEnabled = rememberMeEnabled;
       });
+
+    // Version info — fetch immediately (unauthenticated endpoint) and refresh
+    // every 24 h so the update badge appears without a page reload.
+    this.loadVersionInfo();
+    setInterval(() => this.loadVersionInfo(), 24 * 60 * 60 * 1000);
 
     setInterval(() => {
       this.refresh({

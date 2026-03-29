@@ -61,6 +61,22 @@ curl -H "Authorization: Bearer ws_<token>" \
 
 ---
 
+## Version & Updates
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/version` | ❌ public | Current version + latest release info from GitHub. Response: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `GET` | `/api/health` | ❌ public | Health check. Response: `{ status: "ok", version, host }` |
+
+`version` is `"dev"` for local builds without ldflags. Injected at build time via:
+```
+-ldflags "-X ...version.Version=v1.2.3 -X ...version.GitCommit=abc1234"
+```
+Update check polls `https://api.github.com/repos/JohnnyVBut/cascade/releases/latest` every 24 h.
+First check happens 10 s after startup. Results are cached in memory — `/api/version` always returns instantly.
+
+---
+
 ## Settings
 
 | Method | Path | Description |

@@ -258,6 +258,23 @@
                 {{$t("logout")}}
               </span>
             </div>
+            <!-- Version row -->
+            <div style="margin-top: 8px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+              <span v-if="versionInfo"
+                class="text-xs font-mono"
+                :style="{ color: theme === 'dark' ? '#737373' : '#9ca3af' }"
+                :title="versionInfo.gitCommit ? 'commit ' + versionInfo.gitCommit : ''">
+                {{ versionInfo.version }}
+              </span>
+              <!-- Update available badge -->
+              <a v-if="versionInfo && versionInfo.updateAvailable"
+                :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
+                target="_blank"
+                :title="'New version available: ' + versionInfo.latestVersion"
+                style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600; text-decoration:none; background:#f59e0b; color:#fff; flex-shrink:0;">
+                ↑ {{ versionInfo.latestVersion }}
+              </a>
+            </div>
           </div>
         </nav>
 
@@ -265,19 +282,17 @@
         <main class="flex-grow overflow-y-auto" style="height: 100vh; padding: 24px 32px;">
 
         <!-- Update banner -->
-        <div v-if="latestRelease"
-          class="bg-red-800 dark:bg-red-100 p-4 text-white dark:text-red-600 text-sm font-small mb-4 rounded-md shadow-lg"
-          :title="`v${currentRelease} → v${latestRelease.version}`">
-          <div class="flex flex-row flex-auto items-center">
-            <div class="flex-grow">
-              <p class="font-bold">{{$t("updateAvailable")}}</p>
-              <p>{{latestRelease.changelog}}</p>
-            </div>
-            <a href="https://github.com/wg-easy/wg-easy#updating" target="_blank"
-              class="p-3 rounded-md bg-white dark:bg-red-100 float-right font-sm font-semibold text-red-800 dark:text-red-600 flex-shrink-0 border-2 border-red-800 dark:border-red-600 transition-all">
-              {{$t("update")}} →
-            </a>
+        <div v-if="versionInfo && versionInfo.updateAvailable"
+          style="background:#92400e; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
+          <div style="flex:1; color:#fff;">
+            <span style="font-weight:600; font-size:14px;">Update available: {{ versionInfo.latestVersion }}</span>
+            <span style="font-size:13px; margin-left:8px; opacity:0.85;">(current: {{ versionInfo.version }})</span>
           </div>
+          <a :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
+            target="_blank"
+            style="padding:6px 14px; border-radius:6px; background:#fff; color:#92400e; font-weight:600; font-size:13px; text-decoration:none; flex-shrink:0; border:2px solid #fff;">
+            View release →
+          </a>
         </div>
 
         <!-- ============================================================== -->
