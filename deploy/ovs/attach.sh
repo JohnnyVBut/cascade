@@ -85,11 +85,20 @@ fi
 command -v ovs-docker &>/dev/null || fail "ovs-docker not found. Install openvswitch-switch."
 docker inspect "$CONTAINER" &>/dev/null   || fail "Container '$CONTAINER' not found or not running."
 
-# ── Remove stale port if present (container restart changes the veth pair) ────
+# ── Remove stale ports (container restart creates new veth, old ports accumulate) ──
+# ovs-docker del-port uses external_ids which may not be set → also purge dead ports
+# by name: any port in the bridge whose netdev is missing (error: "No such device")
 if ovs-docker del-port "$OVS_BRIDGE" "$CONTAINER_IFACE" "$CONTAINER" 2>/dev/null; then
-  info "Removed stale OVS port (container was restarted)"
-  sleep 0.5
+  info "Removed stale OVS port via ovs-docker (container was restarted)"
 fi
+# Also remove any dead ports (netdev gone) to keep OVS clean
+DEAD_PORTS=$(ovs-vsctl list interface 2>/dev/null \
+  | awk '/error.*No such device/{found=1} found && /name.*:/{print; found=0}' \
+  | grep -oP '(?<=name\s{16}: ")[^"]+' || true)
+for dp in $DEAD_PORTS; do
+  ovs-vsctl --if-exists del-port "$OVS_BRIDGE" "$dp" 2>/dev/null && info "Purged dead OVS port: $dp"
+done
+sleep 0.5
 
 # ── Add port (without --vlan: not supported in all ovs-docker versions) ───────
 CMD="ovs-docker add-port $OVS_BRIDGE $CONTAINER_IFACE $CONTAINER \
@@ -109,11 +118,14 @@ if [[ -n "$VLAN" ]]; then
 
   # Method 1: iflink → host veth name → OVS port (most reliable)
   PEER_IDX=$(docker exec "$CONTAINER" cat /sys/class/net/"$CONTAINER_IFACE"/iflink 2>/dev/null || true)
+  info "Method 1: container iflink=${PEER_IDX:-<empty>}"
   if [[ -n "$PEER_IDX" ]]; then
-    HOST_VETH=$(ip link show | awk -F': ' "/^${PEER_IDX}:/{print \$2}" | tr -d ' @' | head -1)
+    HOST_VETH=$(ip link show | awk -F': ' "/^${PEER_IDX}:/{print \$2}" | cut -d@ -f1 | head -1)
+    info "Method 1: host veth=${HOST_VETH:-<not found>}"
     if [[ -n "$HOST_VETH" ]]; then
       PORT_NAME=$(ovs-vsctl --data=bare --no-heading --columns=name \
         find interface name="$HOST_VETH" 2>/dev/null || true)
+      info "Method 1: OVS port=${PORT_NAME:-<not found in OVS>}"
     fi
   fi
 
