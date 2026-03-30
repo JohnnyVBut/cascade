@@ -15,6 +15,7 @@
 #   --ip        CIDR   IP address with prefix, e.g. 192.168.20.5/24
 #   --gateway   IP     Default gateway IP, e.g. 192.168.20.1
 #   --vlan      ID     VLAN ID for 802.1q tagging (optional)
+#   --mac       MAC    Fixed MAC address, e.g. 02:42:ac:14:00:05 (optional)
 #
 # Example (VLAN 20, explicit args):
 #   bash deploy/ovs/attach.sh \
@@ -44,6 +45,7 @@ CONTAINER_IFACE=${OVS_IFACE:-eth0}
 CONTAINER_IP=${OVS_IP:-}
 GATEWAY=${OVS_GATEWAY:-}
 VLAN=${OVS_VLAN:-}
+MAC_ADDR=${OVS_MAC:-}
 
 # ── Parse CLI args ────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --ip)        CONTAINER_IP="$2";    shift 2 ;;
     --gateway)   GATEWAY="$2";         shift 2 ;;
     --vlan)      VLAN="$2";            shift 2 ;;
+    --mac)       MAC_ADDR="$2";        shift 2 ;;
     *) fail "Unknown argument: $1" ;;
   esac
 done
@@ -107,6 +110,18 @@ CMD="ovs-docker add-port $OVS_BRIDGE $CONTAINER_IFACE $CONTAINER \
 
 info "Running: $CMD"
 eval $CMD
+
+# ── Set fixed MAC address (prevents ARP churn on container restart) ───────────
+if [[ -n "$MAC_ADDR" ]]; then
+  docker exec "$CONTAINER" ip link set "$CONTAINER_IFACE" down
+  docker exec "$CONTAINER" ip link set "$CONTAINER_IFACE" address "$MAC_ADDR"
+  docker exec "$CONTAINER" ip link set "$CONTAINER_IFACE" up
+  # ip link set down removes the default route — re-add it
+  docker exec "$CONTAINER" ip route add default via "$GATEWAY" dev "$CONTAINER_IFACE" 2>/dev/null || true
+  # Gratuitous ARP to flush upstream ARP caches immediately
+  docker exec "$CONTAINER" arping -c 1 -A -I "$CONTAINER_IFACE" "${CONTAINER_IP%%/*}" 2>/dev/null || true
+  ok "MAC address set to $MAC_ADDR"
+fi
 
 # ── Set VLAN tag via ovs-vsctl ────────────────────────────────────────────────
 # Finding the OVS port reliably:
@@ -162,7 +177,8 @@ ok "  Bridge    : $OVS_BRIDGE"
 ok "  Interface : $CONTAINER_IFACE"
 ok "  IP        : $CONTAINER_IP"
 ok "  Gateway   : $GATEWAY"
-[[ -n "$VLAN" ]] && ok "  VLAN      : $VLAN"
+[[ -n "$VLAN" ]]     && ok "  VLAN      : $VLAN"
+[[ -n "$MAC_ADDR" ]] && ok "  MAC       : $MAC_ADDR"
 echo ""
 
 # ── Verify container sees the route ──────────────────────────────────────────

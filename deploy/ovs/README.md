@@ -60,6 +60,7 @@ OVS_BRIDGE=br-trunk
 OVS_IP=192.168.20.5/24
 OVS_GATEWAY=192.168.20.1
 OVS_VLAN=20
+# OVS_MAC=02:42:ac:14:00:05  (optional — fixes MAC to avoid ARP churn on restart)
 # OVS_IFACE=eth0  (default)
 # CASCADE_CONTAINER=cascade  (default)
 ```
