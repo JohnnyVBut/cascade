@@ -85,15 +85,31 @@ fi
 command -v ovs-docker &>/dev/null || fail "ovs-docker not found. Install openvswitch-switch."
 docker inspect "$CONTAINER" &>/dev/null   || fail "Container '$CONTAINER' not found or not running."
 
-# ── Build ovs-docker command ──────────────────────────────────────────────────
+# ── Add port (without --vlan: not supported in all ovs-docker versions) ───────
 CMD="ovs-docker add-port $OVS_BRIDGE $CONTAINER_IFACE $CONTAINER \
   --ipaddress=$CONTAINER_IP \
   --gateway=$GATEWAY"
 
-[[ -n "$VLAN" ]] && CMD="$CMD --vlan=$VLAN"
-
 info "Running: $CMD"
 eval $CMD
+
+# ── Set VLAN tag via ovs-vsctl (the portable way) ─────────────────────────────
+# ovs-docker creates a port named after the container ID + iface.
+# Find it by external_ids set by ovs-docker, then apply the tag.
+if [[ -n "$VLAN" ]]; then
+  CONTAINER_ID=$(docker inspect --format='{{.Id}}' "$CONTAINER")
+  PORT_NAME=$(ovs-vsctl --data=bare --no-heading --columns=name find interface \
+    external_ids:container_id="$CONTAINER_ID" \
+    external_ids:container_iface="$CONTAINER_IFACE" 2>/dev/null || true)
+
+  if [[ -n "$PORT_NAME" ]]; then
+    ovs-vsctl set port "$PORT_NAME" tag="$VLAN"
+    ok "VLAN tag $VLAN set on port $PORT_NAME"
+  else
+    warn "Could not find OVS port to set VLAN tag — set manually:"
+    warn "  ovs-vsctl set port <port-name> tag=$VLAN"
+  fi
+fi
 
 ok "Interface attached:"
 ok "  Container : $CONTAINER"
