@@ -99,23 +99,38 @@ CMD="ovs-docker add-port $OVS_BRIDGE $CONTAINER_IFACE $CONTAINER \
 info "Running: $CMD"
 eval $CMD
 
-# ── Set VLAN tag via ovs-vsctl (the portable way) ─────────────────────────────
-# ovs-docker naming convention: {first 13 chars of container ID}_l
-# Some versions also set external_ids — try both.
+# ── Set VLAN tag via ovs-vsctl ────────────────────────────────────────────────
+# Finding the OVS port reliably:
+#   The iflink file inside the container holds the ifindex of the host-side
+#   veth peer. We resolve that to an interface name, then look it up in OVS.
+#   This works regardless of container ID, ovs-docker version, or naming scheme.
 if [[ -n "$VLAN" ]]; then
-  CONTAINER_ID=$(docker inspect --format='{{.Id}}' "$CONTAINER")
+  PORT_NAME=""
 
-  # Method 1: external_ids (newer ovs-docker versions)
-  PORT_NAME=$(ovs-vsctl --data=bare --no-heading --columns=name find interface \
-    external_ids:container_id="$CONTAINER_ID" \
-    external_ids:container_iface="$CONTAINER_IFACE" 2>/dev/null || true)
+  # Method 1: iflink → host veth name → OVS port (most reliable)
+  PEER_IDX=$(docker exec "$CONTAINER" cat /sys/class/net/"$CONTAINER_IFACE"/iflink 2>/dev/null || true)
+  if [[ -n "$PEER_IDX" ]]; then
+    HOST_VETH=$(ip link show | awk -F': ' "/^${PEER_IDX}:/{print \$2}" | tr -d ' @' | head -1)
+    if [[ -n "$HOST_VETH" ]]; then
+      PORT_NAME=$(ovs-vsctl --data=bare --no-heading --columns=name \
+        find interface name="$HOST_VETH" 2>/dev/null || true)
+    fi
+  fi
 
-  # Method 2: standard naming pattern {13-char-id}_l (most versions)
+  # Method 2: external_ids set by newer ovs-docker versions
   if [[ -z "$PORT_NAME" ]]; then
-    PORT_NAME="${CONTAINER_ID:0:13}_l"
-    # Verify it actually exists on the bridge
-    if ! ovs-vsctl list-ports "$OVS_BRIDGE" 2>/dev/null | grep -qx "$PORT_NAME"; then
-      PORT_NAME=""
+    CONTAINER_ID=$(docker inspect --format='{{.Id}}' "$CONTAINER")
+    PORT_NAME=$(ovs-vsctl --data=bare --no-heading --columns=name find interface \
+      external_ids:container_id="$CONTAINER_ID" \
+      external_ids:container_iface="$CONTAINER_IFACE" 2>/dev/null || true)
+  fi
+
+  # Method 3: {first 13 chars of container ID}_l naming pattern
+  if [[ -z "$PORT_NAME" ]]; then
+    CONTAINER_ID=$(docker inspect --format='{{.Id}}' "$CONTAINER" 2>/dev/null || true)
+    CANDIDATE="${CONTAINER_ID:0:13}_l"
+    if ovs-vsctl list-ports "$OVS_BRIDGE" 2>/dev/null | grep -qx "$CANDIDATE"; then
+      PORT_NAME="$CANDIDATE"
     fi
   fi
 
