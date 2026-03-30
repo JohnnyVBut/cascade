@@ -43,6 +43,14 @@ services:
       - WG_PORT=51820
       - DEBUG=false
 
+      # ── AWG userspace mode ─────────────────────────────────────────────────
+      # The amneziavpn/amneziawg-go image provides /usr/bin/amneziawg-go.
+      # Without this variable wg-quick/awg-quick falls back to kernel module
+      # detection and reports "kernel" mode even when no module is loaded.
+      # Setting it explicitly: correct mode badge in UI + correct KernelSetPeer
+      # / KernelRemovePeer logic (syncconf instead of full restart).
+      - WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go
+
       # ── Isolated-mode flags ────────────────────────────────────────────────
       # Tell entrypoint.sh to wait for OVS to attach the network interface
       # before starting Cascade (prevents PostUp getIsp failure on startup).
