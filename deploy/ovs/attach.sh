@@ -94,13 +94,24 @@ info "Running: $CMD"
 eval $CMD
 
 # ── Set VLAN tag via ovs-vsctl (the portable way) ─────────────────────────────
-# ovs-docker creates a port named after the container ID + iface.
-# Find it by external_ids set by ovs-docker, then apply the tag.
+# ovs-docker naming convention: {first 13 chars of container ID}_l
+# Some versions also set external_ids — try both.
 if [[ -n "$VLAN" ]]; then
   CONTAINER_ID=$(docker inspect --format='{{.Id}}' "$CONTAINER")
+
+  # Method 1: external_ids (newer ovs-docker versions)
   PORT_NAME=$(ovs-vsctl --data=bare --no-heading --columns=name find interface \
     external_ids:container_id="$CONTAINER_ID" \
     external_ids:container_iface="$CONTAINER_IFACE" 2>/dev/null || true)
+
+  # Method 2: standard naming pattern {13-char-id}_l (most versions)
+  if [[ -z "$PORT_NAME" ]]; then
+    PORT_NAME="${CONTAINER_ID:0:13}_l"
+    # Verify it actually exists on the bridge
+    if ! ovs-vsctl list-ports "$OVS_BRIDGE" 2>/dev/null | grep -qx "$PORT_NAME"; then
+      PORT_NAME=""
+    fi
+  fi
 
   if [[ -n "$PORT_NAME" ]]; then
     ovs-vsctl set port "$PORT_NAME" tag="$VLAN"
@@ -108,6 +119,7 @@ if [[ -n "$VLAN" ]]; then
   else
     warn "Could not find OVS port to set VLAN tag — set manually:"
     warn "  ovs-vsctl set port <port-name> tag=$VLAN"
+    warn "  (list ports: ovs-vsctl list-ports $OVS_BRIDGE)"
   fi
 fi
 
