@@ -34,6 +34,9 @@ info() { echo -e "${B}  [→]${N} $*"; }
 warn() { echo -e "${Y}  [!]${N} $*"; }
 fail() { echo -e "${R}  [✗]${N} $*"; exit 1; }
 
+# ── Load .env first so its values are available for defaults below ────────────
+[[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
+
 # ── Defaults (overridable from .env or CLI args) ──────────────────────────────
 CONTAINER=${CASCADE_CONTAINER:-cascade}
 OVS_BRIDGE=${OVS_BRIDGE:-br-trunk}
@@ -41,9 +44,6 @@ CONTAINER_IFACE=${OVS_IFACE:-eth0}
 CONTAINER_IP=${OVS_IP:-}
 GATEWAY=${OVS_GATEWAY:-}
 VLAN=${OVS_VLAN:-}
-
-# ── Load .env if present ──────────────────────────────────────────────────────
-[[ -f "$ENV_FILE" ]] && source "$ENV_FILE"
 
 # ── Parse CLI args ────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
