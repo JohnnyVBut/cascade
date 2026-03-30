@@ -112,6 +112,14 @@ info "Running: $CMD"
 eval $CMD
 
 # ── Set fixed MAC address (prevents ARP churn on container restart) ───────────
+# If OVS_MAC not set — derive deterministically from container IP so the MAC is
+# always the same for this IP without needing to store anything.
+# Format: 02:00:XX:XX:XX:XX  (locally administered, unicast; last 4 = IP octets)
+if [[ -z "$MAC_ADDR" ]]; then
+  IFS='.' read -r _o1 _o2 _o3 _o4 <<< "${CONTAINER_IP%%/*}"
+  MAC_ADDR=$(printf "02:00:%02x:%02x:%02x:%02x" "$_o1" "$_o2" "$_o3" "$_o4")
+  info "Generated MAC from IP: $MAC_ADDR (set OVS_MAC in .env to override)"
+fi
 if [[ -n "$MAC_ADDR" ]]; then
   docker exec "$CONTAINER" ip link set "$CONTAINER_IFACE" down
   docker exec "$CONTAINER" ip link set "$CONTAINER_IFACE" address "$MAC_ADDR"
