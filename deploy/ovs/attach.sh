@@ -103,17 +103,23 @@ ok "Config saved to $ENV_FILE"
 command -v ovs-docker &>/dev/null || fail "ovs-docker not found. Install openvswitch-switch."
 
 # ── Start container if not running ────────────────────────────────────────────
-if ! docker inspect "$CONTAINER" &>/dev/null; then
+# Use docker ps (not docker inspect) — inspect also matches images by name,
+# which have no .State and cause ovs-docker to fail with "map has no entry for key State".
+is_running() { docker ps --filter "name=^/${CONTAINER}$" --filter "status=running" -q | grep -q .; }
+
+if ! is_running; then
   if [[ ! -f "$COMPOSE_FILE" ]]; then
     fail "Container '$CONTAINER' not running and $COMPOSE_FILE not found."
   fi
   info "Container not running — starting with docker compose..."
   docker compose -f "$COMPOSE_FILE" up -d
-  info "Waiting for container to initialize..."
-  sleep 2
+  info "Waiting for container to be ready..."
+  for i in $(seq 1 30); do
+    is_running && break
+    sleep 1
+    [[ $i -eq 30 ]] && fail "Container '$CONTAINER' did not start after 30s — check: docker logs $CONTAINER"
+  done
 fi
-
-docker inspect "$CONTAINER" &>/dev/null || fail "Container '$CONTAINER' failed to start."
 
 # ── Remove stale ports (container restart creates new veth, old ports accumulate) ──
 if ovs-docker del-port "$OVS_BRIDGE" "$CONTAINER_IFACE" "$CONTAINER" 2>/dev/null; then
