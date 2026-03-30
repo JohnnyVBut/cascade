@@ -85,6 +85,12 @@ fi
 command -v ovs-docker &>/dev/null || fail "ovs-docker not found. Install openvswitch-switch."
 docker inspect "$CONTAINER" &>/dev/null   || fail "Container '$CONTAINER' not found or not running."
 
+# ── Remove stale port if present (container restart changes the veth pair) ────
+if ovs-docker del-port "$OVS_BRIDGE" "$CONTAINER_IFACE" "$CONTAINER" 2>/dev/null; then
+  info "Removed stale OVS port (container was restarted)"
+  sleep 0.5
+fi
+
 # ── Add port (without --vlan: not supported in all ovs-docker versions) ───────
 CMD="ovs-docker add-port $OVS_BRIDGE $CONTAINER_IFACE $CONTAINER \
   --ipaddress=$CONTAINER_IP \
