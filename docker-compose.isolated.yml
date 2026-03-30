@@ -1,0 +1,70 @@
+# ============================================================================
+# Cascade — Isolated network mode (OVS / macvlan / ipvlan)
+# ============================================================================
+#
+# Use this compose file when the container must NOT share the host network
+# namespace — e.g. a home Docker host with 802.1q VLAN trunking managed by
+# Open vSwitch.
+#
+# Network flow:
+#   1. docker compose -f docker-compose.isolated.yml up -d
+#      Container starts with network_mode: none (only loopback).
+#      entrypoint.sh waits up to NETWORK_WAIT_TIMEOUT seconds for a default route.
+#
+#   2. deploy/ovs/attach.sh  (or any OVS/macvlan tool)
+#      Attaches a VLAN interface to the running container and assigns IP + gateway.
+#      The default route appears → entrypoint.sh proceeds → Cascade starts.
+#
+#   3. WireGuard/AWG interfaces (wg10, wg11 …) are created inside the
+#      container's network namespace. iptables, ip route, ip rule all operate
+#      on the container's netns — fully isolated from the host.
+#
+# Differences from docker-compose.go.yml (host mode):
+#   - network_mode: none  instead of  network_mode: host
+#   - No ports: section  (real IP provided by OVS; no NAT/port-mapping)
+#   - WAIT_FOR_NETWORK: 1  (entrypoint waits for OVS to attach the interface)
+#   - No /etc/hostname mount  (container hostname set via hostname: field)
+#
+# ============================================================================
+
+services:
+  cascade:
+    image: ghcr.io/johnnyvbut/cascade:latest
+    container_name: cascade
+    hostname: cascade
+    restart: unless-stopped
+
+    # Load deploy config from deploy/.env (same as host mode).
+    env_file:
+      - path: deploy/.env
+        required: false
+
+    environment:
+      - WG_PORT=51820
+      - DEBUG=false
+
+      # ── Isolated-mode flags ────────────────────────────────────────────────
+      # Tell entrypoint.sh to wait for OVS to attach the network interface
+      # before starting Cascade (prevents PostUp getIsp failure on startup).
+      - WAIT_FOR_NETWORK=1
+
+      # Seconds to wait for a default route before giving up (default: 60).
+      # Set higher if ovs-docker is called from a slow provisioning system.
+      - NETWORK_WAIT_TIMEOUT=60
+
+    volumes:
+      - ./data:/etc/wireguard/data
+
+    # No ports: — container gets a real IP from OVS; no NAT hairpin needed.
+    # Access the Web UI via the IP assigned by ovs-docker/macvlan (PORT in deploy/.env).
+
+    # network_mode: none — container starts with only loopback.
+    # ovs-docker (or macvlan driver) attaches the real interface after start.
+    network_mode: "none"
+
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+
+    devices:
+      - /dev/net/tun:/dev/net/tun

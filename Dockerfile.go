@@ -55,10 +55,16 @@ RUN ln -sf /sbin/iptables-legacy         /sbin/iptables && \
     ln -sf /sbin/iptables-legacy-restore /sbin/iptables-restore && \
     ln -sf /sbin/iptables-legacy-save    /sbin/iptables-save
 
-# Copy the static Go binary from build stage
+# Copy the static Go binary and entrypoint from build stage
 COPY --from=builder /app/cascade /usr/local/bin/cascade
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Data directory (mapped via volume in docker-compose)
 RUN mkdir -p /etc/wireguard/data
 
-CMD ["/usr/bin/dumb-init", "cascade", "--data-dir", "/etc/wireguard/data"]
+# entrypoint.sh:
+#   - enables ip_forward / src_valid_mark in this netns
+#   - if WAIT_FOR_NETWORK=1: waits for a default route (OVS isolated mode)
+#   - then exec's cascade
+CMD ["/usr/bin/dumb-init", "/usr/local/bin/entrypoint.sh", "--data-dir", "/etc/wireguard/data"]
