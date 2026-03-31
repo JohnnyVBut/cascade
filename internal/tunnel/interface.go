@@ -806,12 +806,19 @@ func (t *TunnelInterface) generateWgConfig() string {
 		// doReload() uses syncconf which does NOT tear down the interface, so the value
 		// from Start() survives peer changes. Only a full Stop()+Start() resets it,
 		// which re-executes PostUp and reapplies the setting.
+		// FIX-1 (PostUp): guard MASQUERADE against empty ISP.
+		// When ISP="" (no default route yet), "-o $ISP" expands to "-o" with no
+		// argument, causing iptables to consume "-j" as the interface name and treat
+		// "MASQUERADE" as an unexpected positional → "Bad argument MASQUERADE".
+		// "[ -n "$ISP" ] && iptables ... || true" skips NAT when ISP is empty (rare
+		// timing edge case in isolated netns mode) and ensures PostUp never returns
+		// non-zero (which would abort wg-quick and tear down the interface).
 		postUp := fmt.Sprintf(
-			"PostUp = %s; ip link set %s txqueuelen 500; iptables -A FORWARD -i %s -j ACCEPT; iptables -A FORWARD -o %s -j ACCEPT; iptables -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE\n",
+			"PostUp = %s; ip link set %s txqueuelen 500; iptables -A FORWARD -i %s -j ACCEPT; iptables -A FORWARD -o %s -j ACCEPT; [ -n \"$ISP\" ] && iptables -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE || true\n",
 			getISP, t.ID, t.ID, t.ID, subnet,
 		)
 		postDown := fmt.Sprintf(
-			"PostDown = %s; iptables -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -o %s -j ACCEPT 2>/dev/null || true; iptables -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true\n",
+			"PostDown = %s; iptables -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -o %s -j ACCEPT 2>/dev/null || true; [ -n \"$ISP\" ] && iptables -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true\n",
 			getISP, t.ID, t.ID, subnet,
 		)
 		sb.WriteString(postUp)
