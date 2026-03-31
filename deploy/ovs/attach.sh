@@ -76,10 +76,10 @@ if [[ -z "$VLAN" ]]; then
   read -rp "  VLAN ID (leave empty for untagged): " VLAN
 fi
 
-# ── Derive WG_HOST from IP (used by Cascade as its public address) ────────────
-WG_HOST=${WG_HOST:-${CONTAINER_IP%%/*}}
-
 # ── Save all collected values to .env for future runs ─────────────────────────
+# WG_HOST is intentionally NOT saved — Cascade will auto-detect the public IP
+# via external services (ip.sb, ifconfig.me, etc.). Saving the private OVS IP
+# would override auto-detect and break client endpoint generation behind NAT.
 save_var() {
   local key="$1" value="$2"
   [[ -z "$value" ]] && return
@@ -96,8 +96,18 @@ save_var OVS_IP      "$CONTAINER_IP"
 save_var OVS_GATEWAY "$GATEWAY"
 save_var OVS_VLAN    "$VLAN"
 save_var OVS_IFACE   "$CONTAINER_IFACE"
-save_var WG_HOST     "$WG_HOST"
 ok "Config saved to $ENV_FILE"
+info "WG_HOST not saved — public IP will be auto-detected by Cascade"
+
+# Remove WG_HOST from .env if it was previously saved as a private IP
+# (old attach.sh versions did this; keep it only if user manually set a public address)
+if grep -q "^WG_HOST=" "$ENV_FILE" 2>/dev/null; then
+  SAVED_HOST=$(grep "^WG_HOST=" "$ENV_FILE" | cut -d= -f2)
+  if [[ "$SAVED_HOST" =~ ^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|169\.254\.) ]]; then
+    sed -i "/^WG_HOST=/d" "$ENV_FILE"
+    info "Removed private WG_HOST=$SAVED_HOST from $ENV_FILE"
+  fi
+fi
 
 # ── Validate tools ────────────────────────────────────────────────────────────
 command -v ovs-docker &>/dev/null || fail "ovs-docker not found. Install openvswitch-switch."
