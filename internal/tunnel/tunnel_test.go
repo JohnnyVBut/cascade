@@ -87,13 +87,21 @@ func TestGenerateWgConfig_InterfaceSection(t *testing.T) {
 	}
 }
 
-func TestGenerateWgConfig_PostUpContainsIptablesNft(t *testing.T) {
+func TestGenerateWgConfig_PostUpContainsIptables(t *testing.T) {
 	iface := newTestIface()
 	cfg := iface.generateWgConfig()
 
-	// FIX-1: must use iptables-nft, not plain iptables
-	if !strings.Contains(cfg, "iptables-nft") {
-		t.Error("config PostUp must use iptables-nft (FIX-1)")
+	// FIX-1 updated: use `iptables` (not iptables-nft) so the symlink resolves
+	// to the correct backend per environment.
+	// iptables-nft MASQUERADE fails in isolated netns (nft_masq not auto-loaded).
+	// iptables-legacy MASQUERADE works universally (xt_MASQUERADE always available).
+	// On Ubuntu host: iptables → iptables-nft (update-alternatives).
+	// In Alpine container: iptables → iptables-legacy (Dockerfile.go explicit symlink).
+	if strings.Contains(cfg, "iptables-nft") {
+		t.Error("PostUp must not use iptables-nft directly — use `iptables` to allow env-specific backend resolution")
+	}
+	if !strings.Contains(cfg, "iptables ") {
+		t.Error("PostUp must use `iptables` command (FIX-1 updated)")
 	}
 }
 
@@ -493,8 +501,6 @@ func TestGenerateWgConfig_TxqueuelenInPostUpNotPostDown(t *testing.T) {
 
 // txqueuelen must appear before iptables rules in PostUp.
 // Ordering convention: interface configuration commands before firewall rules.
-// Note: iptables-nft itself does not require the interface to exist, but grouping
-// interface-config (txqueuelen) before firewall rules is cleaner and consistent.
 func TestGenerateWgConfig_TxqueuelenBeforeIptables(t *testing.T) {
 	iface := newTestIface()
 	cfg := iface.generateWgConfig()
@@ -504,15 +510,15 @@ func TestGenerateWgConfig_TxqueuelenBeforeIptables(t *testing.T) {
 			continue
 		}
 		qPos := strings.Index(line, "txqueuelen")
-		iPos := strings.Index(line, "iptables-nft")
+		iPos := strings.Index(line, "iptables ")
 		if qPos == -1 {
 			t.Fatal("PostUp missing txqueuelen — ordering check is meaningless without it")
 		}
 		if iPos == -1 {
-			t.Fatal("PostUp missing iptables-nft — ordering check is meaningless without it")
+			t.Fatal("PostUp missing iptables — ordering check is meaningless without it")
 		}
 		if qPos > iPos {
-			t.Error("txqueuelen must appear before iptables-nft in PostUp")
+			t.Error("txqueuelen must appear before iptables in PostUp")
 		}
 	}
 }
