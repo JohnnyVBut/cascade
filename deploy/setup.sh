@@ -613,20 +613,38 @@ fi
 # Switch acme.sh to webroot mode now that Caddy is running.
 # After standalone issuance Le_Webroot='no' is saved in acme.sh config.
 # If left as-is, future cron renewals try standalone again → port 80 conflict with Caddy → fail.
-# --force re-issues immediately and saves Le_Webroot='/srv/acme' for all future renewals.
-if [[ -f "$CERT_DIR/server.crt" ]]; then
-  SHORTLIVED_ARGS=()
-  is_ip "$WG_HOST" && SHORTLIVED_ARGS=(--cert-profile shortlived)
-  CURRENT_WEBROOT=$(grep "^Le_Webroot=" "$HOME/.acme.sh/${WG_HOST}_ecc/${WG_HOST}.conf" 2>/dev/null | cut -d= -f2 | tr -d "'" || true)
-  if [[ "$CURRENT_WEBROOT" != "'/srv/acme'" && "$CURRENT_WEBROOT" != "/srv/acme" ]]; then
-    info "Switching acme.sh to webroot mode for future renewals..."
+#
+# IMPORTANT: do NOT use --issue --force here — it re-issues a new certificate which:
+#   1. Consumes LE rate limit (5 certs per 7 days per IP)
+#   2. Overwrites Le_CertCreateTime → Le_NextRenewTime is recalculated from new issue time,
+#      not from the actual cert expiry → cron fires too late → cert expires before renewal
+#
+# Instead: patch Le_Webroot directly in the acme.sh domain config file.
+# acme.sh reads Le_Webroot on every renewal run — patching it is safe and official practice.
+ACME_DOMAIN_CONF="$HOME/.acme.sh/${WG_HOST}_ecc/${WG_HOST}.conf"
+if [[ -f "$ACME_DOMAIN_CONF" ]]; then
+  CURRENT_WEBROOT=$(grep "^Le_Webroot=" "$ACME_DOMAIN_CONF" 2>/dev/null | cut -d= -f2 | tr -d "'" || true)
+  if [[ "$CURRENT_WEBROOT" != "/srv/acme" ]]; then
+    info "Switching acme.sh to webroot mode (patching config, no new cert issued)..."
     mkdir -p /srv/acme
-    "$ACME" --issue --server "$ACME_SERVER" \
-      -d "$WG_HOST" --webroot /srv/acme \
-      "${SHORTLIVED_ARGS[@]}" --force 2>&1 | tail -3
+    sed -i "s|^Le_Webroot=.*|Le_Webroot='/srv/acme'|" "$ACME_DOMAIN_CONF"
     ok "Webroot mode set — renewals will use /srv/acme via Caddy"
   else
     ok "acme.sh already in webroot mode"
+  fi
+
+  # Also fix Le_NextRenewTime based on actual cert expiry (not last --issue time).
+  # Compute: cert_expiry_unix - RENEW_DAYS(1) * 86400
+  CERT_EXPIRY_UNIX=$(openssl x509 -in "$CERT_DIR/server.crt" -noout -enddate 2>/dev/null \
+    | cut -d= -f2 | xargs -I{} date -d "{}" +%s 2>/dev/null || echo "")
+  if [[ -n "$CERT_EXPIRY_UNIX" ]]; then
+    RENEW_AT=$(( CERT_EXPIRY_UNIX - 86400 ))
+    RENEW_AT_STR=$(date -u -d "@$RENEW_AT" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || true)
+    if [[ -n "$RENEW_AT_STR" ]]; then
+      sed -i "s|^Le_NextRenewTime=.*|Le_NextRenewTime='$RENEW_AT'|" "$ACME_DOMAIN_CONF"
+      sed -i "s|^Le_NextRenewTimeStr=.*|Le_NextRenewTimeStr='$RENEW_AT_STR'|" "$ACME_DOMAIN_CONF"
+      ok "NextRenewTime set to $RENEW_AT_STR (1 day before cert expiry)"
+    fi
   fi
 fi
 
