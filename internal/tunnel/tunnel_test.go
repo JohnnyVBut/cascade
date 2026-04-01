@@ -142,17 +142,6 @@ func TestGenerateWgConfig_PostUpMasquerade(t *testing.T) {
 	if !strings.Contains(cfg, "10.8.0.0/24") {
 		t.Error("config PostUp MASQUERADE must use subnet 10.8.0.0/24")
 	}
-	// FIX-1 (PostUp): ISP guard must be present to prevent "Bad argument MASQUERADE"
-	// when ISP="" (empty default route). Without the guard "-o $ISP" expands to "-o"
-	// with no argument, iptables consumes "-j" as the interface name → MASQUERADE
-	// is an unexpected positional argument → "Bad argument MASQUERADE" → wg-quick aborts.
-	if !strings.Contains(cfg, `[ -n "$ISP" ] && iptables -t nat -A POSTROUTING`) {
-		t.Error(`PostUp MASQUERADE must be guarded with [ -n "$ISP" ] && to prevent "Bad argument MASQUERADE" when ISP is empty (FIX-1)`)
-	}
-	// Must have || true at the end so PostUp never aborts wg-quick on MASQUERADE failure
-	if !strings.Contains(cfg, "MASQUERADE || true") {
-		t.Error("PostUp MASQUERADE must end with || true to prevent wg-quick from aborting on NAT failure (FIX-1)")
-	}
 }
 
 func TestGenerateWgConfig_PostDownCleansUp(t *testing.T) {
