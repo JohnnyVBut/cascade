@@ -538,11 +538,11 @@ if [[ -f "$CERT_DIR/server.crt" ]]; then
     CERT_MODE="production"
   fi
   ok "Certificate already present (expires: $EXPIRY, mode: $CERT_MODE)"
+  ATTEMPT_LE=0
   if [[ "$CERT_MODE" == "self-signed" ]]; then
-    warn "Existing cert is SELF-SIGNED — re-running setup will attempt Let's Encrypt if port 80 is open"
-    info "To replace now: ensure port 80 is open, then: rm -f $CERT_DIR/server.crt $CERT_DIR/server.key && re-run setup"
-    rm -f "$CERT_DIR/server.crt" "$CERT_DIR/server.key"
-    "$ACME" --remove -d "$WG_HOST" 2>/dev/null || true
+    warn "Existing cert is SELF-SIGNED — will attempt Let's Encrypt upgrade"
+    warn "If LE succeeds, self-signed will be replaced. If not, self-signed is kept."
+    ATTEMPT_LE=1
   elif [[ "$CERT_MODE" == "staging" && "${ACME_STAGING:-0}" != "1" ]]; then
     warn "Existing cert is STAGING but ACME_STAGING=0 — deleting and reissuing production cert"
     rm -f "$CERT_DIR/server.crt" "$CERT_DIR/server.key"
@@ -555,7 +555,7 @@ if [[ -f "$CERT_DIR/server.crt" ]]; then
   fi
 fi
 
-if [[ ! -f "$CERT_DIR/server.crt" ]]; then
+if [[ ! -f "$CERT_DIR/server.crt" || "${ATTEMPT_LE:-0}" == "1" ]]; then
   info "Issuing TLS certificate for: $WG_HOST (server: $ACME_SERVER)"
 
   # --cert-profile shortlived required for bare IP identifiers.
