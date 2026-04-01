@@ -1540,50 +1540,61 @@ Caddyfile содержит `admin off` — Caddy admin API отключен дл
 
 ### TLS: acme.sh shortlived cert для bare IP
 
-**Правильный флаг:** `--cert-profile shortlived` (НЕ `--certificate-profile` — неизвестный параметр).
+**Правильный флаг:** `--cert-profile shortlived` (принимается и `--certificate-profile` — оба работают).
 
 **RENEW_DAYS=1 обязателен:**
-Shortlived cert живёт 6 дней. Default RENEW_DAYS=30 → acme.sh либо обновляет при каждом cron,
-либо не обновляет вовсе (зависит от версии). Установить один раз:
+Shortlived cert живёт 6 дней (production) или 30 дней (staging). Default RENEW_DAYS=30 →
+для 6-дневного cert NextRenewTime = expiry - 30 days = прошлое → cron обновляет каждый запуск →
+rate limit LE (5 сертификатов за 7 дней на один IP). setup.sh записывает:
 ```bash
 echo 'RENEW_DAYS=1' >> ~/.acme.sh/account.conf
-# → renewal на 5-й день (за 1 день до истечения) — правильно
+# → NextRenewTime = cert_expiry - 1 день → renewal на 5-й день из 6
 ```
 
-**Процесс первого выпуска (acme-install.sh делает всё автоматически):**
+**КРИТИЧНО: НЕ использовать `--issue --force` для переключения на webroot.**
+`--issue --force` выпускает новый сертификат → потребляет rate limit + перезаписывает
+`Le_CertCreateTime` → `Le_NextRenewTime` пересчитывается от времени re-issue, а не от
+реального истечения cert → NextRenewTime уходит в будущее → cert истекает до renewal.
+
+**Процесс первого выпуска (setup.sh делает всё автоматически):**
 
 Шаг 1 — standalone (Caddy ещё не запущен):
 ```bash
 ~/.acme.sh/acme.sh --issue --server letsencrypt \
-    -d <PUBLIC_IP> --standalone \
-    --cert-profile shortlived --days 1
+    -d <PUBLIC_IP> --standalone --cert-profile shortlived
+# reloadcmd игнорирует ошибку "No such container" — Caddy ещё не запущен
 ```
 
-Шаг 2 — install-cert с правильным reloadcmd:
+Шаг 2 — install-cert (|| true — Caddy ещё нет):
 ```bash
 ~/.acme.sh/acme.sh --install-cert -d <PUBLIC_IP> --ecc \
     --key-file /etc/ssl/cascade/server.key \
     --fullchain-file /etc/ssl/cascade/server.crt \
-    --reloadcmd "docker restart cascade-caddy"
+    --reloadcmd "docker restart cascade-caddy 2>/dev/null || true" || true
 ```
 
 Шаг 3 — запустить Caddy: `docker compose up -d`
 
-Шаг 4 — переиздать через webroot (КРИТИЧНО):
+Шаг 4 — патч конфига напрямую (без выпуска нового сертификата):
 ```bash
-~/.acme.sh/acme.sh --issue --server letsencrypt \
-    -d <PUBLIC_IP> --webroot /srv/acme \
-    --cert-profile shortlived --days 1 --force
+CONF=~/.acme.sh/<IP>_ecc/<IP>.conf
+# Переключить на webroot (НЕ --force re-issue!)
+sed -i "s|^Le_Webroot=.*|Le_Webroot='/srv/acme'|" $CONF
+# Пересчитать NextRenewTime от реального cert expiry
+EXPIRY_UNIX=$(openssl x509 -in /etc/ssl/cascade/server.crt -noout -enddate \
+  | cut -d= -f2 | xargs -I{} date -d "{}" +%s)
+RENEW_AT=$((EXPIRY_UNIX - 86400))
+sed -i "s|^Le_NextRenewTime=.*|Le_NextRenewTime='$RENEW_AT'|" $CONF
+sed -i "s|^Le_NextRenewTimeStr=.*|Le_NextRenewTimeStr='$(date -u -d @$RENEW_AT +%Y-%m-%dT%H:%M:%SZ)'|" $CONF
 ```
-**Зачем:** после standalone acme.sh сохраняет `Le_Webroot='no'`. Если не перезаписать,
-будущие renewals по cron снова попытаются занять порт 80 → конфликт с Caddy → renewal fails.
-После шага 4 в конфиге: `Le_Webroot='/srv/acme'` → renewals идут через Caddy.
+Результат: `Le_Webroot='/srv/acme'`, `Le_NextRenewTime` = за 1 день до истечения cert.
 
-**Renewals (webroot mode, автоматически через cron):**
+**Renewals (webroot mode, автоматически через cron `12 1 * * *`):**
 - acme.sh пишет challenge файлы в `/srv/acme`
 - Caddy обслуживает `/.well-known/acme-challenge/*` из `/srv/acme` (смонтировано read-only)
 - После успешного renewal: `docker restart cascade-caddy`
 - Cert живёт 6 дней, renewal на 5-й день (RENEW_DAYS=1)
+- Rate limit LE: 5 сертификатов за 7 дней на один IP — не превышать при тестировании
 
 ### Env переменные Caddy
 
