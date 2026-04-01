@@ -509,6 +509,16 @@ fi
 
 ACME="$HOME/.acme.sh/acme.sh"
 
+# Set RENEW_DAYS=1 — shortlived certs live 6 days (production) or 30 days (staging).
+# Default RENEW_DAYS=30 → renewal fires every cron run for 6-day certs.
+# With RENEW_DAYS=1 → renewal happens 1 day before expiry — correct for both modes.
+if grep -q "^RENEW_DAYS=" "$HOME/.acme.sh/account.conf" 2>/dev/null; then
+  sed -i 's/^RENEW_DAYS=.*/RENEW_DAYS=1/' "$HOME/.acme.sh/account.conf"
+else
+  echo 'RENEW_DAYS=1' >> "$HOME/.acme.sh/account.conf"
+fi
+ok "RENEW_DAYS=1 set in acme.sh account.conf"
+
 # Check if cert already exists and is valid
 if [[ -f "$CERT_DIR/server.crt" ]]; then
   EXPIRY=$(openssl x509 -in "$CERT_DIR/server.crt" -noout -enddate 2>/dev/null | cut -d= -f2 || true)
@@ -537,10 +547,14 @@ if [[ ! -f "$CERT_DIR/server.crt" ]]; then
 
   # shortlived profile required for bare IP identifiers — applies to both staging and production.
   # Without it LE rejects IP identifiers with "Default profile does not permit IP address identifiers."
+  # --cert-profile shortlived required for bare IP identifiers.
+  # Without it LE rejects with "Default profile does not permit IP address identifiers."
+  # NOTE: correct flag is --cert-profile (NOT --certificate-profile — unknown parameter)
   SHORTLIVED_ARGS=()
-  is_ip "$WG_HOST" && SHORTLIVED_ARGS=(--certificate-profile shortlived)
+  is_ip "$WG_HOST" && SHORTLIVED_ARGS=(--cert-profile shortlived)
 
-  # Port 80 must be free for standalone mode
+  # Step 1: Issue via standalone (Caddy not yet running — chicken-and-egg).
+  # Port 80 fallback: if already occupied, try webroot directly.
   if ss -tlnp 2>/dev/null | grep -q ':80 '; then
     warn "Port 80 is already in use — attempting webroot mode via /srv/acme"
     mkdir -p /srv/acme
@@ -553,10 +567,12 @@ if [[ ! -f "$CERT_DIR/server.crt" ]]; then
       "${SHORTLIVED_ARGS[@]}"
   fi
 
-  "$ACME" --install-cert -d "$WG_HOST" \
+  # Step 2: Install cert.
+  # reloadcmd = docker restart (NOT caddy reload — admin off disables the admin API).
+  "$ACME" --install-cert -d "$WG_HOST" --ecc \
     --key-file       "$CERT_DIR/server.key" \
     --fullchain-file "$CERT_DIR/server.crt" \
-    --reloadcmd      "docker exec cascade-caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true"
+    --reloadcmd      "docker restart cascade-caddy"
 
   ok "Certificate installed to $CERT_DIR"
 fi
@@ -585,7 +601,26 @@ if docker ps --filter "name=cascade-caddy" --filter "status=running" | grep -q c
   ok "Caddy running"
 else
   fail "Caddy failed to start — check: $COMPOSE_CMD -f deploy/caddy/docker-compose.yml logs"
+fi
 
+# Switch acme.sh to webroot mode now that Caddy is running.
+# After standalone issuance Le_Webroot='no' is saved in acme.sh config.
+# If left as-is, future cron renewals try standalone again → port 80 conflict with Caddy → fail.
+# --force re-issues immediately and saves Le_Webroot='/srv/acme' for all future renewals.
+if [[ -f "$CERT_DIR/server.crt" ]]; then
+  SHORTLIVED_ARGS=()
+  is_ip "$WG_HOST" && SHORTLIVED_ARGS=(--cert-profile shortlived)
+  CURRENT_WEBROOT=$(grep "^Le_Webroot=" "$HOME/.acme.sh/${WG_HOST}_ecc/${WG_HOST}.conf" 2>/dev/null | cut -d= -f2 | tr -d "'" || true)
+  if [[ "$CURRENT_WEBROOT" != "'/srv/acme'" && "$CURRENT_WEBROOT" != "/srv/acme" ]]; then
+    info "Switching acme.sh to webroot mode for future renewals..."
+    mkdir -p /srv/acme
+    "$ACME" --issue --server "$ACME_SERVER" \
+      -d "$WG_HOST" --webroot /srv/acme \
+      "${SHORTLIVED_ARGS[@]}" --force 2>&1 | tail -3
+    ok "Webroot mode set — renewals will use /srv/acme via Caddy"
+  else
+    ok "acme.sh already in webroot mode"
+  fi
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
