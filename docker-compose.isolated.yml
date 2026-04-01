@@ -29,10 +29,7 @@
 
 services:
   cascade:
-    image: cascade:isolated-network
-    build:
-      context: .
-      dockerfile: Dockerfile.go
+    image: ghcr.io/johnnyvbut/cascade:latest
     container_name: cascade
     hostname: cascade
     restart: unless-stopped
