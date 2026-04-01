@@ -295,8 +295,12 @@ if command -v docker &>/dev/null; then
   # Docker 25+ image format — missing ContainerConfig). Replace with official Docker CE.
   if dpkg -l docker.io 2>/dev/null | grep -q '^ii'; then
     warn "Detected Ubuntu-bundled docker.io — replacing with official Docker CE..."
+    # Stop docker.socket first — otherwise "docker.service stopped but docker.socket still active"
+    # warning appears and docker.service may not start cleanly after reinstall.
+    systemctl stop docker.socket docker.service 2>/dev/null || true
     apt-get remove -y docker.io docker-compose 2>/dev/null || true
     curl -fsSL https://get.docker.com | sh
+    systemctl restart docker
     ok "Replaced docker.io with official Docker CE $(docker --version | awk '{print $3}' | tr -d ,)"
   fi
 else
