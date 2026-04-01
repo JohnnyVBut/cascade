@@ -769,12 +769,7 @@ func (t *TunnelInterface) RegenerateConfig() error {
 // generateWgConfig builds the full wg-quick config string including PostUp/PostDown.
 //
 // FIX-1 rules for PostUp/PostDown:
-//   - Use `iptables` (not `iptables-nft` directly) — the symlink resolves to the
-//     correct backend per environment: iptables-nft on Ubuntu host (update-alternatives),
-//     iptables-legacy in the Alpine container (Dockerfile.go explicit symlink).
-//     Hardcoding iptables-nft breaks MASQUERADE in isolated network namespaces because
-//     nft_masq kernel module is not auto-loaded in a fresh netns; iptables-legacy
-//     uses xt_MASQUERADE which is universally available.
+//   - Use iptables-nft (Ubuntu 22.04 nftables backend, not plain iptables)
 //   - Use -A FORWARD (append), never -I (insert) — keeps FIREWALL_FORWARD chain first
 //   - Both -i and -o directions — traffic flows both ways
 //   - MASQUERADE -s <subnet> -o $ISP — limits NAT to egress, not to wg* interfaces
@@ -807,11 +802,11 @@ func (t *TunnelInterface) generateWgConfig() string {
 		// from Start() survives peer changes. Only a full Stop()+Start() resets it,
 		// which re-executes PostUp and reapplies the setting.
 		postUp := fmt.Sprintf(
-			"PostUp = %s; ip link set %s txqueuelen 500; iptables -A FORWARD -i %s -j ACCEPT; iptables -A FORWARD -o %s -j ACCEPT; iptables -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE\n",
+			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE\n",
 			getISP, t.ID, t.ID, t.ID, subnet,
 		)
 		postDown := fmt.Sprintf(
-			"PostDown = %s; iptables -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables -D FORWARD -o %s -j ACCEPT 2>/dev/null || true; iptables -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true\n",
+			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true; iptables-nft -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true\n",
 			getISP, t.ID, t.ID, subnet,
 		)
 		sb.WriteString(postUp)
