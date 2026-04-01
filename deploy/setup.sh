@@ -530,11 +530,20 @@ if [[ -f "$CERT_DIR/server.crt" ]]; then
   ISSUER=$(openssl x509 -in "$CERT_DIR/server.crt" -noout -issuer 2>/dev/null || true)
   if echo "$ISSUER" | grep -qi "staging\|fake\|bogus"; then
     CERT_MODE="staging"
+  elif echo "$ISSUER" | grep -qi "^issuer= */CN=$WG_HOST\|self.signed\|self-signed"; then
+    CERT_MODE="self-signed"
+  elif openssl verify -CAfile "$CERT_DIR/server.crt" "$CERT_DIR/server.crt" &>/dev/null; then
+    CERT_MODE="self-signed"
   else
     CERT_MODE="production"
   fi
   ok "Certificate already present (expires: $EXPIRY, mode: $CERT_MODE)"
-  if [[ "$CERT_MODE" == "staging" && "${ACME_STAGING:-0}" != "1" ]]; then
+  if [[ "$CERT_MODE" == "self-signed" ]]; then
+    warn "Existing cert is SELF-SIGNED — re-running setup will attempt Let's Encrypt if port 80 is open"
+    info "To replace now: ensure port 80 is open, then: rm -f $CERT_DIR/server.crt $CERT_DIR/server.key && re-run setup"
+    rm -f "$CERT_DIR/server.crt" "$CERT_DIR/server.key"
+    "$ACME" --remove -d "$WG_HOST" 2>/dev/null || true
+  elif [[ "$CERT_MODE" == "staging" && "${ACME_STAGING:-0}" != "1" ]]; then
     warn "Existing cert is STAGING but ACME_STAGING=0 — deleting and reissuing production cert"
     rm -f "$CERT_DIR/server.crt" "$CERT_DIR/server.key"
     "$ACME" --remove -d "$WG_HOST" 2>/dev/null || true
@@ -549,38 +558,61 @@ fi
 if [[ ! -f "$CERT_DIR/server.crt" ]]; then
   info "Issuing TLS certificate for: $WG_HOST (server: $ACME_SERVER)"
 
-  # shortlived profile required for bare IP identifiers — applies to both staging and production.
-  # Without it LE rejects IP identifiers with "Default profile does not permit IP address identifiers."
   # --cert-profile shortlived required for bare IP identifiers.
   # Without it LE rejects with "Default profile does not permit IP address identifiers."
-  # NOTE: correct flag is --cert-profile (NOT --certificate-profile — unknown parameter)
   SHORTLIVED_ARGS=()
   is_ip "$WG_HOST" && SHORTLIVED_ARGS=(--cert-profile shortlived)
 
-  # Step 1: Issue via standalone (Caddy not yet running — chicken-and-egg).
+  # Try Let's Encrypt via standalone (Caddy not yet running — chicken-and-egg).
   # Port 80 fallback: if already occupied, try webroot directly.
+  # If LE fails for any reason (port 80 blocked, private IP, rate limit, no public IP)
+  # fall back to self-signed — Caddy starts, cert can be replaced later with real one.
+  LE_SUCCESS=0
   if ss -tlnp 2>/dev/null | grep -q ':80 '; then
     warn "Port 80 is already in use — attempting webroot mode via /srv/acme"
     mkdir -p /srv/acme
     "$ACME" --issue --server "$ACME_SERVER" \
       -d "$WG_HOST" --webroot /srv/acme \
-      "${SHORTLIVED_ARGS[@]}"
+      "${SHORTLIVED_ARGS[@]}" && LE_SUCCESS=1 || true
   else
     "$ACME" --issue --server "$ACME_SERVER" \
       -d "$WG_HOST" --standalone \
-      "${SHORTLIVED_ARGS[@]}"
+      "${SHORTLIVED_ARGS[@]}" && LE_SUCCESS=1 || true
   fi
 
-  # Step 2: Install cert.
-  # reloadcmd = docker restart (NOT caddy reload — admin off disables the admin API).
-  # The reloadcmd runs immediately on --install-cert but Caddy isn't started yet —
-  # "No such container" error is expected here and must not abort the script.
-  # Caddy will pick up the cert on first start in Step 9.
-  "$ACME" --install-cert -d "$WG_HOST" --ecc \
-    --key-file       "$CERT_DIR/server.key" \
-    --fullchain-file "$CERT_DIR/server.crt" \
-    --reloadcmd      "docker restart cascade-caddy 2>/dev/null || true" || true
+  if [[ $LE_SUCCESS -eq 1 ]]; then
+    # Install cert.
+    # reloadcmd = docker restart (NOT caddy reload — admin off disables the admin API).
+    # "No such container" on first run is expected — Caddy starts in Step 9.
+    "$ACME" --install-cert -d "$WG_HOST" --ecc \
+      --key-file       "$CERT_DIR/server.key" \
+      --fullchain-file "$CERT_DIR/server.crt" \
+      --reloadcmd      "docker restart cascade-caddy 2>/dev/null || true" || true
+    ok "Let's Encrypt certificate installed to $CERT_DIR"
+  else
+    # Fallback: self-signed certificate.
+    # Happens when: port 80 blocked, private/unknown IP, LE rate limit, no internet.
+    # Caddy will show browser warning — replace cert later by re-running setup.sh
+    # or by placing real cert files in $CERT_DIR and running: docker restart cascade-caddy
+    warn "Let's Encrypt failed — generating self-signed certificate (valid 10 years)"
+    warn "Browser will show 'Not secure'. To replace: re-run setup.sh when port 80 is open,"
+    warn "or place your own cert in $CERT_DIR/{server.crt,server.key} + docker restart cascade-caddy"
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+      -keyout "$CERT_DIR/server.key" \
+      -out    "$CERT_DIR/server.crt" \
+      -days   3650 -nodes \
+      -subj   "/CN=$WG_HOST" \
+      -addext "subjectAltName=IP:$WG_HOST" 2>/dev/null \
+      || openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+           -keyout "$CERT_DIR/server.key" \
+           -out    "$CERT_DIR/server.crt" \
+           -days   3650 -nodes \
+           -subj   "/CN=$WG_HOST" 2>/dev/null
+    ok "Self-signed certificate generated (10 years)"
+  fi
 
+  chmod 600 "$CERT_DIR/server.key"
+  chmod 644 "$CERT_DIR/server.crt"
   ok "Certificate installed to $CERT_DIR"
 fi
 
