@@ -569,10 +569,13 @@ if [[ ! -f "$CERT_DIR/server.crt" ]]; then
 
   # Step 2: Install cert.
   # reloadcmd = docker restart (NOT caddy reload — admin off disables the admin API).
+  # The reloadcmd runs immediately on --install-cert but Caddy isn't started yet —
+  # "No such container" error is expected here and must not abort the script.
+  # Caddy will pick up the cert on first start in Step 9.
   "$ACME" --install-cert -d "$WG_HOST" --ecc \
     --key-file       "$CERT_DIR/server.key" \
     --fullchain-file "$CERT_DIR/server.crt" \
-    --reloadcmd      "docker restart cascade-caddy"
+    --reloadcmd      "docker restart cascade-caddy 2>/dev/null || true" || true
 
   ok "Certificate installed to $CERT_DIR"
 fi
