@@ -386,6 +386,15 @@ ALTER TABLE peers ADD COLUMN total_rx INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE peers ADD COLUMN total_tx INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 12,
+		sql: `
+-- Per-interface auto-NAT opt-out flag.
+-- When nat_disabled=1, generateWgConfig() omits the MASQUERADE PostUp/PostDown line.
+-- DEFAULT 0: all existing interfaces keep their current auto-NAT behaviour.
+ALTER TABLE interfaces ADD COLUMN nat_disabled INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

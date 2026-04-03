@@ -62,6 +62,7 @@ type TunnelInterface struct {
 	Protocol      string             `json:"protocol"`       // "wireguard-1.0" | "amneziawg-2.0"
 	Enabled       bool               `json:"enabled"`
 	DisableRoutes bool               `json:"disableRoutes"`  // Table = off (S2S / PBR setups)
+	NatDisabled   bool               `json:"natDisabled"`    // when true, PostUp omits MASQUERADE
 	PrivateKey    string             `json:"-"`              // never exposed in API responses
 	PublicKey     string             `json:"publicKey"`
 	AWG2          *peer.AWG2Settings `json:"settings"`       // nil for wireguard-1.0
@@ -92,6 +93,7 @@ type InterfaceUpdate struct {
 	Address       *string
 	ListenPort    *int
 	DisableRoutes *bool
+	NatDisabled   *bool
 	AWG2          *peer.AWG2Settings // non-nil = replace all AWG2 params
 }
 
@@ -164,6 +166,9 @@ func Create(inp InterfaceInput) (*TunnelInterface, error) {
 }
 
 // Update applies non-nil fields from upd, persists, regenerates config, and hot-reloads.
+// If NatDisabled changes while the interface is enabled, a full Restart() is performed
+// instead of Reload() — syncconf skips PostUp/PostDown, so MASQUERADE changes require
+// a complete wg-quick down → up cycle.
 func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.Name != nil {
 		t.Name = strings.TrimSpace(*upd.Name)
@@ -177,6 +182,10 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.DisableRoutes != nil {
 		t.DisableRoutes = *upd.DisableRoutes
 	}
+	natDisabledChanged := upd.NatDisabled != nil && *upd.NatDisabled != t.NatDisabled
+	if upd.NatDisabled != nil {
+		t.NatDisabled = *upd.NatDisabled
+	}
 	if upd.AWG2 != nil {
 		t.AWG2 = upd.AWG2
 	}
@@ -187,7 +196,20 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 		return err
 	}
 	if t.Enabled {
-		t.Reload() // hot-reload via syncconf (fire-and-forget)
+		if natDisabledChanged {
+			// MASQUERADE is in PostUp/PostDown — syncconf does not re-execute them.
+			// A full restart is required to apply the change to the running kernel.
+			// reloadMu must be held: concurrent awg syncconf + awg-quick up = deadlock (FIX-8/9).
+			go func() {
+				t.reloadMu.Lock()
+				defer t.reloadMu.Unlock()
+				if err := t.Restart(); err != nil {
+					log.Printf("tunnel: Update %s: restart for natDisabled change failed: %v", t.ID, err)
+				}
+			}()
+		} else {
+			t.Reload() // hot-reload via syncconf (fire-and-forget)
+		}
 	}
 	return nil
 }
@@ -242,22 +264,23 @@ func (t *TunnelInterface) save() error {
 
 	_, err := db.DB().Exec(`
 		INSERT INTO interfaces
-			(id, name, address, listen_port, protocol, enabled, disable_routes,
+			(id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
 			 private_key, public_key,
 			 jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 			 i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, address=excluded.address,
 			listen_port=excluded.listen_port, protocol=excluded.protocol,
 			enabled=excluded.enabled, disable_routes=excluded.disable_routes,
+			nat_disabled=excluded.nat_disabled,
 			private_key=excluded.private_key, public_key=excluded.public_key,
 			jc=excluded.jc, jmin=excluded.jmin, jmax=excluded.jmax,
 			s1=excluded.s1, s2=excluded.s2, s3=excluded.s3, s4=excluded.s4,
 			h1=excluded.h1, h2=excluded.h2, h3=excluded.h3, h4=excluded.h4,
 			i1=excluded.i1, i2=excluded.i2, i3=excluded.i3, i4=excluded.i4, i5=excluded.i5`,
 		t.ID, t.Name, t.Address, t.ListenPort, t.Protocol,
-		boolInt(t.Enabled), boolInt(t.DisableRoutes),
+		boolInt(t.Enabled), boolInt(t.DisableRoutes), boolInt(t.NatDisabled),
 		t.PrivateKey, t.PublicKey,
 		jc, jmin, jmax, s1, s2, s3, s4,
 		h1, h2, h3, h4,
@@ -801,13 +824,27 @@ func (t *TunnelInterface) generateWgConfig() string {
 		// doReload() uses syncconf which does NOT tear down the interface, so the value
 		// from Start() survives peer changes. Only a full Stop()+Start() resets it,
 		// which re-executes PostUp and reapplies the setting.
+		//
+		// FIX-1 / plan auto-nat-rules-ui:
+		//   FORWARD rules always apply (both -i and -o directions) for any interface with Address.
+		//   MASQUERADE is added only when:
+		//     - DisableRoutes=false (client interface, not S2S interconnect), AND
+		//     - NatDisabled=false (user has not explicitly opted out of auto-NAT).
+		//   S2S interconnect interfaces (DisableRoutes=true) must NOT get MASQUERADE —
+		//   they route traffic between WireGuard networks without NATting.
+		withNAT := !t.DisableRoutes && !t.NatDisabled
+		var postUpNAT, postDownNAT string
+		if withNAT {
+			postUpNAT = fmt.Sprintf("; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE", subnet)
+			postDownNAT = fmt.Sprintf("; iptables-nft -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true", subnet)
+		}
 		postUp := fmt.Sprintf(
-			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE\n",
-			getISP, t.ID, t.ID, t.ID, subnet,
+			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT%s\n",
+			getISP, t.ID, t.ID, t.ID, postUpNAT,
 		)
 		postDown := fmt.Sprintf(
-			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true; iptables-nft -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true\n",
-			getISP, t.ID, t.ID, subnet,
+			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true%s\n",
+			getISP, t.ID, t.ID, postDownNAT,
 		)
 		sb.WriteString(postUp)
 		sb.WriteString(postDown)
@@ -1165,7 +1202,7 @@ func boolInt(b bool) int {
 // scanInterface reads one interface row from SQLite into a TunnelInterface.
 func scanInterface(id string) (*TunnelInterface, error) {
 	row := db.DB().QueryRow(`
-		SELECT id, name, address, listen_port, protocol, enabled, disable_routes,
+		SELECT id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
 		       private_key, public_key,
 		       jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 		       i1, i2, i3, i4, i5, created_at
@@ -1173,16 +1210,16 @@ func scanInterface(id string) (*TunnelInterface, error) {
 
 	t := &TunnelInterface{}
 	var (
-		enabled, disableRoutes int
-		jc, jmin, jmax         sql.NullInt64
-		s1, s2, s3, s4         sql.NullInt64
-		h1, h2, h3, h4         sql.NullString
-		i1, i2, i3, i4, i5     sql.NullString
+		enabled, disableRoutes, natDisabled int
+		jc, jmin, jmax                      sql.NullInt64
+		s1, s2, s3, s4                      sql.NullInt64
+		h1, h2, h3, h4                      sql.NullString
+		i1, i2, i3, i4, i5                  sql.NullString
 	)
 
 	err := row.Scan(
 		&t.ID, &t.Name, &t.Address, &t.ListenPort, &t.Protocol,
-		&enabled, &disableRoutes,
+		&enabled, &disableRoutes, &natDisabled,
 		&t.PrivateKey, &t.PublicKey,
 		&jc, &jmin, &jmax,
 		&s1, &s2, &s3, &s4,
@@ -1199,6 +1236,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 
 	t.Enabled = enabled == 1
 	t.DisableRoutes = disableRoutes == 1
+	t.NatDisabled = natDisabled == 1
 	t.peers = make(map[string]*peer.Peer)
 
 	// AWG2 params are stored as nullable columns; reconstruct only if Jc is present.

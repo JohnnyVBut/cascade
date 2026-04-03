@@ -168,6 +168,7 @@ new Vue({
       address: '',
       listenPort: '',
       disableRoutes: false,
+      natDisabled: false,
       protocol: 'wireguard-1.0',
       selectedTemplateId: '',
       settings: {
@@ -997,6 +998,7 @@ new Vue({
         address: iface.address || '',
         listenPort: iface.listenPort || '',
         disableRoutes: !!iface.disableRoutes,
+        natDisabled: !!iface.natDisabled,
         protocol: iface.protocol || 'wireguard-1.0',
         selectedTemplateId: '',
         settings: {
@@ -1023,7 +1025,7 @@ new Vue({
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, protocol, settings } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
@@ -1042,6 +1044,7 @@ new Vue({
         address,
         listenPort: listenPort !== '' && listenPort !== null ? Number(listenPort) : undefined,
         disableRoutes,
+        natDisabled,
       };
       if (protocol === 'amneziawg-2.0') {
         payload.settings = { ...settings };

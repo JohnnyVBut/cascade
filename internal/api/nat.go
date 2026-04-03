@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/nat"
+	"github.com/JohnnyVBut/cascade/internal/tunnel"
 )
 
 // RegisterNat registers all /api/nat/* routes.
@@ -39,16 +40,40 @@ func getNatInterfaces(c *fiber.Ctx) error {
 
 // GET /api/nat/rules
 // Returns all NAT rules including auto-rules from tunnel interfaces (read-only badges).
+// Auto rules are synthesized in-memory from enabled interfaces and prepended to DB rules.
 // Wrapped as { rules: [...] } because the frontend does `res.rules || []`.
 func getNatRules(c *fiber.Ctx) error {
-	rules, err := nat.Get().GetRules()
+	dbRules, err := nat.Get().GetRules()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	if rules == nil {
-		rules = []nat.NatRule{}
+	if dbRules == nil {
+		dbRules = []nat.NatRule{}
 	}
-	return c.JSON(fiber.Map{"rules": rules})
+
+	// Build virtual auto-rules from tunnel interfaces.
+	// Convert *tunnel.TunnelInterface → nat.IfaceInfo to avoid an import cycle
+	// between the nat and tunnel packages.
+	ifaces := tunnel.Get().GetAllInterfaces()
+	ifaceInfos := make([]nat.IfaceInfo, 0, len(ifaces))
+	for _, t := range ifaces {
+		ifaceInfos = append(ifaceInfos, nat.IfaceInfo{
+			ID:            t.ID,
+			Name:          t.Name,
+			Address:       t.Address,
+			Enabled:       t.Enabled,
+			NatDisabled:   t.NatDisabled,
+			DisableRoutes: t.DisableRoutes,
+		})
+	}
+	autoRules := nat.Get().GetAutoNatRules(ifaceInfos)
+	if autoRules == nil {
+		autoRules = []nat.NatRule{}
+	}
+
+	// Auto rules first (so they appear at the top of the table), then user-defined rules.
+	all := append(autoRules, dbRules...)
+	return c.JSON(fiber.Map{"rules": all})
 }
 
 // POST /api/nat/rules

@@ -3,6 +3,7 @@ package nat
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
@@ -294,6 +295,149 @@ func TestBuildCmds_DeleteAction(t *testing.T) {
 	expected := "iptables-nft -t nat -D POSTROUTING -o wg10 -j MASQUERADE"
 	if cmds[0] != expected {
 		t.Errorf("buildCmds D = %q, want %q", cmds[0], expected)
+	}
+}
+
+// ── GetAutoNatRules ───────────────────────────────────────────────────────────
+
+func TestGetAutoNatRules_EmptyList(t *testing.T) {
+	m := &Manager{}
+	rules := m.GetAutoNatRules(nil)
+	if len(rules) != 0 {
+		t.Errorf("expected 0 auto rules for nil input, got %d", len(rules))
+	}
+	rules = m.GetAutoNatRules([]IfaceInfo{})
+	if len(rules) != 0 {
+		t.Errorf("expected 0 auto rules for empty input, got %d", len(rules))
+	}
+}
+
+func TestGetAutoNatRules_EnabledWithAddress(t *testing.T) {
+	m := &Manager{}
+	ifaces := []IfaceInfo{
+		{ID: "wg10", Name: "Hub", Address: "10.8.0.1/24", Enabled: true},
+	}
+	rules := m.GetAutoNatRules(ifaces)
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 auto rule, got %d", len(rules))
+	}
+	r := rules[0]
+	if !r.Auto {
+		t.Error("expected Auto=true")
+	}
+	if r.InterfaceID != "wg10" {
+		t.Errorf("InterfaceID = %q, want %q", r.InterfaceID, "wg10")
+	}
+	if r.Type != "MASQUERADE" {
+		t.Errorf("Type = %q, want MASQUERADE", r.Type)
+	}
+	if !r.Enabled {
+		t.Error("expected Enabled=true for auto rule")
+	}
+	// Source should be the network address, not the host address.
+	if r.Source != "10.8.0.0/24" {
+		t.Errorf("Source = %q, want 10.8.0.0/24", r.Source)
+	}
+	if r.OutInterface != "$ISP" {
+		t.Errorf("OutInterface = %q, want $ISP", r.OutInterface)
+	}
+}
+
+func TestGetAutoNatRules_NatDisabledTrue(t *testing.T) {
+	m := &Manager{}
+	ifaces := []IfaceInfo{
+		{ID: "wg10", Name: "Hub", Address: "10.8.0.1/24", Enabled: true, NatDisabled: true},
+	}
+	rules := m.GetAutoNatRules(ifaces)
+	if len(rules) != 0 {
+		t.Errorf("expected 0 auto rules when NatDisabled=true, got %d", len(rules))
+	}
+}
+
+func TestGetAutoNatRules_DisableRoutesTrue(t *testing.T) {
+	m := &Manager{}
+	ifaces := []IfaceInfo{
+		{ID: "wg10", Name: "Hub", Address: "10.8.0.1/24", Enabled: true, DisableRoutes: true},
+	}
+	rules := m.GetAutoNatRules(ifaces)
+	if len(rules) != 0 {
+		t.Errorf("expected 0 auto rules when DisableRoutes=true, got %d", len(rules))
+	}
+}
+
+func TestGetAutoNatRules_NotEnabled(t *testing.T) {
+	m := &Manager{}
+	ifaces := []IfaceInfo{
+		{ID: "wg10", Name: "Hub", Address: "10.8.0.1/24", Enabled: false},
+	}
+	rules := m.GetAutoNatRules(ifaces)
+	if len(rules) != 0 {
+		t.Errorf("expected 0 auto rules for disabled interface, got %d", len(rules))
+	}
+}
+
+func TestGetAutoNatRules_NoAddress(t *testing.T) {
+	m := &Manager{}
+	ifaces := []IfaceInfo{
+		{ID: "wg10", Name: "Hub", Address: "", Enabled: true},
+	}
+	rules := m.GetAutoNatRules(ifaces)
+	if len(rules) != 0 {
+		t.Errorf("expected 0 auto rules for interface with empty address, got %d", len(rules))
+	}
+}
+
+func TestGetAutoNatRules_MultipleInterfaces(t *testing.T) {
+	m := &Manager{}
+	ifaces := []IfaceInfo{
+		{ID: "wg10", Name: "Hub", Address: "10.8.0.1/24", Enabled: true},
+		{ID: "wg11", Name: "S2S", Address: "10.9.0.1/24", Enabled: true, DisableRoutes: true},
+		{ID: "wg12", Name: "Opt", Address: "10.10.0.1/24", Enabled: true, NatDisabled: true},
+		{ID: "wg13", Name: "Stopped", Address: "10.11.0.1/24", Enabled: false},
+		{ID: "wg14", Name: "Client2", Address: "10.12.0.1/24", Enabled: true},
+	}
+	rules := m.GetAutoNatRules(ifaces)
+	// Only wg10 and wg14 should produce auto rules.
+	if len(rules) != 2 {
+		t.Fatalf("expected 2 auto rules, got %d: %+v", len(rules), rules)
+	}
+	ids := map[string]bool{}
+	for _, r := range rules {
+		ids[r.InterfaceID] = true
+	}
+	if !ids["wg10"] {
+		t.Error("expected auto rule for wg10")
+	}
+	if !ids["wg14"] {
+		t.Error("expected auto rule for wg14")
+	}
+}
+
+func TestGetAutoNatRules_AutoFieldJSON(t *testing.T) {
+	// Auto=false should be omitted from JSON (omitempty).
+	noAutoJSON, _ := json.Marshal(NatRule{
+		ID:   "abc",
+		Name: "test",
+		Auto: false,
+	})
+	s := string(noAutoJSON)
+	if strings.Contains(s, `"auto"`) {
+		t.Errorf("expected Auto field to be omitted when false, got: %s", s)
+	}
+
+	// Auto=true and InterfaceID should appear.
+	withAutoJSON, _ := json.Marshal(NatRule{
+		ID:          "xyz",
+		Name:        "auto rule",
+		Auto:        true,
+		InterfaceID: "wg10",
+	})
+	s2 := string(withAutoJSON)
+	if !strings.Contains(s2, `"auto":true`) {
+		t.Errorf("expected Auto=true to be present, got: %s", s2)
+	}
+	if !strings.Contains(s2, `"interfaceId":"wg10"`) {
+		t.Errorf("expected interfaceId to be present, got: %s", s2)
 	}
 }
 
