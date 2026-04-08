@@ -395,6 +395,37 @@ ALTER TABLE peers ADD COLUMN total_tx INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE interfaces ADD COLUMN nat_disabled INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 13,
+		sql: `
+-- Port Forwarding (DNAT) rules.
+-- Each rule creates three iptables-nft rules:
+--   PREROUTING DNAT: redirect inbound traffic on in_port to dest_ip:effective_port
+--   FORWARD ACCEPT (new): allow forwarded packets to dest_ip:effective_port
+--   FORWARD ACCEPT (return): allow established/related return packets from dest_ip
+-- dest_port=0 means "same as in_port" (sentinel; never passed to iptables directly).
+CREATE TABLE IF NOT EXISTS nat_dnat_rules (
+    id         TEXT PRIMARY KEY,
+    name       TEXT    NOT NULL DEFAULT '',
+    protocol   TEXT    NOT NULL DEFAULT 'udp',  -- 'tcp' | 'udp' | 'both'
+    in_port    INTEGER NOT NULL DEFAULT 0,
+    dest_ip    TEXT    NOT NULL DEFAULT '',
+    dest_port  INTEGER NOT NULL DEFAULT 0,      -- 0 = same as in_port
+    comment    TEXT    NOT NULL DEFAULT '',
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+`,
+	},
+	{
+		version: 14,
+		sql: `
+-- Add optional inbound interface scoping to DNAT rules.
+-- Empty string = match any interface (no -i flag in iptables PREROUTING).
+-- Typical values: "eth0", "ens3" (WAN interface).
+ALTER TABLE nat_dnat_rules ADD COLUMN in_interface TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

@@ -25,6 +25,12 @@ func RegisterNat(api fiber.Router) {
 	g.Post("/rules", createNatRule)
 	g.Patch("/rules/:id", updateNatRule)
 	g.Delete("/rules/:id", deleteNatRule)
+
+	// Port Forwarding (DNAT)
+	g.Get("/dnat", getDnatRules)
+	g.Post("/dnat", createDnatRule)
+	g.Patch("/dnat/:id", updateDnatRule)
+	g.Delete("/dnat/:id", deleteDnatRule)
 }
 
 // GET /api/nat/interfaces
@@ -123,6 +129,68 @@ func updateNatRule(c *fiber.Ctx) error {
 // DELETE /api/nat/rules/:id
 func deleteNatRule(c *fiber.Ctx) error {
 	if err := nat.Get().DeleteRule(c.Params("id")); err != nil {
+		return fiber.NewError(fiber.StatusNotFound, err.Error())
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// ── Port Forwarding (DNAT) handlers ──────────────────────────────────────────
+
+// GET /api/nat/dnat
+func getDnatRules(c *fiber.Ctx) error {
+	rules, err := nat.Get().GetDnatRules()
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(fiber.Map{"rules": rules})
+}
+
+// POST /api/nat/dnat
+// Body: DnatRuleInput { name, protocol, inPort, destIP, destPort?, comment? }
+func createDnatRule(c *fiber.Ctx) error {
+	var inp nat.DnatRuleInput
+	if err := c.BodyParser(&inp); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	r, err := nat.Get().AddDnatRule(inp)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	return c.Status(fiber.StatusCreated).JSON(r)
+}
+
+// PATCH /api/nat/dnat/:id
+// Supports full update OR toggle: { enabled: bool }
+func updateDnatRule(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var raw map[string]any
+	if err := c.BodyParser(&raw); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+
+	// Toggle shortcut
+	if enabled, ok := raw["enabled"].(bool); ok && len(raw) == 1 {
+		r, err := nat.Get().ToggleDnatRule(id, enabled)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		return c.JSON(r)
+	}
+
+	var upd nat.DnatRuleInput
+	if err := c.BodyParser(&upd); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	r, err := nat.Get().UpdateDnatRule(id, upd)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	return c.JSON(r)
+}
+
+// DELETE /api/nat/dnat/:id
+func deleteDnatRule(c *fiber.Ctx) error {
+	if err := nat.Get().DeleteDnatRule(c.Params("id")); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)

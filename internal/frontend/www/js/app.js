@@ -332,6 +332,12 @@ new Vue({
     natRules: [],                 // список NAT правил
     natInterfaces: [],            // список сетевых интерфейсов хоста
     natRulesLoading: false,
+    // Port Forwarding (DNAT)
+    dnatRules: [],
+    dnatLoading: false,
+    showDnatModal: false,
+    dnatEditMode: false,
+    dnatForm: { id: '', name: '', protocol: 'udp', inInterface: '', inPort: '', destIP: '', destPort: '', comment: '' },
     showNatRuleCreate: false,     // модал создания правила
     showNatRuleEdit: false,       // модал редактирования правила
     natRuleCreate: {
@@ -1608,6 +1614,111 @@ new Vue({
 
     switchNatTab(tab) {
       this.activeNatTab = tab;
+      if (tab === 'portforward' && this.dnatRules.length === 0) {
+        this.loadDnatRules();
+      }
+    },
+
+    // ── Port Forwarding (DNAT) ────────────────────────────────────────────────
+
+    async loadDnatRules() {
+      this.dnatLoading = true;
+      try {
+        const res = await this.api.call({ method: 'GET', path: '/nat/dnat' });
+        this.dnatRules = res.rules || [];
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to load port forwarding rules');
+      } finally {
+        this.dnatLoading = false;
+      }
+    },
+
+    // portInPool returns true if port is within any range/entry in the portPool string.
+    // portPool format: "51831-65535" | "433-442,8080,51831-65535"
+    // Returns true (no warning) when portPool is empty/unset.
+    portInPool(port) {
+      const pool = (this.globalSettings && this.globalSettings.portPool) || '';
+      if (!pool.trim()) return true;
+      const p = parseInt(port);
+      if (!p || p < 1 || p > 65535) return true; // let backend validate the value itself
+      for (const part of pool.split(',')) {
+        const s = part.trim();
+        const dash = s.indexOf('-');
+        if (dash > 0) {
+          const lo = parseInt(s.slice(0, dash));
+          const hi = parseInt(s.slice(dash + 1));
+          if (p >= lo && p <= hi) return true;
+        } else {
+          if (parseInt(s) === p) return true;
+        }
+      }
+      return false;
+    },
+
+    openAddDnat() {
+      this.dnatEditMode = false;
+      this.dnatForm = { id: '', name: '', protocol: 'udp', inInterface: '', inPort: '', destIP: '', destPort: '', comment: '' };
+      this.showDnatModal = true;
+    },
+
+    openEditDnat(rule) {
+      this.dnatEditMode = true;
+      this.dnatForm = {
+        id: rule.id,
+        name: rule.name,
+        protocol: rule.protocol,
+        inInterface: rule.inInterface || '',
+        inPort: rule.inPort,
+        destIP: rule.destIP,
+        destPort: rule.destPort || '',
+        comment: rule.comment || '',
+      };
+      this.showDnatModal = true;
+    },
+
+    async saveDnat() {
+      const body = {
+        name: this.dnatForm.name,
+        protocol: this.dnatForm.protocol,
+        inInterface: this.dnatForm.inInterface || '',
+        inPort: parseInt(this.dnatForm.inPort) || 0,
+        destIP: this.dnatForm.destIP,
+        destPort: parseInt(this.dnatForm.destPort) || 0,
+        comment: this.dnatForm.comment,
+      };
+      try {
+        if (this.dnatEditMode) {
+          await this.api.call({ method: 'PATCH', path: `/nat/dnat/${this.dnatForm.id}`, body });
+          this.showToast('success', 'Rule updated');
+        } else {
+          await this.api.call({ method: 'POST', path: '/nat/dnat', body });
+          this.showToast('success', 'Rule created');
+        }
+        this.showDnatModal = false;
+        await this.loadDnatRules();
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to save rule');
+      }
+    },
+
+    async toggleDnat(rule) {
+      try {
+        await this.api.call({ method: 'PATCH', path: `/nat/dnat/${rule.id}`, body: { enabled: !rule.enabled } });
+        await this.loadDnatRules();
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to toggle rule');
+      }
+    },
+
+    async deleteDnat(rule) {
+      if (!confirm(`Delete "${rule.name}"?`)) return;
+      try {
+        await this.api.call({ method: 'DELETE', path: `/nat/dnat/${rule.id}` });
+        this.showToast('success', 'Rule deleted');
+        await this.loadDnatRules();
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to delete rule');
+      }
     },
 
     // Navigate to the interface page for an auto NAT rule
