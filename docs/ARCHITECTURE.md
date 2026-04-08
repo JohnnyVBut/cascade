@@ -83,8 +83,9 @@ cascade/
 │   ├── ipset/                   ← IpsetManager: kernel ipsets для alias matching
 │   │   ├── manager.go
 │   │   └── prefixes.go          ← PrefixFetcher (RIPE RISwhois BGP данные)
-│   ├── nat/                     ← NatManager: MASQUERADE/SNAT iptables правила
-│   │   ├── manager.go
+│   ├── nat/                     ← NatManager: Outbound MASQUERADE/SNAT + Port Forwarding DNAT
+│   │   ├── manager.go           ← Outbound NAT CRUD + RestoreAll
+│   │   ├── dnat.go              ← Port Forwarding DNAT CRUD + iptables management
 │   │   └── nat_test.go
 │   ├── peer/                    ← Peer model: CRUD, config generation, QR codes
 │   │   ├── peer.go
@@ -450,7 +451,12 @@ if execErr, ok := err.(*util.ExecError); ok {
 
 ### 3.7 Пакет `nat`
 
-**Назначение:** управление Source NAT правилами (MASQUERADE/SNAT) через iptables-nft POSTROUTING.
+**Назначение:** управление Source NAT (MASQUERADE/SNAT) и Port Forwarding (DNAT) правилами через iptables-nft.
+
+**Файлы:**
+- `manager.go` — Outbound Source NAT (MASQUERADE/SNAT), `GetAutoNatRules`, `RestoreAll`
+- `dnat.go` — Port Forwarding (DNAT): CRUD + iptables management
+- `nat_test.go` — тесты валидации
 
 **Ключевые типы:**
 
@@ -466,22 +472,56 @@ type NatRule struct {
     Enabled       bool
     OrderIdx      int
 }
+
+type DnatRule struct {
+    ID          string
+    Name        string
+    Protocol    string  // "tcp" | "udp" | "both"
+    InInterface string  // "" = любой интерфейс (-i не добавляется)
+    InPort      int
+    DestIP      string
+    DestPort    int     // 0 = совпадает с InPort (sentinel)
+    Masquerade  bool    // добавить POSTROUTING MASQUERADE (default true)
+    Comment     string
+    Enabled     bool
+    CreatedAt   string
+}
 ```
 
-**Публичные методы:**
+**Публичные методы — Outbound NAT:**
 
 | Метод | Описание |
 |-------|----------|
 | `New(am *aliases.Manager) *Manager` | Создать |
-| `RestoreAll()` | Apply all enabled rules to kernel (FIX-13, FIX-14 idempotency) |
-| `GetRules() ([]NatRule, error)` | Все правила |
+| `RestoreAll()` | Apply Outbound NAT + DNAT rules to kernel on startup (FIX-13, FIX-14) |
+| `GetRules() ([]NatRule, error)` | Все Outbound NAT правила |
 | `AddRule(inp NatRuleInput) (*NatRule, error)` | Создать + apply |
 | `UpdateRule(id string, inp NatRuleInput) (*NatRule, error)` | Обновить |
 | `ToggleRule(id string, enabled bool) (*NatRule, error)` | Включить/выключить |
 | `DeleteRule(id string) error` | Удалить + `iptables-nft -D` |
+| `GetAutoNatRules() ([]NatRule, error)` | Авто-правила от туннельных интерфейсов (read-only) |
 | `GetNetworkInterfaces() ([]HostInterface, error)` | `ip -o link show` (текстовый парсинг) |
 
-**Idempotency (FIX-14):** перед каждым `-A POSTROUTING` выполняется `-C` check. Правило добавляется только если его нет. Предотвращает дубликаты при restart контейнера (`--network host` сохраняет iptables правила в ядре).
+**Публичные методы — DNAT:**
+
+| Метод | Описание |
+|-------|----------|
+| `GetDnatRules() ([]DnatRule, error)` | Все DNAT правила |
+| `AddDnatRule(inp DnatRuleInput) (*DnatRule, error)` | Создать + apply к ядру |
+| `UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error)` | Обновить (remove old + apply new) |
+| `ToggleDnatRule(id string, enabled bool) (*DnatRule, error)` | Включить/выключить |
+| `DeleteDnatRule(id string) error` | Удалить + `iptables-nft -D` |
+| `RestoreAllDnat()` | Apply всех enabled DNAT правил (вызывается из RestoreAll) |
+
+**iptables команды на одно DNAT правило (protocol=udp, masquerade=true):**
+```
+iptables-nft -t nat -A PREROUTING [-i <iface>] -p udp --dport <inPort> -j DNAT --to-destination <destIP>:<destPort>
+iptables-nft -A FORWARD -p udp -d <destIP> --dport <destPort> -m state --state NEW,ESTABLISHED,RELATED -j ACCEPT
+iptables-nft -A FORWARD -p udp -s <destIP> --sport <destPort> -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables-nft -t nat -A POSTROUTING -p udp -d <destIP> --dport <destPort> -j MASQUERADE
+```
+
+**Idempotency (FIX-14):** перед каждым `-A` выполняется `-C` check. Правило добавляется только если его нет. Предотвращает дубликаты при restart контейнера (`--network host` сохраняет iptables правила в ядре).
 
 **Зависимости:** `aliases`, `db`, `util`
 
@@ -994,10 +1034,14 @@ recover.New()
 | Method | Path | Описание |
 |--------|------|----------|
 | GET | /api/nat/interfaces | Хостовые интерфейсы (ip -o link show) |
-| GET | /api/nat/rules | Список NAT правил |
-| POST | /api/nat/rules | Создать |
+| GET | /api/nat/rules | Список Outbound NAT правил (+ auto-rules) |
+| POST | /api/nat/rules | Создать MASQUERADE/SNAT правило |
 | PATCH | /api/nat/rules/:id | Обновить / toggle |
 | DELETE | /api/nat/rules/:id | Удалить |
+| GET | /api/nat/dnat | Список DNAT (Port Forwarding) правил |
+| POST | /api/nat/dnat | Создать DNAT правило |
+| PATCH | /api/nat/dnat/:id | Обновить / toggle |
+| DELETE | /api/nat/dnat/:id | Удалить |
 
 #### Firewall
 

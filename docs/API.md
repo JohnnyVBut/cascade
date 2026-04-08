@@ -27,6 +27,7 @@
 | `PATCH` | `/api/users/me` | Изменить свой пароль. Body: `{ password }` |
 | `PATCH` | `/api/users/:id` | Обновить username или пароль. Body: `{ username?, password? }` |
 | `DELETE` | `/api/users/:id` | Удалить пользователя (нельзя удалить последнего) |
+| `POST` | `/api/users/:id/set-admin` | Назначить/снять роль admin. Body: `{ admin: bool }`. Только для admin. Нельзя снять роль с последнего admin |
 
 ### TOTP (2FA)
 
@@ -65,8 +66,36 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 | Метод | Путь | Описание |
 |-------|------|----------|
-| `GET` | `/api/settings` | Глобальные настройки |
-| `PUT` | `/api/settings` | Частичное обновление. Body: `{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold? }` |
+| `GET` | `/api/settings` | Глобальные настройки + runtime-информация |
+| `PUT` | `/api/settings` | Частичное обновление. Body: см. ниже |
+
+**GET /api/settings — поля ответа:**
+
+Возвращает `GlobalSettings` + runtime-only поля:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `dns` | string | DNS-сервер для клиентских конфигов |
+| `defaultPersistentKeepalive` | int | Keepalive по умолчанию (сек) |
+| `defaultClientAllowedIPs` | string | AllowedIPs для новых клиентских пиров |
+| `gatewayWindowSeconds` | int | Скользящее окно мониторинга шлюзов (сек) |
+| `gatewayHealthyThreshold` | int | Порог healthy (% потерь пакетов) |
+| `gatewayDegradedThreshold` | int | Порог degraded (% потерь пакетов) |
+| `subnetPool` | string | CIDR-пул для авто-назначения подсетей при quick-create, напр. `"192.168.0.0/16"` |
+| `portPool` | string | Пул портов для авто-назначения при quick-create, напр. `"51831-65535"` (поддерживает диапазоны и запятые) |
+| `routerName` | string | Человекочитаемое имя роутера (отображается в сайдбаре) |
+| `publicIPMode` | string | Режим определения публичного IP: `"auto"` или `"manual"` |
+| `publicIPManual` | string | Ручной публичный IP (используется при `publicIPMode="manual"`) |
+| `chartType` | int | Тип графиков трафика: `0`=выкл, `1`=line, `2`=area, `3`=bar |
+| `hostname` | string | *(runtime)* Имя хоста контейнера |
+| `resolvedPublicIP` | string | *(runtime)* Разрешённый публичный IP для endpoint |
+| `publicIPWarning` | string | *(runtime)* Предупреждение если публичный IP недоступен |
+| `awgMode` | string | *(runtime)* `"kernel"` или `"userspace"` (amneziawg-go) |
+| `networkMode` | string | *(runtime)* `"host"`, `"bridge"` или `"none"` — Docker network mode |
+
+**PUT /api/settings — принимаемые поля:**
+
+`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
 
 ---
 
@@ -90,10 +119,10 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | Метод | Путь | Описание |
 |-------|------|----------|
 | `GET` | `/api/tunnel-interfaces` | Список интерфейсов. Возвращает `{ interfaces: [...] }` |
-| `POST` | `/api/tunnel-interfaces` | Создать. Body: `{ name, address, listenPort, protocol, disableRoutes?, settings? }` |
+| `POST` | `/api/tunnel-interfaces` | Создать. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: создать и запустить клиентский интерфейс одной командой. Body: `{ name?: string, protocol?: string }`. Адрес и порт назначаются автоматически из SubnetPool/PortPool. AWG2 параметры — из шаблона по умолчанию или random. Ответ: `{ interface, started: bool, startError?: string }` |
 | `GET` | `/api/tunnel-interfaces/:id` | Получить интерфейс |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: частичные поля |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, settings? }`. Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Удалить интерфейс |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Запустить. Возвращает `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Остановить. Возвращает `{ interface }` |
@@ -112,7 +141,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | Метод | Путь | Описание |
 |-------|------|----------|
 | `GET` | `/peers` | Список пиров. Возвращает `{ peers: [...] }` |
-| `POST` | `/peers` | Создать пира. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }` |
+| `POST` | `/peers` | Создать пира. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Ответ содержит `totalRx`/`totalTx` (lifetime-счётчики трафика из SQLite) |
 | `POST` | `/peers/import-json` | Создать interconnect-пира из экспортированного JSON |
 | `GET` | `/peers/:peerId` | Получить пира |
 | `PATCH` | `/peers/:peerId` | Обновить поля пира |
@@ -145,6 +174,8 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 ## NAT
 
+### Outbound Source NAT
+
 | Метод | Путь | Описание |
 |-------|------|----------|
 | `GET` | `/api/nat/interfaces` | Сетевые интерфейсы хоста. Возвращает `{ interfaces: [...] }` |
@@ -152,6 +183,35 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `POST` | `/api/nat/rules` | Создать правило. Body: `{ name, source?, sourceAliasId?, outInterface, type (MASQUERADE/SNAT), toSource? (только SNAT), comment? }` |
 | `PATCH` | `/api/nat/rules/:id` | Обновить или переключить: `{ enabled: bool }` |
 | `DELETE` | `/api/nat/rules/:id` | Удалить правило |
+
+### Port Forwarding (DNAT)
+
+Перенаправление входящего трафика на другой хост через `iptables-nft PREROUTING DNAT`.
+Каждое правило создаёт до 4 iptables-команд на протокол: PREROUTING DNAT + 2× FORWARD ACCEPT + опциональный POSTROUTING MASQUERADE.
+
+| Метод | Путь | Описание |
+|-------|------|----------|
+| `GET` | `/api/nat/dnat` | Список DNAT-правил. Возвращает `{ rules: [...] }` |
+| `POST` | `/api/nat/dnat` | Создать правило. Body: см. ниже |
+| `PATCH` | `/api/nat/dnat/:id` | Обновить или переключить: `{ enabled: bool }` |
+| `DELETE` | `/api/nat/dnat/:id` | Удалить правило |
+
+**Структура DnatRule:**
+
+| Поле | Тип | Обязательно | Описание |
+|------|-----|-------------|----------|
+| `name` | string | ✓ | Название правила |
+| `protocol` | string | ✓ | `"tcp"` / `"udp"` / `"both"` |
+| `inInterface` | string | | Входящий интерфейс (`"eth0"`, `"ens3"`, …). Пусто = любой |
+| `inPort` | int | ✓ | Входящий порт 1–65535 |
+| `destIP` | string | ✓ | IP назначения (целевой сервер) |
+| `destPort` | int | | Порт назначения 0–65535. `0` = совпадает с `inPort` |
+| `masquerade` | bool | | Добавить POSTROUTING MASQUERADE. **Default: `true`**. Нужен когда целевой сервер — публичный хост без маршрута обратно через этот сервер |
+| `comment` | string | | Комментарий |
+| `enabled` | bool | | Статус (при создании всегда `true`) |
+
+> **Примечание по masquerade:** отключать только если целевой хост подключён через WireGuard-туннель
+> в hub-and-spoke топологии, где он и так маршрутизирует ответы обратно через этот сервер.
 
 ---
 

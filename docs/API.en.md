@@ -27,6 +27,7 @@
 | `PATCH` | `/api/users/me` | Change own password. Body: `{ password }` |
 | `PATCH` | `/api/users/:id` | Update username or password. Body: `{ username?, password? }` |
 | `DELETE` | `/api/users/:id` | Delete user (cannot delete the last user) |
+| `POST` | `/api/users/:id/set-admin` | Grant or revoke admin role. Body: `{ admin: bool }`. Admin only. Cannot revoke the last admin |
 
 ### TOTP (2FA) setup
 
@@ -65,8 +66,36 @@ curl -H "Authorization: Bearer ws_<token>" \
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/settings` | Global settings |
-| `PUT` | `/api/settings` | Partial update. Body: `{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold? }` |
+| `GET` | `/api/settings` | Global settings + runtime info |
+| `PUT` | `/api/settings` | Partial update. Body: see below |
+
+**GET /api/settings — response fields:**
+
+Returns `GlobalSettings` merged with runtime-only fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `dns` | string | DNS server for client configs |
+| `defaultPersistentKeepalive` | int | Default keepalive (seconds) |
+| `defaultClientAllowedIPs` | string | Default AllowedIPs for new client peers |
+| `gatewayWindowSeconds` | int | Gateway monitoring sliding window (seconds) |
+| `gatewayHealthyThreshold` | int | Healthy threshold (% packet loss) |
+| `gatewayDegradedThreshold` | int | Degraded threshold (% packet loss) |
+| `subnetPool` | string | CIDR pool for auto-assigning subnets on quick-create, e.g. `"192.168.0.0/16"` |
+| `portPool` | string | Port pool for quick-create, e.g. `"51831-65535"` (ranges and comma-lists supported) |
+| `routerName` | string | Human-readable router name (shown in sidebar) |
+| `publicIPMode` | string | Public IP resolution mode: `"auto"` or `"manual"` |
+| `publicIPManual` | string | Manual public IP (used when `publicIPMode="manual"`) |
+| `chartType` | int | Traffic chart type: `0`=off, `1`=line, `2`=area, `3`=bar |
+| `hostname` | string | *(runtime)* Container hostname |
+| `resolvedPublicIP` | string | *(runtime)* Resolved public IP for peer endpoints |
+| `publicIPWarning` | string | *(runtime)* Warning if public IP is unavailable |
+| `awgMode` | string | *(runtime)* `"kernel"` or `"userspace"` (amneziawg-go) |
+| `networkMode` | string | *(runtime)* `"host"`, `"bridge"`, or `"none"` — Docker network mode |
+
+**PUT /api/settings — accepted fields:**
+
+`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
 
 ---
 
@@ -90,10 +119,10 @@ curl -H "Authorization: Bearer ws_<token>" \
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/tunnel-interfaces` | List interfaces. Returns `{ interfaces: [...] }` |
-| `POST` | `/api/tunnel-interfaces` | Create. Body: `{ name, address, listenPort, protocol, disableRoutes?, settings? }` |
+| `POST` | `/api/tunnel-interfaces` | Create. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: create and start a client interface in one step. Body: `{ name?: string, protocol?: string }`. Address and port are auto-assigned from SubnetPool/PortPool settings. AWG2 params come from the default template or a random profile. Response: `{ interface, started: bool, startError?: string }` |
 | `GET` | `/api/tunnel-interfaces/:id` | Get interface |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: partial fields |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, settings? }`. Changing `natDisabled` on a running interface triggers `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Delete interface |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Start. Returns `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Stop. Returns `{ interface }` |
@@ -112,7 +141,7 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/peers` | List peers. Returns `{ peers: [...] }` |
-| `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }` |
+| `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Response includes `totalRx`/`totalTx` (lifetime traffic counters from SQLite, persist across restarts) |
 | `POST` | `/peers/import-json` | Create interconnect peer from exported JSON |
 | `GET` | `/peers/:peerId` | Get peer |
 | `PATCH` | `/peers/:peerId` | Update peer fields |
@@ -145,6 +174,8 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 
 ## NAT
 
+### Outbound Source NAT
+
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/nat/interfaces` | Host network interfaces. Returns `{ interfaces: [...] }` |
@@ -152,6 +183,35 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | `POST` | `/api/nat/rules` | Create rule. Body: `{ name, source?, sourceAliasId?, outInterface, type (MASQUERADE/SNAT), toSource? (SNAT only), comment? }` |
 | `PATCH` | `/api/nat/rules/:id` | Update or toggle: `{ enabled: bool }` |
 | `DELETE` | `/api/nat/rules/:id` | Delete rule |
+
+### Port Forwarding (DNAT)
+
+Redirects inbound traffic to another host via `iptables-nft PREROUTING DNAT`.
+Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× FORWARD ACCEPT + optional POSTROUTING MASQUERADE.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/nat/dnat` | List DNAT rules. Returns `{ rules: [...] }` |
+| `POST` | `/api/nat/dnat` | Create rule. Body: see below |
+| `PATCH` | `/api/nat/dnat/:id` | Update or toggle: `{ enabled: bool }` |
+| `DELETE` | `/api/nat/dnat/:id` | Delete rule |
+
+**DnatRule fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | ✓ | Rule name |
+| `protocol` | string | ✓ | `"tcp"` / `"udp"` / `"both"` |
+| `inInterface` | string | | Inbound interface (`"eth0"`, `"ens3"`, …). Empty = any |
+| `inPort` | int | ✓ | Inbound port 1–65535 |
+| `destIP` | string | ✓ | Destination IP (target server) |
+| `destPort` | int | | Destination port 0–65535. `0` = same as `inPort` |
+| `masquerade` | bool | | Add POSTROUTING MASQUERADE. **Default: `true`**. Required when the target is a public server with no route back through this machine |
+| `comment` | string | | Optional comment |
+| `enabled` | bool | | Status (always `true` on creation) |
+
+> **Note on masquerade:** disable only when the target host is connected via a WireGuard
+> hub-and-spoke tunnel that already routes replies back through this server.
 
 ---
 

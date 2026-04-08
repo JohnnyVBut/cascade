@@ -84,7 +84,14 @@ Two peer types per interface:
 - Auto-rules from tunnel interfaces shown as read-only `auto` badges
 
 ### Port Forwarding (DNAT)
-- Planned — placeholder in UI
+- Redirect inbound traffic on any port to another server (`iptables-nft PREROUTING DNAT`)
+- Protocol: `tcp`, `udp`, or `both` (expands to separate rules per protocol)
+- Optional **inbound interface** scoping (`-i eth0`) — prevents intercepting WireGuard or loopback traffic
+- Optional **source NAT / Masquerade** (default on) — rewrites source IP so the destination replies back through this server; required for public internet destinations
+- `destPort = 0` sentinel — forward to the same port as `inPort`
+- Idempotent `-C` check prevents duplicate rules on container restart
+- Restored automatically on startup via `RestoreAllDnat()`
+- ⚠️ Warning in UI when `inPort` is outside the configured `portPool` (bridge network mode awareness)
 
 ---
 
@@ -204,6 +211,11 @@ Legacy wg0 interface for traditional admin VPN clients.
 ## Settings
 
 - Global settings: DNS, default keepalive, default client AllowedIPs
+- `subnetPool` — CIDR pool for auto-assigning subnets on quick-create (e.g. `192.168.0.0/16`)
+- `portPool` — port range(s) for quick-create and bridge mode (e.g. `51831-65535`; ranges and comma-lists)
+- `routerName` — human-readable name shown in the sidebar
+- `publicIPMode` / `publicIPManual` — control the public IP used in peer endpoint configs
+- `chartType` — traffic graph style: off / line / area / bar
 - Gateway monitoring thresholds (global defaults)
 - AWG2 Templates: CRUD + set default
 - AWG2 parameter generator (⚡): 7 CPS profiles, 3 intensity levels, optional save
@@ -243,6 +255,9 @@ See [API.en.md](API.en.md) for the full endpoint reference.
 - `docker compose -f docker-compose.go.yml up -d`
 - `BIND_ADDR=127.0.0.1` for reverse proxy deployments
 - Data directory mounted at `/etc/wireguard/data` — survives container recreate
+- **Network modes:** `host` (default, shares host netns) or `bridge` (Docker-published port range via `docker-compose.bridge.yml`)
+- Sidebar badge shows current network mode: HOST (gray) / BRIDGE (amber) / NONE (red)
+- Sidebar badge shows WireGuard implementation: KERNEL (green) / USERSPACE (blue)
 
 ---
 
@@ -250,7 +265,6 @@ See [API.en.md](API.en.md) for the full endpoint reference.
 
 | Feature | Status |
 |---------|--------|
-| Port Forwarding (DNAT) | Backend + UI — not started |
 | Admin tunnel full migration | Partial — client list returns `[]` |
 | RBAC (roles: admin / operator / viewer) | Designed, not implemented |
 | Telegram bot notifications | Wishlist |
