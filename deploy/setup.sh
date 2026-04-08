@@ -96,7 +96,10 @@ EOF
 generate_bridge_compose() {
   local port_range="$1" mgmt_port="$2"
   local tmpl="$REPO_DIR/deploy/docker-compose.bridge.yml.example"
-  local out="$REPO_DIR/deploy/docker-compose.bridge.yml"
+  # Output to repo root — same directory as docker-compose.go.yml and docker-compose.isolated.yml.
+  # This ensures that env_file: deploy/.env resolves correctly (relative to repo root),
+  # matching the pattern used by docker-compose.go.yml.
+  local out="$REPO_DIR/docker-compose.bridge.yml"
   [[ ! -f "$tmpl" ]] && fail "Template not found: $tmpl"
   sed -e "s|__WG_PORT_RANGE__|${port_range}|g" \
       -e "s|__CASCADE_PORT__|${mgmt_port}|g" \
@@ -562,7 +565,7 @@ echo -e "${B}── Step 7: Cascade${N}"
 # Host:   use docker-compose.go.yml as-is (all config comes from deploy/.env).
 if [[ "${NETWORK_MODE:-host}" == "bridge" ]]; then
   generate_bridge_compose "$BRIDGE_PORT_RANGE" "${CASCADE_PORT:-8888}"
-  COMPOSE_FILE="$REPO_DIR/deploy/docker-compose.bridge.yml"
+  COMPOSE_FILE="$REPO_DIR/docker-compose.bridge.yml"
 else
   COMPOSE_FILE="$REPO_DIR/docker-compose.go.yml"
 fi
