@@ -180,8 +180,9 @@
                     style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#f59e0b; flex-shrink:0;">
               </span>
             </div>
-            <!-- AWG run mode badge -->
-            <div v-if="globalSettings.awgMode" style="margin-top:5px;">
+            <!-- AWG run mode + network mode badges -->
+            <div v-if="globalSettings.awgMode" style="margin-top:5px; display:flex; flex-wrap:wrap; gap:4px;">
+              <!-- WG implementation: KERNEL (green) | USERSPACE (blue) -->
               <span v-if="globalSettings.awgMode === 'userspace'"
                     title="Running amneziawg-go (userspace)"
                     :style="{
@@ -201,6 +202,37 @@
                       color:      theme === 'dark' ? '#86efac' : '#065f46'
                     }">
                 KERNEL
+              </span>
+              <!-- Docker network mode: HOST (gray) | BRIDGE (amber) | NONE (red) -->
+              <span v-if="globalSettings.networkMode === 'bridge'"
+                    title="Docker bridge network mode — ports are published via docker-compose"
+                    :style="{
+                      display:'inline-block', fontSize:'10px', fontWeight:'600',
+                      letterSpacing:'0.04em', padding:'1px 7px', borderRadius:'999px',
+                      background: theme === 'dark' ? '#451a03' : '#fef3c7',
+                      color:      theme === 'dark' ? '#fcd34d' : '#92400e'
+                    }">
+                BRIDGE
+              </span>
+              <span v-else-if="globalSettings.networkMode === 'none'"
+                    title="Docker none network mode — no external network"
+                    :style="{
+                      display:'inline-block', fontSize:'10px', fontWeight:'600',
+                      letterSpacing:'0.04em', padding:'1px 7px', borderRadius:'999px',
+                      background: theme === 'dark' ? '#3b0a0a' : '#fee2e2',
+                      color:      theme === 'dark' ? '#fca5a5' : '#991b1b'
+                    }">
+                NONE
+              </span>
+              <span v-else
+                    title="Docker host network mode — container shares host network namespace"
+                    :style="{
+                      display:'inline-block', fontSize:'10px', fontWeight:'600',
+                      letterSpacing:'0.04em', padding:'1px 7px', borderRadius:'999px',
+                      background: theme === 'dark' ? '#1f2937' : '#f3f4f6',
+                      color:      theme === 'dark' ? '#9ca3af' : '#374151'
+                    }">
+                HOST
               </span>
             </div>
           </div>

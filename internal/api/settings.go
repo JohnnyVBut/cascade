@@ -36,14 +36,29 @@ func awgRunMode() string {
 	return "kernel"
 }
 
+// dockerNetworkMode returns the Docker network mode from the NETWORK_MODE env var.
+// setup.sh writes NETWORK_MODE=host|bridge into deploy/.env which is passed to the container.
+// Defaults to "host" if unset (historical default and most common deployment).
+func dockerNetworkMode() string {
+	switch os.Getenv("NETWORK_MODE") {
+	case "bridge":
+		return "bridge"
+	case "none":
+		return "none"
+	default:
+		return "host"
+	}
+}
+
 // SettingsResponse wraps GlobalSettings and adds runtime-only fields
-// (hostname, resolvedPublicIP, publicIPWarning, awgMode) that are not stored in the DB.
+// (hostname, resolvedPublicIP, publicIPWarning, awgMode, networkMode) that are not stored in the DB.
 type SettingsResponse struct {
 	settings.GlobalSettings
 	Hostname         string `json:"hostname"`
 	ResolvedPublicIP string `json:"resolvedPublicIP"`
 	PublicIPWarning  string `json:"publicIPWarning"`
-	AwgMode          string `json:"awgMode"` // "userspace" | "kernel"
+	AwgMode          string `json:"awgMode"`     // "userspace" | "kernel"
+	NetworkMode      string `json:"networkMode"` // "host" | "bridge" | "none"
 }
 
 // RegisterSettings registers all /api/settings and /api/templates routes.
@@ -78,6 +93,7 @@ func RegisterSettings(api fiber.Router) {
 			ResolvedPublicIP: resolvedIP,
 			PublicIPWarning:  ipWarn,
 			AwgMode:          awgRunMode(),
+			NetworkMode:      dockerNetworkMode(),
 		})
 	})
 
