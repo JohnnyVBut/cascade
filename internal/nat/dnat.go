@@ -42,25 +42,27 @@ import (
 
 // DnatRule is a Port Forwarding (DNAT) rule stored in SQLite.
 type DnatRule struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Protocol  string `json:"protocol"` // "tcp" | "udp" | "both"
-	InPort    int    `json:"inPort"`
-	DestIP    string `json:"destIP"`
-	DestPort  int    `json:"destPort"` // 0 = same as InPort
-	Comment   string `json:"comment"`
-	Enabled   bool   `json:"enabled"`
-	CreatedAt string `json:"createdAt"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Protocol    string `json:"protocol"`    // "tcp" | "udp" | "both"
+	InInterface string `json:"inInterface"` // "" = any interface
+	InPort      int    `json:"inPort"`
+	DestIP      string `json:"destIP"`
+	DestPort    int    `json:"destPort"` // 0 = same as InPort
+	Comment     string `json:"comment"`
+	Enabled     bool   `json:"enabled"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 // DnatRuleInput is the create/update request payload.
 type DnatRuleInput struct {
-	Name     string `json:"name"`
-	Protocol string `json:"protocol"`
-	InPort   int    `json:"inPort"`
-	DestIP   string `json:"destIP"`
-	DestPort int    `json:"destPort"`
-	Comment  string `json:"comment"`
+	Name        string `json:"name"`
+	Protocol    string `json:"protocol"`
+	InInterface string `json:"inInterface"` // "" = any
+	InPort      int    `json:"inPort"`
+	DestIP      string `json:"destIP"`
+	DestPort    int    `json:"destPort"`
+	Comment     string `json:"comment"`
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -91,7 +93,7 @@ func (m *Manager) RestoreAllDnat() {
 // GetDnatRules returns all DNAT rules ordered by created_at.
 func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 	rows, err := db.DB().Query(`
-		SELECT id, name, protocol, in_port, dest_ip, dest_port, comment, enabled, created_at
+		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, comment, enabled, created_at
 		FROM nat_dnat_rules
 		ORDER BY created_at
 	`)
@@ -105,7 +107,7 @@ func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 		var r DnatRule
 		var enabled int
 		if err := rows.Scan(
-			&r.ID, &r.Name, &r.Protocol, &r.InPort, &r.DestIP,
+			&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.DestIP,
 			&r.DestPort, &r.Comment, &enabled, &r.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -121,10 +123,10 @@ func (m *Manager) GetDnatRule(id string) (*DnatRule, error) {
 	var r DnatRule
 	var enabled int
 	err := db.DB().QueryRow(`
-		SELECT id, name, protocol, in_port, dest_ip, dest_port, comment, enabled, created_at
+		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, comment, enabled, created_at
 		FROM nat_dnat_rules WHERE id = ?
 	`, id).Scan(
-		&r.ID, &r.Name, &r.Protocol, &r.InPort, &r.DestIP,
+		&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.DestIP,
 		&r.DestPort, &r.Comment, &enabled, &r.CreatedAt,
 	)
 	if err != nil {
@@ -144,15 +146,16 @@ func (m *Manager) AddDnatRule(inp DnatRuleInput) (*DnatRule, error) {
 	}
 
 	rule := DnatRule{
-		ID:        uuid.New().String(),
-		Name:      strings.TrimSpace(inp.Name),
-		Protocol:  inp.Protocol,
-		InPort:    inp.InPort,
-		DestIP:    strings.TrimSpace(inp.DestIP),
-		DestPort:  inp.DestPort,
-		Comment:   strings.TrimSpace(inp.Comment),
-		Enabled:   true,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		ID:          uuid.New().String(),
+		Name:        strings.TrimSpace(inp.Name),
+		Protocol:    inp.Protocol,
+		InInterface: strings.TrimSpace(inp.InInterface),
+		InPort:      inp.InPort,
+		DestIP:      strings.TrimSpace(inp.DestIP),
+		DestPort:    inp.DestPort,
+		Comment:     strings.TrimSpace(inp.Comment),
+		Enabled:     true,
+		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
 
 	if err := m.applyDnatRule(&rule); err != nil {
@@ -160,10 +163,10 @@ func (m *Manager) AddDnatRule(inp DnatRuleInput) (*DnatRule, error) {
 	}
 
 	_, err := db.DB().Exec(`
-		INSERT INTO nat_dnat_rules (id, name, protocol, in_port, dest_ip, dest_port, comment, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO nat_dnat_rules (id, name, protocol, in_interface, in_port, dest_ip, dest_port, comment, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		rule.ID, rule.Name, rule.Protocol, rule.InPort, rule.DestIP,
+		rule.ID, rule.Name, rule.Protocol, rule.InInterface, rule.InPort, rule.DestIP,
 		rule.DestPort, rule.Comment, boolInt(rule.Enabled), rule.CreatedAt,
 	)
 	if err != nil {
@@ -190,15 +193,16 @@ func (m *Manager) UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error
 	}
 
 	updated := DnatRule{
-		ID:        old.ID,
-		Name:      strings.TrimSpace(inp.Name),
-		Protocol:  inp.Protocol,
-		InPort:    inp.InPort,
-		DestIP:    strings.TrimSpace(inp.DestIP),
-		DestPort:  inp.DestPort,
-		Comment:   strings.TrimSpace(inp.Comment),
-		Enabled:   old.Enabled,
-		CreatedAt: old.CreatedAt,
+		ID:          old.ID,
+		Name:        strings.TrimSpace(inp.Name),
+		Protocol:    inp.Protocol,
+		InInterface: strings.TrimSpace(inp.InInterface),
+		InPort:      inp.InPort,
+		DestIP:      strings.TrimSpace(inp.DestIP),
+		DestPort:    inp.DestPort,
+		Comment:     strings.TrimSpace(inp.Comment),
+		Enabled:     old.Enabled,
+		CreatedAt:   old.CreatedAt,
 	}
 
 	if old.Enabled {
@@ -214,9 +218,9 @@ func (m *Manager) UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error
 
 	_, err = db.DB().Exec(`
 		UPDATE nat_dnat_rules
-		SET name = ?, protocol = ?, in_port = ?, dest_ip = ?, dest_port = ?, comment = ?
+		SET name = ?, protocol = ?, in_interface = ?, in_port = ?, dest_ip = ?, dest_port = ?, comment = ?
 		WHERE id = ?
-	`, updated.Name, updated.Protocol, updated.InPort, updated.DestIP, updated.DestPort, updated.Comment, id)
+	`, updated.Name, updated.Protocol, updated.InInterface, updated.InPort, updated.DestIP, updated.DestPort, updated.Comment, id)
 	if err != nil {
 		return nil, err
 	}
@@ -305,12 +309,18 @@ func buildDnatCmds(rule *DnatRule, action string) []string {
 		protos = []string{rule.Protocol}
 	}
 
+	// Optional inbound interface scope (-i flag on PREROUTING).
+	ifaceFlag := ""
+	if rule.InInterface != "" {
+		ifaceFlag = " -i " + rule.InInterface
+	}
+
 	var cmds []string
 	for _, proto := range protos {
-		// 1. PREROUTING DNAT
+		// 1. PREROUTING DNAT (optionally scoped to a specific inbound interface)
 		cmds = append(cmds, fmt.Sprintf(
-			"iptables-nft -t nat -%s PREROUTING -p %s --dport %d -j DNAT --to-destination %s:%d",
-			action, proto, rule.InPort, destIP, destPort,
+			"iptables-nft -t nat -%s PREROUTING%s -p %s --dport %d -j DNAT --to-destination %s:%d",
+			action, ifaceFlag, proto, rule.InPort, destIP, destPort,
 		))
 		// 2. FORWARD: new + established packets to dest
 		cmds = append(cmds, fmt.Sprintf(
@@ -368,6 +378,18 @@ func validateDnat(inp DnatRuleInput) error {
 	}
 	if inp.Protocol != "tcp" && inp.Protocol != "udp" && inp.Protocol != "both" {
 		return fmt.Errorf("protocol must be tcp, udp, or both")
+	}
+	// InInterface: optional; if set must be a safe identifier (letters, digits, dash, dot, underscore)
+	if iface := strings.TrimSpace(inp.InInterface); iface != "" {
+		for _, c := range iface {
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+				(c >= '0' && c <= '9') || c == '-' || c == '.' || c == '_' || c == '@') {
+				return fmt.Errorf("inInterface contains invalid characters")
+			}
+		}
+		if len(iface) > 15 {
+			return fmt.Errorf("inInterface name too long (max 15 chars)")
+		}
 	}
 	if inp.InPort < 1 || inp.InPort > 65535 {
 		return fmt.Errorf("inPort must be between 1 and 65535")

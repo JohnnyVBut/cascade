@@ -417,6 +417,15 @@ CREATE TABLE IF NOT EXISTS nat_dnat_rules (
 );
 `,
 	},
+	{
+		version: 14,
+		sql: `
+-- Add optional inbound interface scoping to DNAT rules.
+-- Empty string = match any interface (no -i flag in iptables PREROUTING).
+-- Typical values: "eth0", "ens3" (WAN interface).
+ALTER TABLE nat_dnat_rules ADD COLUMN in_interface TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

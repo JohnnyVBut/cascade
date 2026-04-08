@@ -3381,6 +3381,7 @@
                   <tr class="border-b dark:border-neutral-600 text-left text-gray-500 dark:text-neutral-400">
                     <th class="px-4 py-3 font-medium">Name</th>
                     <th class="px-4 py-3 font-medium">Protocol</th>
+                    <th class="px-4 py-3 font-medium">Interface</th>
                     <th class="px-4 py-3 font-medium">In Port</th>
                     <th class="px-4 py-3 font-medium">Destination</th>
                     <th class="px-4 py-3 font-medium">Comment</th>
@@ -3397,6 +3398,10 @@
                       <span class="text-xs font-mono bg-gray-100 dark:bg-neutral-600 dark:text-neutral-200 rounded px-2 py-1">
                         {{ rule.protocol.toUpperCase() }}
                       </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-500 dark:text-neutral-400 text-xs font-mono">
+                      <span v-if="rule.inInterface" class="bg-gray-100 dark:bg-neutral-600 dark:text-neutral-200 rounded px-2 py-1">{{ rule.inInterface }}</span>
+                      <span v-else class="text-gray-400 dark:text-neutral-500">any</span>
                     </td>
                     <td class="px-4 py-3 dark:text-neutral-200 font-mono">{{ rule.inPort }}</td>
                     <td class="px-4 py-3 dark:text-neutral-200 font-mono">
@@ -3468,6 +3473,20 @@
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
                     <option value="both">Both (TCP + UDP)</option>
+                  </select>
+                </div>
+
+                <!-- Inbound Interface -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                    Inbound Interface
+                    <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional — any if empty)</span>
+                  </label>
+                  <select v-model="dnatForm.inInterface"
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                    <option value="">— any interface —</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
                   </select>
                 </div>
 

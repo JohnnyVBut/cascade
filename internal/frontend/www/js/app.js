@@ -337,7 +337,7 @@ new Vue({
     dnatLoading: false,
     showDnatModal: false,
     dnatEditMode: false,
-    dnatForm: { id: '', name: '', protocol: 'udp', inPort: '', destIP: '', destPort: '', comment: '' },
+    dnatForm: { id: '', name: '', protocol: 'udp', inInterface: '', inPort: '', destIP: '', destPort: '', comment: '' },
     showNatRuleCreate: false,     // модал создания правила
     showNatRuleEdit: false,       // модал редактирования правила
     natRuleCreate: {
@@ -1635,7 +1635,7 @@ new Vue({
 
     openAddDnat() {
       this.dnatEditMode = false;
-      this.dnatForm = { id: '', name: '', protocol: 'udp', inPort: '', destIP: '', destPort: '', comment: '' };
+      this.dnatForm = { id: '', name: '', protocol: 'udp', inInterface: '', inPort: '', destIP: '', destPort: '', comment: '' };
       this.showDnatModal = true;
     },
 
@@ -1645,6 +1645,7 @@ new Vue({
         id: rule.id,
         name: rule.name,
         protocol: rule.protocol,
+        inInterface: rule.inInterface || '',
         inPort: rule.inPort,
         destIP: rule.destIP,
         destPort: rule.destPort || '',
@@ -1657,6 +1658,7 @@ new Vue({
       const body = {
         name: this.dnatForm.name,
         protocol: this.dnatForm.protocol,
+        inInterface: this.dnatForm.inInterface || '',
         inPort: parseInt(this.dnatForm.inPort) || 0,
         destIP: this.dnatForm.destIP,
         destPort: parseInt(this.dnatForm.destPort) || 0,
