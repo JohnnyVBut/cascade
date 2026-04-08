@@ -426,6 +426,18 @@ CREATE TABLE IF NOT EXISTS nat_dnat_rules (
 ALTER TABLE nat_dnat_rules ADD COLUMN in_interface TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 15,
+		sql: `
+-- Add source NAT (masquerade) flag to DNAT rules.
+-- When masquerade=1, a POSTROUTING MASQUERADE rule is added scoped to dest_ip:effective_port.
+-- Required when the destination host cannot route replies back through this server
+-- (i.e. destination is a public server on the internet — the typical port forwarding case).
+-- DEFAULT 1: new rules masquerade by default; disable only when destination routes
+-- replies back through this server anyway (e.g. hub-and-spoke WireGuard topology).
+ALTER TABLE nat_dnat_rules ADD COLUMN masquerade INTEGER NOT NULL DEFAULT 1;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

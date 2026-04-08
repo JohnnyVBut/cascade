@@ -49,6 +49,7 @@ type DnatRule struct {
 	InPort      int    `json:"inPort"`
 	DestIP      string `json:"destIP"`
 	DestPort    int    `json:"destPort"` // 0 = same as InPort
+	Masquerade  bool   `json:"masquerade"` // add POSTROUTING MASQUERADE for forwarded traffic
 	Comment     string `json:"comment"`
 	Enabled     bool   `json:"enabled"`
 	CreatedAt   string `json:"createdAt"`
@@ -62,6 +63,7 @@ type DnatRuleInput struct {
 	InPort      int    `json:"inPort"`
 	DestIP      string `json:"destIP"`
 	DestPort    int    `json:"destPort"`
+	Masquerade  bool   `json:"masquerade"`
 	Comment     string `json:"comment"`
 }
 
@@ -93,7 +95,7 @@ func (m *Manager) RestoreAllDnat() {
 // GetDnatRules returns all DNAT rules ordered by created_at.
 func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 	rows, err := db.DB().Query(`
-		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, comment, enabled, created_at
+		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, masquerade, comment, enabled, created_at
 		FROM nat_dnat_rules
 		ORDER BY created_at
 	`)
@@ -105,14 +107,15 @@ func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 	out := []DnatRule{}
 	for rows.Next() {
 		var r DnatRule
-		var enabled int
+		var enabled, masq int
 		if err := rows.Scan(
 			&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.DestIP,
-			&r.DestPort, &r.Comment, &enabled, &r.CreatedAt,
+			&r.DestPort, &masq, &r.Comment, &enabled, &r.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
 		r.Enabled = enabled != 0
+		r.Masquerade = masq != 0
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -121,13 +124,13 @@ func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 // GetDnatRule returns a single DNAT rule by ID, or nil if not found.
 func (m *Manager) GetDnatRule(id string) (*DnatRule, error) {
 	var r DnatRule
-	var enabled int
+	var enabled, masq int
 	err := db.DB().QueryRow(`
-		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, comment, enabled, created_at
+		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, masquerade, comment, enabled, created_at
 		FROM nat_dnat_rules WHERE id = ?
 	`, id).Scan(
 		&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.DestIP,
-		&r.DestPort, &r.Comment, &enabled, &r.CreatedAt,
+		&r.DestPort, &masq, &r.Comment, &enabled, &r.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -136,6 +139,7 @@ func (m *Manager) GetDnatRule(id string) (*DnatRule, error) {
 		return nil, err
 	}
 	r.Enabled = enabled != 0
+	r.Masquerade = masq != 0
 	return &r, nil
 }
 
@@ -153,6 +157,7 @@ func (m *Manager) AddDnatRule(inp DnatRuleInput) (*DnatRule, error) {
 		InPort:      inp.InPort,
 		DestIP:      strings.TrimSpace(inp.DestIP),
 		DestPort:    inp.DestPort,
+		Masquerade:  inp.Masquerade,
 		Comment:     strings.TrimSpace(inp.Comment),
 		Enabled:     true,
 		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
@@ -163,11 +168,11 @@ func (m *Manager) AddDnatRule(inp DnatRuleInput) (*DnatRule, error) {
 	}
 
 	_, err := db.DB().Exec(`
-		INSERT INTO nat_dnat_rules (id, name, protocol, in_interface, in_port, dest_ip, dest_port, comment, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO nat_dnat_rules (id, name, protocol, in_interface, in_port, dest_ip, dest_port, masquerade, comment, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		rule.ID, rule.Name, rule.Protocol, rule.InInterface, rule.InPort, rule.DestIP,
-		rule.DestPort, rule.Comment, boolInt(rule.Enabled), rule.CreatedAt,
+		rule.DestPort, boolInt(rule.Masquerade), rule.Comment, boolInt(rule.Enabled), rule.CreatedAt,
 	)
 	if err != nil {
 		_ = m.removeDnatRule(&rule)
@@ -200,6 +205,7 @@ func (m *Manager) UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error
 		InPort:      inp.InPort,
 		DestIP:      strings.TrimSpace(inp.DestIP),
 		DestPort:    inp.DestPort,
+		Masquerade:  inp.Masquerade,
 		Comment:     strings.TrimSpace(inp.Comment),
 		Enabled:     old.Enabled,
 		CreatedAt:   old.CreatedAt,
@@ -218,9 +224,9 @@ func (m *Manager) UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error
 
 	_, err = db.DB().Exec(`
 		UPDATE nat_dnat_rules
-		SET name = ?, protocol = ?, in_interface = ?, in_port = ?, dest_ip = ?, dest_port = ?, comment = ?
+		SET name = ?, protocol = ?, in_interface = ?, in_port = ?, dest_ip = ?, dest_port = ?, masquerade = ?, comment = ?
 		WHERE id = ?
-	`, updated.Name, updated.Protocol, updated.InInterface, updated.InPort, updated.DestIP, updated.DestPort, updated.Comment, id)
+	`, updated.Name, updated.Protocol, updated.InInterface, updated.InPort, updated.DestIP, updated.DestPort, boolInt(updated.Masquerade), updated.Comment, id)
 	if err != nil {
 		return nil, err
 	}
@@ -332,6 +338,17 @@ func buildDnatCmds(rule *DnatRule, action string) []string {
 			"iptables-nft -%s FORWARD -p %s -s %s --sport %d -m state --state ESTABLISHED,RELATED -j ACCEPT",
 			action, proto, destIP, destPort,
 		))
+		// 4. POSTROUTING MASQUERADE — rewrite source to this server's IP so the
+		//    destination replies back here (not directly to the original client).
+		//    Required when the destination is a public server that has no route
+		//    back through this machine. Skip only when Masquerade=false (e.g.
+		//    hub-and-spoke WG topology where dest already routes replies here).
+		if rule.Masquerade {
+			cmds = append(cmds, fmt.Sprintf(
+				"iptables-nft -t nat -%s POSTROUTING -p %s -d %s --dport %d -j MASQUERADE",
+				action, proto, destIP, destPort,
+			))
+		}
 	}
 	return cmds
 }

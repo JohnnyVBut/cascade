@@ -3417,6 +3417,7 @@
                     <th class="px-4 py-3 font-medium">In Port</th>
                     <th class="px-4 py-3 font-medium">Destination</th>
                     <th class="px-4 py-3 font-medium">Comment</th>
+                    <th class="px-4 py-3 font-medium">SNAT</th>
                     <th class="px-4 py-3 font-medium">Status</th>
                     <th class="px-4 py-3 font-medium"></th>
                   </tr>
@@ -3440,6 +3441,14 @@
                       {{ rule.destIP }}:{{ rule.destPort || rule.inPort }}
                     </td>
                     <td class="px-4 py-3 text-gray-500 dark:text-neutral-400 text-xs">{{ rule.comment }}</td>
+                    <td class="px-4 py-3">
+                      <span v-if="rule.masquerade"
+                        title="Source NAT enabled — replies route back through this server"
+                        class="text-xs font-mono bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 rounded px-2 py-1">
+                        MASQ
+                      </span>
+                      <span v-else title="Source NAT disabled" class="text-gray-300 dark:text-neutral-600 text-xs">—</span>
+                    </td>
                     <td class="px-4 py-3">
                       <span :class="rule.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-neutral-600 dark:text-neutral-400'"
                         class="text-xs rounded px-2 py-1">
@@ -3555,6 +3564,23 @@
                   <input v-model="dnatForm.destPort" type="number" min="1" max="65535" placeholder="same as incoming"
                     class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
                     style="padding:8px 12px;">
+                </div>
+
+                <!-- Source NAT -->
+                <div style="padding:12px; background:#f9fafb; border-radius:8px; border:1px solid #e5e7eb;"
+                  class="dark:bg-neutral-600 dark:border-neutral-500">
+                  <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+                    <input type="checkbox" v-model="dnatForm.masquerade" style="margin-top:2px; flex-shrink:0;">
+                    <span>
+                      <span class="text-sm font-medium dark:text-neutral-200">Source NAT (Masquerade)</span>
+                      <span class="block text-xs dark:text-neutral-400" style="color:#6b7280; margin-top:2px;">
+                        Rewrites the source IP to this server's address so the destination replies back here.
+                        <strong>Enable</strong> when forwarding to a public internet server (e.g. RU→NL cascading).
+                        <strong>Disable</strong> only if the destination already routes replies through this server
+                        (e.g. hub-and-spoke WireGuard topology).
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 <!-- Comment -->
