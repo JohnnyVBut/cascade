@@ -332,6 +332,12 @@ new Vue({
     natRules: [],                 // список NAT правил
     natInterfaces: [],            // список сетевых интерфейсов хоста
     natRulesLoading: false,
+    // Port Forwarding (DNAT)
+    dnatRules: [],
+    dnatLoading: false,
+    showDnatModal: false,
+    dnatEditMode: false,
+    dnatForm: { id: '', name: '', protocol: 'udp', inPort: '', destIP: '', destPort: '', comment: '' },
     showNatRuleCreate: false,     // модал создания правила
     showNatRuleEdit: false,       // модал редактирования правила
     natRuleCreate: {
@@ -1608,6 +1614,87 @@ new Vue({
 
     switchNatTab(tab) {
       this.activeNatTab = tab;
+      if (tab === 'portforward' && this.dnatRules.length === 0) {
+        this.loadDnatRules();
+      }
+    },
+
+    // ── Port Forwarding (DNAT) ────────────────────────────────────────────────
+
+    async loadDnatRules() {
+      this.dnatLoading = true;
+      try {
+        const res = await this.api.call({ method: 'GET', path: '/nat/dnat' });
+        this.dnatRules = res.rules || [];
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to load port forwarding rules');
+      } finally {
+        this.dnatLoading = false;
+      }
+    },
+
+    openAddDnat() {
+      this.dnatEditMode = false;
+      this.dnatForm = { id: '', name: '', protocol: 'udp', inPort: '', destIP: '', destPort: '', comment: '' };
+      this.showDnatModal = true;
+    },
+
+    openEditDnat(rule) {
+      this.dnatEditMode = true;
+      this.dnatForm = {
+        id: rule.id,
+        name: rule.name,
+        protocol: rule.protocol,
+        inPort: rule.inPort,
+        destIP: rule.destIP,
+        destPort: rule.destPort || '',
+        comment: rule.comment || '',
+      };
+      this.showDnatModal = true;
+    },
+
+    async saveDnat() {
+      const body = {
+        name: this.dnatForm.name,
+        protocol: this.dnatForm.protocol,
+        inPort: parseInt(this.dnatForm.inPort) || 0,
+        destIP: this.dnatForm.destIP,
+        destPort: parseInt(this.dnatForm.destPort) || 0,
+        comment: this.dnatForm.comment,
+      };
+      try {
+        if (this.dnatEditMode) {
+          await this.api.call({ method: 'PATCH', path: `/nat/dnat/${this.dnatForm.id}`, body });
+          this.showToast('success', 'Rule updated');
+        } else {
+          await this.api.call({ method: 'POST', path: '/nat/dnat', body });
+          this.showToast('success', 'Rule created');
+        }
+        this.showDnatModal = false;
+        await this.loadDnatRules();
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to save rule');
+      }
+    },
+
+    async toggleDnat(rule) {
+      try {
+        await this.api.call({ method: 'PATCH', path: `/nat/dnat/${rule.id}`, body: { enabled: !rule.enabled } });
+        await this.loadDnatRules();
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to toggle rule');
+      }
+    },
+
+    async deleteDnat(rule) {
+      if (!confirm(`Delete "${rule.name}"?`)) return;
+      try {
+        await this.api.call({ method: 'DELETE', path: `/nat/dnat/${rule.id}` });
+        this.showToast('success', 'Rule deleted');
+        await this.loadDnatRules();
+      } catch (e) {
+        this.showToast('error', e.message || 'Failed to delete rule');
+      }
     },
 
     // Navigate to the interface page for an auto NAT rule

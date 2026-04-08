@@ -3194,9 +3194,9 @@
               class="px-4 py-2 rounded-lg font-medium transition text-sm">
               Outbound NAT
             </button>
-            <button
-              class="px-4 py-2 rounded-lg font-medium transition text-sm bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200"
-              style="opacity:0.5; cursor:not-allowed;" disabled>
+            <button @click="switchNatTab('portforward')"
+              :class="activeNatTab === 'portforward' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200'"
+              class="px-4 py-2 rounded-lg font-medium transition text-sm">
               Port Forwarding
             </button>
           </div>
@@ -3343,10 +3343,184 @@
           </div><!-- /outbound tab -->
 
           <!-- ── PORT FORWARDING TAB ───────────────────────────────────── -->
-          <div v-if="activeNatTab === 'portforward'" class="text-center text-gray-500 dark:text-neutral-400" style="padding:60px 0;">
-            <h2 class="text-2xl font-medium dark:text-neutral-200 mb-4">Port Forwarding</h2>
-            <p class="text-lg">Coming soon</p>
-          </div>
+          <div v-if="activeNatTab === 'portforward'" style="display:flex; flex-direction:column; gap:16px;">
+
+            <!-- Header -->
+            <div class="bg-white dark:bg-neutral-700 rounded-lg shadow" style="padding:16px 24px 24px;">
+              <div class="flex items-center justify-between mb-2">
+                <div>
+                  <h2 class="text-lg font-semibold dark:text-neutral-100">Port Forwarding</h2>
+                  <p class="text-sm text-gray-500 dark:text-neutral-400" style="margin-top:4px;">
+                    Redirect inbound traffic to another server (DNAT). Client → this server → destination.
+                  </p>
+                </div>
+                <button @click="openAddDnat()"
+                  class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+                  style="padding:8px 16px;">
+                  + Add Rule
+                </button>
+              </div>
+            </div>
+
+            <!-- Loading -->
+            <div v-if="dnatLoading" class="text-sm text-gray-400 dark:text-neutral-400" style="padding:16px 0;">
+              Loading...
+            </div>
+
+            <!-- Empty -->
+            <div v-else-if="!dnatRules.length"
+              class="bg-white dark:bg-neutral-700 rounded-lg shadow text-center text-gray-400 dark:text-neutral-400"
+              style="padding:40px 0;">
+              No rules yet. Click "+ Add Rule" to forward a port to another server.
+            </div>
+
+            <!-- Rules table -->
+            <div v-else class="bg-white dark:bg-neutral-700 rounded-lg shadow overflow-hidden">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="border-b dark:border-neutral-600 text-left text-gray-500 dark:text-neutral-400">
+                    <th class="px-4 py-3 font-medium">Name</th>
+                    <th class="px-4 py-3 font-medium">Protocol</th>
+                    <th class="px-4 py-3 font-medium">In Port</th>
+                    <th class="px-4 py-3 font-medium">Destination</th>
+                    <th class="px-4 py-3 font-medium">Comment</th>
+                    <th class="px-4 py-3 font-medium">Status</th>
+                    <th class="px-4 py-3 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="rule in dnatRules" :key="rule.id"
+                    class="border-b dark:border-neutral-600 last:border-0"
+                    :style="!rule.enabled ? 'opacity:0.5' : ''">
+                    <td class="px-4 py-3 dark:text-neutral-200 font-medium">{{ rule.name }}</td>
+                    <td class="px-4 py-3">
+                      <span class="text-xs font-mono bg-gray-100 dark:bg-neutral-600 dark:text-neutral-200 rounded px-2 py-1">
+                        {{ rule.protocol.toUpperCase() }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3 dark:text-neutral-200 font-mono">{{ rule.inPort }}</td>
+                    <td class="px-4 py-3 dark:text-neutral-200 font-mono">
+                      {{ rule.destIP }}:{{ rule.destPort || rule.inPort }}
+                    </td>
+                    <td class="px-4 py-3 text-gray-500 dark:text-neutral-400 text-xs">{{ rule.comment }}</td>
+                    <td class="px-4 py-3">
+                      <span :class="rule.enabled ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-neutral-600 dark:text-neutral-400'"
+                        class="text-xs rounded px-2 py-1">
+                        {{ rule.enabled ? 'active' : 'disabled' }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="flex gap-2 justify-end">
+                        <button @click="toggleDnat(rule)"
+                          class="text-xs text-gray-500 dark:text-neutral-400 hover:text-blue-600"
+                          style="padding:4px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                          {{ rule.enabled ? 'Disable' : 'Enable' }}
+                        </button>
+                        <button @click="openEditDnat(rule)"
+                          class="text-xs text-gray-500 dark:text-neutral-400 hover:text-blue-600"
+                          style="padding:4px 8px; border:1px solid #d1d5db; border-radius:6px;">
+                          Edit
+                        </button>
+                        <button @click="deleteDnat(rule)"
+                          class="text-xs text-red-500 hover:text-red-700"
+                          style="padding:4px 8px; border:1px solid #fca5a5; border-radius:6px;">
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div><!-- /portforward tab -->
+
+          <!-- ── Add/Edit DNAT Rule Modal ────────────────────────────────── -->
+          <div v-if="showDnatModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+            style="padding:40px 24px;"
+            @click.self="showDnatModal = false">
+            <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:480px; margin:0 auto;">
+
+              <div class="modal-header">
+                <h3 class="text-lg font-semibold dark:text-neutral-100">
+                  {{ dnatEditMode ? 'Edit Rule' : 'Add Port Forwarding Rule' }}
+                </h3>
+                <button @click="showDnatModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200 text-xl leading-none">&times;</button>
+              </div>
+
+              <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+
+                <!-- Name -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Name</label>
+                  <input v-model="dnatForm.name" type="text" placeholder="e.g. WireGuard RU→NL"
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                </div>
+
+                <!-- Protocol -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Protocol</label>
+                  <select v-model="dnatForm.protocol"
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                    <option value="udp">UDP</option>
+                    <option value="tcp">TCP</option>
+                    <option value="both">Both (TCP + UDP)</option>
+                  </select>
+                </div>
+
+                <!-- In Port -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Incoming Port (on this server)</label>
+                  <input v-model="dnatForm.inPort" type="number" min="1" max="65535" placeholder="51820"
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                </div>
+
+                <!-- Dest IP -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Destination IP (target server)</label>
+                  <input v-model="dnatForm.destIP" type="text" placeholder="185.x.x.x"
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                </div>
+
+                <!-- Dest Port -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                    Destination Port
+                    <span class="text-gray-400 dark:text-neutral-500 font-normal">(leave empty = same as incoming)</span>
+                  </label>
+                  <input v-model="dnatForm.destPort" type="number" min="1" max="65535" placeholder="same as incoming"
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                </div>
+
+                <!-- Comment -->
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Comment <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional)</span></label>
+                  <input v-model="dnatForm.comment" type="text" placeholder=""
+                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                    style="padding:8px 12px;">
+                </div>
+
+              </div><!-- /modal-body -->
+
+              <div class="modal-footer-compact">
+                <button @click="showDnatModal = false"
+                  class="text-sm text-gray-500 dark:text-neutral-400"
+                  style="padding:8px 16px;">Cancel</button>
+                <button @click="saveDnat()"
+                  class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg"
+                  style="padding:8px 16px;">
+                  {{ dnatEditMode ? 'Save' : 'Create' }}
+                </button>
+              </div>
+
+            </div>
+          </div><!-- /dnat modal -->
 
         </div><!-- /nat page -->
 

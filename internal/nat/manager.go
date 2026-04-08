@@ -129,6 +129,7 @@ func (m *Manager) RestoreAll() {
 			log.Printf("nat: restored rule %q", rule.Name)
 		}
 	}
+	m.RestoreAllDnat()
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
