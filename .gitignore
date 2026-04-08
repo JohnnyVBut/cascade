@@ -35,6 +35,7 @@ src/www/README.ru.md
 src/www/i18n.js.bak
 # Generated at deploy time — do not commit
 deploy/caddy/www/video/*.mp4
+deploy/docker-compose.bridge.yml
 
 # Build artifacts — compiled binaries
 /awg-easy

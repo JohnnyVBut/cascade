@@ -85,8 +85,23 @@ BIND_ADDR=${BIND_ADDR:-127.0.0.1}
 PASSWORD_HASH=
 AWG_USERSPACE_IMPL=${AWG_USERSPACE_IMPL:-}
 WG_QUICK_USERSPACE_IMPLEMENTATION=${userspace_val}
+NETWORK_MODE=${NETWORK_MODE:-host}
+BRIDGE_PORT_RANGE=${BRIDGE_PORT_RANGE:-}
 EOF
   chmod 600 "$ENV_FILE"
+}
+
+# generate_bridge_compose — create docker-compose.bridge.yml from template
+# Substitutes __WG_PORT_RANGE__ and __CASCADE_PORT__ placeholders.
+generate_bridge_compose() {
+  local port_range="$1" mgmt_port="$2"
+  local tmpl="$REPO_DIR/deploy/docker-compose.bridge.yml.example"
+  local out="$REPO_DIR/deploy/docker-compose.bridge.yml"
+  [[ ! -f "$tmpl" ]] && fail "Template not found: $tmpl"
+  sed -e "s|__WG_PORT_RANGE__|${port_range}|g" \
+      -e "s|__CASCADE_PORT__|${mgmt_port}|g" \
+      "$tmpl" > "$out"
+  ok "Generated $out (range: $port_range, port: $mgmt_port)"
 }
 
 is_ip() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
@@ -282,6 +297,88 @@ else
 fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# STEP 2b — Network mode
+# ═══════════════════════════════════════════════════════════════════════════════
+echo ""
+echo -e "${B}── Step 2b: Network mode${N}"
+
+if [[ "${NETWORK_MODE:-unset}" != "unset" && -n "${NETWORK_MODE:-}" ]]; then
+  ok "Network mode: $NETWORK_MODE (loaded from .env)"
+  if [[ $YES -eq 0 ]]; then
+    read -rp "  Change network mode? [y/N]: " CHANGE_NET
+    CHANGE_NET="${CHANGE_NET:-n}"
+    [[ "${CHANGE_NET,,}" == "y" ]] && NETWORK_MODE=""
+  fi
+fi
+
+if [[ -z "${NETWORK_MODE:-}" ]]; then
+  echo ""
+  echo -e "  ${B}Choose Docker network mode:${N}"
+  echo -e "  ${G}[1] Host${N} (recommended)"
+  echo -e "      • Container shares host network namespace"
+  echo -e "      • No port range needed — all ports accessible directly"
+  echo -e "      • Simplest setup, suitable for VPS"
+  echo ""
+  echo -e "  ${Y}[2] Bridge${N}"
+  echo -e "      • Container has its own network namespace"
+  echo -e "      • WireGuard UDP port range published by Docker (set at deploy time)"
+  echo -e "      • Suitable when host networking is restricted or shared"
+  echo ""
+  if [[ $YES -eq 1 ]]; then
+    NET_CHOICE="1"
+  else
+    read -rp "  Choice [1]: " NET_CHOICE
+    NET_CHOICE="${NET_CHOICE:-1}"
+  fi
+  [[ "$NET_CHOICE" == "2" ]] && NETWORK_MODE="bridge" || NETWORK_MODE="host"
+fi
+
+ok "Network mode: $NETWORK_MODE"
+
+# Bridge mode — collect and validate UDP port range
+if [[ "$NETWORK_MODE" == "bridge" ]]; then
+  if [[ -z "${BRIDGE_PORT_RANGE:-}" ]]; then
+    if [[ $YES -eq 1 ]]; then
+      BRIDGE_PORT_RANGE="51820-51899"
+    else
+      echo ""
+      echo -e "  ${B}WireGuard UDP port range${N}"
+      echo -e "  All WireGuard interfaces must use ports within this range."
+      echo -e "  Expanding it later requires container restart."
+      read -rp "  Port range [51820-51899]: " BRIDGE_PORT_RANGE
+      BRIDGE_PORT_RANGE="${BRIDGE_PORT_RANGE:-51820-51899}"
+    fi
+  fi
+
+  # Validate range — always, regardless of source (interactive, .env, or --yes default).
+  # Prevents invalid values from reaching generate_bridge_compose sed substitution and SQLite.
+  validate_port_range() {
+    local range="$1"
+    if [[ ! "$range" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      fail "Invalid port range: '$range' — must be START-END (e.g. 51820-51899)"
+    fi
+    local start="${BASH_REMATCH[1]}" end="${BASH_REMATCH[2]}"
+    [[ $start -ge $end ]] && fail "Port range start ($start) must be less than end ($end)"
+    [[ $end -gt 65535 ]] && fail "Port $end exceeds maximum (65535)"
+    [[ $start -lt 1024 ]] && warn "Port $start < 1024 — may require elevated privileges on some systems"
+    _PORT_START="$start"
+    _PORT_END="$end"
+  }
+  validate_port_range "$BRIDGE_PORT_RANGE"
+
+  ok "WireGuard port range: $BRIDGE_PORT_RANGE ($_PORT_START–$_PORT_END, $(( _PORT_END - _PORT_START + 1 )) ports)"
+
+  # In bridge mode Cascade must bind on all interfaces inside the container.
+  # Docker's "127.0.0.1:PORT:PORT" publish restricts access to localhost on the host.
+  BIND_ADDR="0.0.0.0"
+else
+  # Host mode (or explicit re-run switching back from bridge): ensure management port
+  # is bound only to loopback. Without this reset, a previous bridge-mode BIND_ADDR=0.0.0.0
+  # would persist in .env and expose the UI directly to the internet after the mode switch.
+  BIND_ADDR="127.0.0.1"
+fi
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # STEP 3 — Docker
 # ═══════════════════════════════════════════════════════════════════════════════
 echo ""
@@ -460,11 +557,17 @@ ok "Config saved to $ENV_FILE"
 echo ""
 echo -e "${B}── Step 7: Cascade${N}"
 
-# All config (WG_HOST, PORT, BIND_ADDR, WG_QUICK_USERSPACE_IMPLEMENTATION) is in
-# deploy/.env — injected via env_file. No sed patching of docker-compose needed.
-COMPOSE_FILE="$REPO_DIR/docker-compose.go.yml"
+# Select compose file based on network mode.
+# Bridge: generate docker-compose.bridge.yml from template, then start it.
+# Host:   use docker-compose.go.yml as-is (all config comes from deploy/.env).
+if [[ "${NETWORK_MODE:-host}" == "bridge" ]]; then
+  generate_bridge_compose "$BRIDGE_PORT_RANGE" "${CASCADE_PORT:-8888}"
+  COMPOSE_FILE="$REPO_DIR/deploy/docker-compose.bridge.yml"
+else
+  COMPOSE_FILE="$REPO_DIR/docker-compose.go.yml"
+fi
 
-info "Starting Cascade..."
+info "Starting Cascade ($NETWORK_MODE mode)..."
 $COMPOSE_CMD -f "$COMPOSE_FILE" down 2>/dev/null || true
 $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
 
@@ -479,6 +582,18 @@ for i in $(seq 1 90); do
   sleep 1
   [[ $i -eq 90 ]] && fail "Cascade did not become healthy after 90s — check: docker logs cascade"
 done
+
+# Bridge mode: write PortPool to SQLite so Cascade auto-assigns only ports
+# within the published range. Done after health check (DB is ready by then).
+# Direct SQLite write is used because the REST API requires auth and no user
+# exists yet at this point in setup.
+if [[ "${NETWORK_MODE:-host}" == "bridge" ]]; then
+  info "Setting PortPool = $BRIDGE_PORT_RANGE in Cascade settings..."
+  docker exec cascade sqlite3 /etc/wireguard/data/wireguard.db \
+    "INSERT OR REPLACE INTO settings(key, value) VALUES('portPool', '${BRIDGE_PORT_RANGE}');" \
+    && ok "PortPool set to $BRIDGE_PORT_RANGE" \
+    || warn "Could not set PortPool automatically — set it manually: Settings → Global → Port Pool"
+fi
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 8 — TLS certificate
@@ -711,6 +826,9 @@ echo -e "${G}║               Cascade — Setup Complete               ║${N}"
 echo -e "${G}╚══════════════════════════════════════════════════════╝${N}"
 echo ""
 echo -e "  Admin URL:   ${G}https://${WG_HOST}/${ADMIN_PATH}/${N}"
+echo -e "  Network mode: ${B}${NETWORK_MODE:-host}${N}"
+[[ "${NETWORK_MODE:-host}" == "bridge" ]] && \
+  echo -e "  WG UDP range: ${B}${BRIDGE_PORT_RANGE}${N} (published by Docker)"
 echo ""
 echo -e "  ${Y}First login:${N}"
 echo -e "    1. Open the URL above in your browser"
@@ -720,8 +838,12 @@ echo -e "    4. Enable TOTP in Settings → Users for added security"
 echo ""
 echo -e "  ${Y}Update:${N}"
 echo -e "    git pull origin master"
+if [[ "${NETWORK_MODE:-host}" == "bridge" ]]; then
+echo -e "    bash deploy/setup.sh --yes  # regenerates docker-compose.bridge.yml + restarts"
+else
 echo -e "    docker compose -f docker-compose.go.yml pull"
 echo -e "    docker compose -f docker-compose.go.yml up -d"
+fi
 echo ""
 echo -e "  ${Y}Logs:${N}"
 echo -e "    docker logs cascade"
