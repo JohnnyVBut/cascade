@@ -1633,6 +1633,28 @@ new Vue({
       }
     },
 
+    // portInPool returns true if port is within any range/entry in the portPool string.
+    // portPool format: "51831-65535" | "433-442,8080,51831-65535"
+    // Returns true (no warning) when portPool is empty/unset.
+    portInPool(port) {
+      const pool = (this.globalSettings && this.globalSettings.portPool) || '';
+      if (!pool.trim()) return true;
+      const p = parseInt(port);
+      if (!p || p < 1 || p > 65535) return true; // let backend validate the value itself
+      for (const part of pool.split(',')) {
+        const s = part.trim();
+        const dash = s.indexOf('-');
+        if (dash > 0) {
+          const lo = parseInt(s.slice(0, dash));
+          const hi = parseInt(s.slice(dash + 1));
+          if (p >= lo && p <= hi) return true;
+        } else {
+          if (parseInt(s) === p) return true;
+        }
+      }
+      return false;
+    },
+
     openAddDnat() {
       this.dnatEditMode = false;
       this.dnatForm = { id: '', name: '', protocol: 'udp', inInterface: '', inPort: '', destIP: '', destPort: '', comment: '' };
