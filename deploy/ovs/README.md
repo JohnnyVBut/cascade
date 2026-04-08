@@ -53,7 +53,7 @@ cp deploy/.env.example deploy/.env   # or create manually
 # Required:
 WG_HOST=192.168.20.5   # IP that OVS will assign to the container
 PORT=8888
-PASSWORD_HASH='$2b$...'
+# Note: no PASSWORD_HASH — authentication is managed in the Web UI (Settings → Users)
 
 # OVS connection parameters (read by attach.sh):
 OVS_BRIDGE=br-trunk

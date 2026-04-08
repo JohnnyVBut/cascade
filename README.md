@@ -29,14 +29,15 @@
 
 | Module | Description |
 |--------|-------------|
-| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces |
-| 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes |
+| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click |
+| 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes and lifetime traffic stats |
 | 🌐 **Routing** | Static routes, policy-based routing (PBR), kernel route inspection |
-| 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support |
+| 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support + Port Forwarding (DNAT) with per-interface scoping |
 | 🛡️ **Firewall** | Filter rules (ACCEPT / DROP / REJECT) + PBR via gateway |
 | 📋 **Aliases** | Host, network, ipset, group, port and port-group alias types |
 | 📡 **Gateways** | Live ping + HTTP monitoring, gateway groups, automatic failover |
 | 🎛️ **AWG2 Templates** | AmneziaWG 2.0 obfuscation parameter templates with built-in generator |
+| 🔐 **Auth** | Multi-user accounts, TOTP 2FA (Google Authenticator), long-lived API tokens |
 | 🔒 **TLS** | Let's Encrypt via acme.sh (bare IP shortlived cert or domain) |
 | 🎭 **Decoy site** | Caddy reverse proxy serves a fake streaming site on `/`; admin UI hidden behind a secret path |
 
@@ -46,7 +47,9 @@
 - ✅ **Multi-interface** — manage multiple WireGuard/AWG interfaces from one UI
 - ✅ **Full AmneziaWG 2.0** — S3, S4, I5 parameters, H-range obfuscation, 7 CPS profiles + browser fingerprint
 - ✅ **Policy-based routing** — route traffic per-source through different gateways
+- ✅ **Port Forwarding (DNAT)** — transparent traffic cascading with optional source NAT
 - ✅ **Gateway monitoring** — ICMP ping + HTTP/S probes, auto-fallback on failure
+- ✅ **Multi-user + TOTP 2FA** — per-user accounts with Google Authenticator support
 - ✅ **HTTPS by default** — Caddy + acme.sh, works with bare IPs via Let's Encrypt shortlived certs
 - ✅ **Decoy protection** — admin path is hidden; visitors see a fake streaming site
 
@@ -130,20 +133,25 @@ sudo bash deploy/setup.sh
 | 0 | 1 GB swap (prevents OOM during build) |
 | 1 | Kernel upgrade to HWE 6.x (Ubuntu 22.04 only) — reboot, then re-run |
 | 2 | **AmneziaWG run mode** — choose Userspace (recommended) or Kernel module |
+| 2b | **Docker network mode** — choose Host (default) or Bridge (port range for Docker publish) |
 | 3 | Docker CE install |
 | 4 | sysctl: `ip_forward`, UDP buffers |
+| 4b | TCP tuning: BBR congestion control, FQ scheduler, `rp_filter` |
+| 5a | Generate decoy video via ffmpeg (60 s noise — looks like a real stream) |
 | 5 | Build Cascade Docker image |
 | 6 | Collect config interactively (IP, secret path, email) |
 | 7 | Start Cascade (localhost only) |
 | 8 | Issue TLS certificate via acme.sh (Let's Encrypt) |
 | 9 | Start Caddy (HTTPS + decoy site + hidden admin path) |
+| 10 | Verify: health-check Cascade + Caddy, print summary |
 
 At the end you get:
 ```
 Admin URL: https://YOUR_IP/<secret-path>/
 ```
 
-Open it, create the first admin account, done.
+Open it — first-run shows a **Create First User** form (no auth required until the first account exists).
+After creating your account, enable **TOTP 2FA** in Settings → Users for an extra layer of protection.
 
 > **Re-run safe:** `setup.sh` is idempotent — safe to run again after a reboot or update.
 > On re-run, Step 2 asks `Change run mode? [y/N]` — press `y` to switch between modes.
@@ -169,6 +177,7 @@ Open it, create the first admin account, done.
 | Reboot after install | ❌ No | Sometimes |
 
 The current mode is shown as a badge in the sidebar of the web UI (blue = userspace, green = kernel).
+The Docker network mode is shown as a separate badge (gray = HOST, amber = BRIDGE, red = NONE).
 
 ---
 
@@ -180,11 +189,13 @@ Configuration is collected interactively by `setup.sh` and saved to `deploy/.env
 |----------|---------|-------------|
 | `WG_HOST` | auto-detected | Public IP or domain of the server |
 | `ADMIN_PATH` | random hex | Secret path for admin UI (e.g. `/a1b2c3d4.../`) |
-| `CASCADE_PORT` | `8888` | Internal port for Cascade (Caddy proxies to this) |
+| `PORT` | `8888` | Internal port for Cascade (Caddy proxies to this) |
 | `BIND_ADDR` | `127.0.0.1` | Bind address for Cascade (use `127.0.0.1` behind Caddy) |
 | `ACME_EMAIL` | optional | Email for Let's Encrypt notifications |
 | `ACME_STAGING` | `0` | `1` = use LE staging CA (untrusted cert, no rate limits — for testing) |
 | `AWG_USERSPACE_IMPL` | `amneziawg-go` | `amneziawg-go` or `kernel` |
+| `NETWORK_MODE` | `host` | `host` or `bridge` — Docker network mode |
+| `BRIDGE_PORT_RANGE` | *(bridge only)* | Published UDP port range for WireGuard in bridge mode (e.g. `51831-65535`) |
 
 Additional settings (WireGuard defaults, DNS, etc.) are configurable in the Web UI under **Settings**.
 
@@ -195,16 +206,28 @@ Additional settings (WireGuard defaults, DNS, etc.) are configurable in the Web 
 - TLS certificates: shortlived (6-day) for bare IPs, standard 90-day for domains
 - Session cookie: `HttpOnly`, `Secure`, `SameSite=Strict`
 - bcrypt password hashing (cost 12)
+- **Multi-user accounts** — each user has a separate username and password
+- **TOTP 2FA** — Google Authenticator / Authy (enable per-user in Settings → Users)
+- **API tokens** — long-lived bearer tokens for scripts; bypass TOTP; revocable
 - Input validation on all API endpoints
 
 Full threat model: [docs/SECURITY.md](docs/SECURITY.md)
 
 ## 🔄 Updating
 
+### Host network mode (default)
+
 ```bash
 git pull origin master
 docker compose -f docker-compose.go.yml pull
 docker compose -f docker-compose.go.yml up -d
+```
+
+### Full stack (Caddy + setup.sh)
+
+```bash
+git pull origin master
+sudo bash deploy/setup.sh --yes
 ```
 
 ## 📱 Compatible VPN Clients

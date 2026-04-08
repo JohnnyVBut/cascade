@@ -27,11 +27,20 @@ cp .env.example .env
 # Generate one: openssl rand -hex 12
 ```
 
-### 3. Add decoy video
+### 3. Generate decoy video
 
-Download Big Buck Bunny (or any neutral mp4) to:
-```
-www/video/decoy.mp4
+`setup.sh` generates a 60-second noise video automatically via ffmpeg during step 5a.
+If running Caddy manually without `setup.sh`, create the file yourself:
+
+```bash
+# Option A — ffmpeg (generates a noise clip; no copyrighted content)
+ffmpeg -f lavfi -i color=c=black:s=1280x720:r=25 \
+       -f lavfi -i anoisesrc=r=44100 \
+       -t 60 -c:v libx264 -c:a aac \
+       www/video/decoy.mp4
+
+# Option B — download a royalty-free sample
+# curl -L "https://..." -o www/video/decoy.mp4
 ```
 
 ### 4. Ensure Cascade binds to 127.0.0.1 only
@@ -59,7 +68,7 @@ https://<IP>/<ADMIN_PATH>/
 
 ## Security notes
 
-- `ADMIN_PATH` is security through obscurity — TOTP in Cascade is the real gate
+- `ADMIN_PATH` is security through obscurity — enable TOTP 2FA in Settings → Users for a real second factor
 - `Referrer-Policy: no-referrer` prevents the hidden path from leaking via Referer headers
 - Rate limiting blocks brute force on the login endpoint (5 POST /api/session per IP per minute)
 - Cascade port (default 8888) MUST NOT be reachable from the internet (see step 4)
