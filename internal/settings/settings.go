@@ -42,6 +42,9 @@ type GlobalSettings struct {
 	// Quick-create pools
 	SubnetPool string `json:"subnetPool"` // CIDR block for auto-assigning /24 subnets, e.g. "192.168.0.0/16"
 	PortPool   string `json:"portPool"`   // Port ranges/list for auto-assigning listen ports, e.g. "51831-65535"
+
+	// Firewall
+	DefaultFwPolicy string `json:"defaultFwPolicy"` // "accept" | "drop" — appended to FIREWALL_FORWARD after all rules
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -107,6 +110,7 @@ var defaults = GlobalSettings{
 	ChartType:                  2,              // area by default
 	SubnetPool:                 "192.168.0.0/16",
 	PortPool:                   "51831-65535",
+	DefaultFwPolicy:            "accept",
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -585,6 +589,8 @@ func isValidSettingValue(k, v string) bool {
 	case "portPool":
 		_, err := ParsePortPool(v)
 		return err == nil
+	case "defaultFwPolicy":
+		return v == "accept" || v == "drop"
 	}
 	return true // unknown keys pass through (applySettingKey will ignore them)
 }
@@ -633,6 +639,10 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 	case "portPool":
 		if _, err := ParsePortPool(v); err == nil {
 			s.PortPool = v
+		}
+	case "defaultFwPolicy":
+		if v == "accept" || v == "drop" {
+			s.DefaultFwPolicy = v
 		}
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
+	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 )
 
@@ -125,6 +126,11 @@ func RegisterSettings(api fiber.Router) {
 					"subnetPool: host bits are set — use a network address (e.g. 192.168.0.0/16)")
 			}
 		}
+		if v, ok := body["defaultFwPolicy"].(string); ok {
+			if v != "accept" && v != "drop" {
+				return fiber.NewError(fiber.StatusBadRequest, "defaultFwPolicy: must be 'accept' or 'drop'")
+			}
+		}
 
 		updated, err := settings.UpdateSettings(body)
 		if err != nil {
@@ -137,6 +143,15 @@ func RegisterSettings(api fiber.Router) {
 		}
 		if _, ok := body["publicIPManual"]; ok {
 			settings.InvalidateIPCache()
+		}
+
+		// Rebuild firewall chains immediately when default policy changes.
+		if _, ok := body["defaultFwPolicy"]; ok {
+			if fw := firewall.TryGet(); fw != nil {
+				if err := fw.RebuildChains(); err != nil {
+					log.Printf("settings: firewall RebuildChains after policy change: %v", err)
+				}
+			}
 		}
 
 		hostname := getHostname()

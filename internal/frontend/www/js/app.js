@@ -224,8 +224,9 @@ new Vue({
       dns: '1.1.1.1, 8.8.8.8',
       defaultPersistentKeepalive: 25,
       defaultClientAllowedIPs: '0.0.0.0/0, ::/0',
-      subnetPool: '192.168.0.0/16',
-      portPool:   '51831-65535',
+      subnetPool:       '192.168.0.0/16',
+      portPool:         '51831-65535',
+      defaultFwPolicy:  'accept',
       gatewayWindowSeconds:     30,
       gatewayHealthyThreshold:  95,
       gatewayDegradedThreshold: 90,
@@ -2701,6 +2702,19 @@ new Vue({
         setTimeout(() => { this.settingsSaved = false; }, 2500);
       } catch (err) {
         this.showToast(`Failed to save settings: ${err.message}`, 'error');
+      }
+    },
+
+    async saveDefaultFwPolicy() {
+      const policy = this.globalSettings.defaultFwPolicy;
+      try {
+        const updated = await this.api.updateSettings({ defaultFwPolicy: policy });
+        this.globalSettings = { ...this.globalSettings, ...updated };
+        this.showToast(`Default policy set to ${policy.toUpperCase()}`, 'success');
+      } catch (err) {
+        this.showToast(`Failed to update policy: ${err.message}`, 'error');
+        // Revert optimistic change
+        await this.loadSettings();
       }
     },
 

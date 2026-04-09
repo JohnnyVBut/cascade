@@ -38,6 +38,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/gateway"
+	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
@@ -570,6 +571,19 @@ func (m *Manager) rebuildChains() error {
 			log.Printf("firewall: applyRuleKernel %q: %v", rule.Name, err)
 		}
 		count++
+	}
+
+	// Terminal default policy for FIREWALL_FORWARD.
+	// Added AFTER all per-rule ACCEPT/DROP/REJECT commands so it is always last.
+	//
+	// Safety note: this DROP does NOT block WireGuard peer traffic.
+	// WG PostUp (FIX-1) appends "-A FORWARD -i wgX -j ACCEPT" and "-A FORWARD -o wgX -j ACCEPT"
+	// to the BASE FORWARD chain. When traffic RETURNs from FIREWALL_FORWARD without matching
+	// any user rule, it falls through to those WG ACCEPT rules and is accepted.
+	// Only non-WG traffic that is not matched by any rule reaches this DROP.
+	if gs, err := settings.GetSettings(); err == nil && gs.DefaultFwPolicy == "drop" {
+		util.Exec("iptables-nft -t filter -A FIREWALL_FORWARD -j DROP", 5*time.Second, true) //nolint
+		log.Printf("firewall: default policy DROP appended to FIREWALL_FORWARD")
 	}
 
 	log.Printf("firewall: chains rebuilt (%d active rules)", count)
@@ -1412,3 +1426,7 @@ func Get() *Manager {
 	}
 	return fwInstance
 }
+
+// TryGet returns the package-level Manager singleton, or nil if not yet initialized.
+// Prefer this over Get() in code that may run before SetInstance (e.g. tests).
+func TryGet() *Manager { return fwInstance }
