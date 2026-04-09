@@ -191,6 +191,46 @@ func TestPutSettings_SubnetPool_HostBitsSet_Returns400(t *testing.T) {
 	}
 }
 
+// ── defaultFwPolicy validation ────────────────────────────────────────────────
+
+func TestPutSettings_DefaultFwPolicy_Drop_Returns200(t *testing.T) {
+	sta := newSettingsTestApp(t)
+
+	resp := sta.put(t, map[string]any{"defaultFwPolicy": "drop"})
+	if resp.StatusCode != http.StatusOK {
+		body := decodeBody(resp)
+		t.Errorf("defaultFwPolicy=drop: expected 200, got %d; body=%v", resp.StatusCode, body)
+	}
+	body := decodeBody(resp)
+	if body["defaultFwPolicy"] != "drop" {
+		t.Errorf("defaultFwPolicy in response = %v, want 'drop'", body["defaultFwPolicy"])
+	}
+}
+
+func TestPutSettings_DefaultFwPolicy_Accept_Returns200(t *testing.T) {
+	sta := newSettingsTestApp(t)
+
+	resp := sta.put(t, map[string]any{"defaultFwPolicy": "accept"})
+	if resp.StatusCode != http.StatusOK {
+		body := decodeBody(resp)
+		t.Errorf("defaultFwPolicy=accept: expected 200, got %d; body=%v", resp.StatusCode, body)
+	}
+}
+
+func TestPutSettings_DefaultFwPolicy_Invalid_Returns400(t *testing.T) {
+	sta := newSettingsTestApp(t)
+
+	resp := sta.put(t, map[string]any{"defaultFwPolicy": "reject"})
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("defaultFwPolicy=reject: expected 400, got %d", resp.StatusCode)
+	}
+	body := decodeBody(resp)
+	errMsg, _ := body["error"].(string)
+	if errMsg == "" {
+		t.Error("expected non-empty error message for invalid defaultFwPolicy")
+	}
+}
+
 // ── Other fields pass through without 400 ────────────────────────────────────
 
 func TestPutSettings_OtherFields_Returns200(t *testing.T) {

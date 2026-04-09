@@ -563,25 +563,31 @@ func (m *Manager) rebuildChains() error {
 	}
 
 	count := 0
+	ruleErrors := 0
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
 		if err := m.applyRuleKernel(&rule); err != nil {
 			log.Printf("firewall: applyRuleKernel %q: %v", rule.Name, err)
+			ruleErrors++
 		}
 		count++
 	}
 
 	// Terminal default policy for FIREWALL_FORWARD.
 	// Added AFTER all per-rule ACCEPT/DROP/REJECT commands so it is always last.
-	//
-	// Safety note: this DROP does NOT block WireGuard peer traffic.
-	// WG PostUp (FIX-1) appends "-A FORWARD -i wgX -j ACCEPT" and "-A FORWARD -o wgX -j ACCEPT"
-	// to the BASE FORWARD chain. When traffic RETURNs from FIREWALL_FORWARD without matching
-	// any user rule, it falls through to those WG ACCEPT rules and is accepted.
-	// Only non-WG traffic that is not matched by any rule reaches this DROP.
-	if gs, err := settings.GetSettings(); err == nil && gs.DefaultFwPolicy == "drop" {
+	gs, err := settings.GetSettings()
+	if err != nil {
+		// DB error — cannot determine policy. Log and leave chain without terminal rule
+		// (effective policy remains ACCEPT via base chain).
+		log.Printf("firewall: rebuildChains: failed to read default policy: %v — terminal rule not appended", err)
+	} else if gs.DefaultFwPolicy == "drop" {
+		// M2: warn if any rule failed to install — a failed ACCEPT rule combined with
+		// a terminal DROP may silently block traffic that was expected to be permitted.
+		if ruleErrors > 0 {
+			log.Printf("firewall: WARNING: default policy is DROP but %d rule(s) failed to install — some expected ACCEPT rules may be missing; verify connectivity", ruleErrors)
+		}
 		util.Exec("iptables-nft -t filter -A FIREWALL_FORWARD -j DROP", 5*time.Second, true) //nolint
 		log.Printf("firewall: default policy DROP appended to FIREWALL_FORWARD")
 	}

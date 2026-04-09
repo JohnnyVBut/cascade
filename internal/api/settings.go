@@ -126,6 +126,9 @@ func RegisterSettings(api fiber.Router) {
 					"subnetPool: host bits are set — use a network address (e.g. 192.168.0.0/16)")
 			}
 		}
+		// Validation is intentionally duplicated here (and in isValidSettingValue):
+		// the handler must return 400 so the UI gets a clear error; isValidSettingValue
+		// silently skips invalid values to protect existing DB state from corruption.
 		if v, ok := body["defaultFwPolicy"].(string); ok {
 			if v != "accept" && v != "drop" {
 				return fiber.NewError(fiber.StatusBadRequest, "defaultFwPolicy: must be 'accept' or 'drop'")
@@ -151,6 +154,10 @@ func RegisterSettings(api fiber.Router) {
 				if err := fw.RebuildChains(); err != nil {
 					log.Printf("settings: firewall RebuildChains after policy change: %v", err)
 				}
+			} else {
+				// Firewall not yet initialized (e.g. during tests). Policy is persisted
+				// in the DB and will be applied on the next RebuildChains call.
+				log.Printf("settings: firewall not initialized — defaultFwPolicy persisted but kernel not updated yet")
 			}
 		}
 
