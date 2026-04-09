@@ -38,6 +38,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/gateway"
+	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
@@ -562,14 +563,33 @@ func (m *Manager) rebuildChains() error {
 	}
 
 	count := 0
+	ruleErrors := 0
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
 		if err := m.applyRuleKernel(&rule); err != nil {
 			log.Printf("firewall: applyRuleKernel %q: %v", rule.Name, err)
+			ruleErrors++
 		}
 		count++
+	}
+
+	// Terminal default policy for FIREWALL_FORWARD.
+	// Added AFTER all per-rule ACCEPT/DROP/REJECT commands so it is always last.
+	gs, err := settings.GetSettings()
+	if err != nil {
+		// DB error — cannot determine policy. Log and leave chain without terminal rule
+		// (effective policy remains ACCEPT via base chain).
+		log.Printf("firewall: rebuildChains: failed to read default policy: %v — terminal rule not appended", err)
+	} else if gs.DefaultFwPolicy == "drop" {
+		// M2: warn if any rule failed to install — a failed ACCEPT rule combined with
+		// a terminal DROP may silently block traffic that was expected to be permitted.
+		if ruleErrors > 0 {
+			log.Printf("firewall: WARNING: default policy is DROP but %d rule(s) failed to install — some expected ACCEPT rules may be missing; verify connectivity", ruleErrors)
+		}
+		util.Exec("iptables-nft -t filter -A FIREWALL_FORWARD -j DROP", 5*time.Second, true) //nolint
+		log.Printf("firewall: default policy DROP appended to FIREWALL_FORWARD")
 	}
 
 	log.Printf("firewall: chains rebuilt (%d active rules)", count)
@@ -1412,3 +1432,7 @@ func Get() *Manager {
 	}
 	return fwInstance
 }
+
+// TryGet returns the package-level Manager singleton, or nil if not yet initialized.
+// Prefer this over Get() in code that may run before SetInstance (e.g. tests).
+func TryGet() *Manager { return fwInstance }

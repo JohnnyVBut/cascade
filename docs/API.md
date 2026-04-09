@@ -83,6 +83,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `gatewayDegradedThreshold` | int | Порог degraded (% потерь пакетов) |
 | `subnetPool` | string | CIDR-пул для авто-назначения подсетей при quick-create, напр. `"192.168.0.0/16"` |
 | `portPool` | string | Пул портов для авто-назначения при quick-create, напр. `"51831-65535"` (поддерживает диапазоны и запятые) |
+| `defaultFwPolicy` | string | Дефолтная политика файрвола: `"accept"` (разрешить непопавший трафик) или `"drop"` (сбросить). По умолчанию `"accept"`. Трафик WireGuard-пиров всегда разрешён независимо от значения |
 | `routerName` | string | Человекочитаемое имя роутера (отображается в сайдбаре) |
 | `publicIPMode` | string | Режим определения публичного IP: `"auto"` или `"manual"` |
 | `publicIPManual` | string | Ручной публичный IP (используется при `publicIPMode="manual"`) |
@@ -95,7 +96,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 **PUT /api/settings — принимаемые поля:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
+`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
 
 ---
 

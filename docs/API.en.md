@@ -83,6 +83,7 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `gatewayDegradedThreshold` | int | Degraded threshold (% packet loss) |
 | `subnetPool` | string | CIDR pool for auto-assigning subnets on quick-create, e.g. `"192.168.0.0/16"` |
 | `portPool` | string | Port pool for quick-create, e.g. `"51831-65535"` (ranges and comma-lists supported) |
+| `defaultFwPolicy` | string | Default firewall policy: `"accept"` (pass unmatched traffic) or `"drop"` (silently discard). Default `"accept"`. WireGuard peer traffic is always permitted regardless of this setting |
 | `routerName` | string | Human-readable router name (shown in sidebar) |
 | `publicIPMode` | string | Public IP resolution mode: `"auto"` or `"manual"` |
 | `publicIPManual` | string | Manual public IP (used when `publicIPMode="manual"`) |
@@ -95,7 +96,7 @@ Returns `GlobalSettings` merged with runtime-only fields:
 
 **PUT /api/settings — accepted fields:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
+`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
 
 ---
 

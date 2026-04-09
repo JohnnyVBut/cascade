@@ -4298,6 +4298,29 @@
               </tbody>
             </table>
           </div>
+
+          <!-- Default Policy -->
+          <div class="bg-white dark:bg-neutral-700 rounded-lg"
+            style="border:1px solid #e5e7eb; padding:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+            <div>
+              <span class="text-sm font-medium dark:text-neutral-200">Default policy</span>
+              <p class="text-xs text-gray-500 dark:text-neutral-400" style="margin-top:4px;">
+                Applied to forward traffic not matched by any rule above.
+              </p>
+            </div>
+            <div class="flex items-center" style="gap:12px; flex-shrink:0;">
+              <select v-model="globalSettings.defaultFwPolicy" @change="saveDefaultFwPolicy()"
+                class="border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                style="padding:6px 10px;">
+                <option value="accept">Accept</option>
+                <option value="drop">Drop</option>
+              </select>
+              <span v-if="globalSettings.defaultFwPolicy === 'drop'"
+                class="text-xs font-medium" style="color:#dc2626;">
+                Unmatched traffic will be silently dropped
+              </span>
+            </div>
+          </div>
         </div>
 
         <!-- ── Add Firewall Rule Modal ──────────────────────────────────── -->
@@ -4324,7 +4347,7 @@
                   <select v-model="firewallCreate.interface"
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                     <option value="any">any</option>
-                    <option v-for="iface in firewallInterfaces" :key="iface" :value="iface">{{ iface }}</option>
+                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
                   </select>
                 </div>
                 <div class="flex-1">
@@ -4527,7 +4550,7 @@
                   <select v-model="firewallEdit.interface"
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                     <option value="any">any</option>
-                    <option v-for="iface in firewallInterfaces" :key="iface" :value="iface">{{ iface }}</option>
+                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
                   </select>
                 </div>
                 <div class="flex-1">

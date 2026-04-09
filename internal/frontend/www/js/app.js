@@ -224,8 +224,9 @@ new Vue({
       dns: '1.1.1.1, 8.8.8.8',
       defaultPersistentKeepalive: 25,
       defaultClientAllowedIPs: '0.0.0.0/0, ::/0',
-      subnetPool: '192.168.0.0/16',
-      portPool:   '51831-65535',
+      subnetPool:       '192.168.0.0/16',
+      portPool:         '51831-65535',
+      defaultFwPolicy:  'accept',
       gatewayWindowSeconds:     30,
       gatewayHealthyThreshold:  95,
       gatewayDegradedThreshold: 90,
@@ -2692,8 +2693,10 @@ new Vue({
 
     async saveSettings() {
       try {
-        // Strip runtime-only fields before sending to the API.
-        const { hostname, resolvedPublicIP, publicIPWarning, ...storable } = this.globalSettings;
+        // Strip runtime-only fields and fields managed by dedicated save handlers.
+        // defaultFwPolicy has its own saveDefaultFwPolicy() path — exclude here to
+        // avoid triggering an unnecessary firewall RebuildChains on every Settings save.
+        const { hostname, resolvedPublicIP, publicIPWarning, defaultFwPolicy, ...storable } = this.globalSettings;
         const updated = await this.api.updateSettings(storable);
         // Merge response back (includes fresh resolvedPublicIP / hostname).
         this.globalSettings = { ...this.globalSettings, ...updated };
@@ -2701,6 +2704,34 @@ new Vue({
         setTimeout(() => { this.settingsSaved = false; }, 2500);
       } catch (err) {
         this.showToast(`Failed to save settings: ${err.message}`, 'error');
+      }
+    },
+
+    async saveDefaultFwPolicy() {
+      const policy = this.globalSettings.defaultFwPolicy;
+      // Warn before applying DROP — remote sessions may lose connectivity if no
+      // matching ACCEPT rule exists for management traffic (SSH, WireGuard, etc.).
+      if (policy === 'drop') {
+        const ok = window.confirm(
+          'Set default policy to DROP?\n\n' +
+          'All forward traffic not matched by an explicit rule above will be silently discarded.\n\n' +
+          'Make sure you have ACCEPT rules covering your management traffic (SSH, WireGuard peers, etc.) ' +
+          'before applying — otherwise you may lose remote access.'
+        );
+        if (!ok) {
+          // Revert the select back to accept without saving
+          await this.loadSettings();
+          return;
+        }
+      }
+      try {
+        const updated = await this.api.updateSettings({ defaultFwPolicy: policy });
+        this.globalSettings = { ...this.globalSettings, ...updated };
+        this.showToast(`Default policy set to ${policy.toUpperCase()}`, 'success');
+      } catch (err) {
+        this.showToast(`Failed to update policy: ${err.message}`, 'error');
+        // Revert optimistic change
+        await this.loadSettings();
       }
     },
 

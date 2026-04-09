@@ -95,6 +95,67 @@ func TestUpdateSettings_PublicIPMode(t *testing.T) {
 	}
 }
 
+// ── DefaultFwPolicy ───────────────────────────────────────────────────────────
+
+func TestDefaultFwPolicy_Default(t *testing.T) {
+	initTestDB(t)
+	s, err := GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if s.DefaultFwPolicy != "accept" {
+		t.Errorf("DefaultFwPolicy default = %q, want 'accept'", s.DefaultFwPolicy)
+	}
+}
+
+func TestDefaultFwPolicy_RoundTrip(t *testing.T) {
+	initTestDB(t)
+
+	// Switch to drop.
+	s, err := UpdateSettings(map[string]any{"defaultFwPolicy": "drop"})
+	if err != nil {
+		t.Fatalf("UpdateSettings drop: %v", err)
+	}
+	if s.DefaultFwPolicy != "drop" {
+		t.Errorf("DefaultFwPolicy = %q, want 'drop'", s.DefaultFwPolicy)
+	}
+
+	// Switch back to accept.
+	s, err = UpdateSettings(map[string]any{"defaultFwPolicy": "accept"})
+	if err != nil {
+		t.Fatalf("UpdateSettings accept: %v", err)
+	}
+	if s.DefaultFwPolicy != "accept" {
+		t.Errorf("DefaultFwPolicy = %q, want 'accept'", s.DefaultFwPolicy)
+	}
+}
+
+func TestDefaultFwPolicy_InvalidValueIgnored(t *testing.T) {
+	initTestDB(t)
+
+	// Invalid value must not overwrite the default.
+	UpdateSettings(map[string]any{"defaultFwPolicy": "reject"}) //nolint
+	s, _ := GetSettings()
+	if s.DefaultFwPolicy != "accept" {
+		t.Errorf("DefaultFwPolicy should stay 'accept' on invalid value, got %q", s.DefaultFwPolicy)
+	}
+}
+
+func TestIsValidSettingValue_DefaultFwPolicy(t *testing.T) {
+	if !isValidSettingValue("defaultFwPolicy", "accept") {
+		t.Error("'accept' should be valid")
+	}
+	if !isValidSettingValue("defaultFwPolicy", "drop") {
+		t.Error("'drop' should be valid")
+	}
+	if isValidSettingValue("defaultFwPolicy", "reject") {
+		t.Error("'reject' should be invalid")
+	}
+	if isValidSettingValue("defaultFwPolicy", "") {
+		t.Error("empty string should be invalid")
+	}
+}
+
 // ── Template CRUD ─────────────────────────────────────────────────────────────
 
 func TestCreateTemplate_Basic(t *testing.T) {
