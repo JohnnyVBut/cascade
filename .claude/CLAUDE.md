@@ -240,9 +240,15 @@ Go рандомизирует порядок map → пиры перемешив
 
 ---
 
-## Checkpoint (feature/go-rewrite)
+## Checkpoint (feature/go-rewrite → master)
 
-**Последний коммит:** `eef0ddd` security: fix SameSite=Strict, add input validation
+**Последний коммит:** `637e655` fix(firewall): address code review findings for default policy feature
+
+**Коммиты feature-default-fw-policy (смержены в master):**
+- `d1e7e6e` feat(firewall): default firewall policy setting (accept/drop)
+- `905cb1e` fix(ui): firewall interface dropdown shows .name instead of full JSON object
+- `2b4060c` fix(ui): remove misleading WireGuard disclaimer from default policy card
+- `637e655` fix(firewall): address code review findings for default policy feature
 
 **Что работает:**
 - Interfaces: CRUD, start/stop/restart, peers, S2S interconnect, export-params, backup/restore
@@ -251,11 +257,12 @@ Go рандомизирует порядок map → пиры перемешив
 - NAT: Outbound MASQUERADE/SNAT CRUD + alias source + auto-правила
 - Gateways: CRUD + live ping/HTTP monitoring + Gateway Groups + fallback
 - Firewall Aliases: host/network/ipset/group + L4 port/port-group + upload + generate
-- Firewall Rules: ACCEPT/DROP/REJECT + PBR (gateway) + port matching + ↑↓ order
+- Firewall Rules: ACCEPT/DROP/REJECT + PBR (gateway) + port matching + ↑↓ order + default policy (accept/drop)
 - AWG2 Templates: CRUD + Generate (7 CPS-профилей)
 - Auth: session cookie, bcrypt, API tokens
 - Caddy reverse proxy: HTTPS/HTTP3, hidden admin path, rate limit, decoy site
 - Router identity: routerName (SQLite) + hostname (host UTS) + public IP (auto/manual)
+- Firewall default policy: `accept`/`drop` — настраивается через карточку на странице Firewall Rules; при `drop` терминальное DROP-правило добавляется в конец `FIREWALL_FORWARD`; хранится в SQLite (key/value settings)
 
 **Что не реализовано:**
 - Admin Tunnel (wg0) — заглушка 501

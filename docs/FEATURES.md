@@ -136,6 +136,14 @@ Unified packet filter + Policy-Based Routing in one rule list.
 - Automatic: `iptables MARK` + `ip route table N` + `ip rule fwmark N lookup N`
 - `fallbackToDefault` — graceful degradation when gateway is unreachable
 
+### Default Policy
+- Configurable terminal action for `FIREWALL_FORWARD`: **accept** (default) or **drop**
+- `accept` — passes unmatched forwarded traffic (permissive, original behaviour)
+- `drop` — silently drops unmatched forwarded traffic; a `DROP all` rule is appended to the end of `FIREWALL_FORWARD` after all user rules
+- Stored in SQLite (`settings` key/value table); survives container restart
+- UI card on the Firewall Rules page with a select and a confirmation dialog before switching to `drop`
+- Any change triggers `RebuildChains()` — the terminal rule is re-applied atomically
+
 ### Implementation
 - Custom iptables chains: `FIREWALL_FORWARD` (filter) and `FIREWALL_MANGLE` (mangle/PREROUTING)
 - `FIREWALL_FORWARD` inserted at position 1 in the FORWARD chain (before all interface rules)
