@@ -4348,7 +4348,7 @@
                   <select v-model="firewallCreate.interface"
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                     <option value="any">any</option>
-                    <option v-for="iface in firewallInterfaces" :key="iface" :value="iface">{{ iface }}</option>
+                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
                   </select>
                 </div>
                 <div class="flex-1">
@@ -4551,7 +4551,7 @@
                   <select v-model="firewallEdit.interface"
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                     <option value="any">any</option>
-                    <option v-for="iface in firewallInterfaces" :key="iface" :value="iface">{{ iface }}</option>
+                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
                   </select>
                 </div>
                 <div class="flex-1">
