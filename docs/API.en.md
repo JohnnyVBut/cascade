@@ -111,7 +111,7 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `DELETE` | `/api/templates/:id` | Delete template |
 | `POST` | `/api/templates/:id/set-default` | Set as default |
 | `POST` | `/api/templates/:id/apply` | Apply — returns AWG2 params with fresh H1-H4 |
-| `POST` | `/api/templates/generate` | Generate AWG2 params. Body: `{ profile, intensity, host?, browser?, saveName? }`. browser: chrome|firefox|safari|edge|yandex_desktop|yandex_mobile |
+| `POST` | `/api/templates/generate` | Generate AWG2 params. Body: `{ profile, intensity, host?, browser?, saveName? }`. profile: random|quic_initial|quic_0rtt|tls_client_hello|dtls|http3|sip|wireguard_noise|**dns_query**|tls_to_quic|quic_burst. browser: chrome|firefox|safari|edge|yandex_desktop|yandex_mobile (not applicable for sip and dns_query) |
 
 ---
 

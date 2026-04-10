@@ -11,6 +11,7 @@
 //	http3            — HTTP/3 over QUIC
 //	sip              — SIP REGISTER request (no BFP entry — always uses protocol defaults)
 //	wireguard_noise  — WireGuard Noise_IK handshake initiation
+//	dns_query        — DNS A/AAAA query (RFC 1035, no BFP entry)
 //	tls_to_quic      — composite: TLS ClientHello → QUIC Initial
 //	quic_burst       — composite: QUIC Initial → QUIC 0-RTT → HTTP/3
 //	random           — pick one of the non-composite profiles at random
@@ -22,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"strings"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -73,6 +75,7 @@ var Profiles = []Profile{
 	{ID: "http3", Label: "HTTP/3"},
 	{ID: "sip", Label: "SIP"},
 	{ID: "wireguard_noise", Label: "Noise_IK (WireGuard)"},
+	{ID: "dns_query", Label: "DNS Query (RFC 1035)"},
 	{ID: "tls_to_quic", Label: "TLS→QUIC (composite)"},
 	{ID: "quic_burst", Label: "QUIC Burst (composite)"},
 }
@@ -217,6 +220,12 @@ var hostPools = map[string][]string{
 		"sip2.zadarma.com", "registrar.sip.net", "sip.bicom.com",
 		"sip.antisip.com", "proxy01.sipphone.com",
 	},
+	// dns_query: domains used as DNS QNAME inside the query packet.
+	// These are popular domains that generate realistic-looking A/AAAA queries.
+	"dns_query": {
+		"yandex.ru", "google.com", "cloudflare.com", "microsoft.com", "apple.com",
+		"wikipedia.org", "mail.ru", "vk.com", "amazon.com", "baidu.com", "youtube.com",
+	},
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -274,7 +283,7 @@ func Generate(opts Options) Params {
 	if resolvedProfile == "random" {
 		profiles := []string{
 			"quic_initial", "quic_0rtt", "tls_client_hello",
-			"dtls", "http3", "sip", "wireguard_noise",
+			"dtls", "http3", "sip", "wireguard_noise", "dns_query",
 		}
 		resolvedProfile = profiles[rnd(0, len(profiles)-1)]
 	}
@@ -498,6 +507,52 @@ func mkSIP(iv int, host string) string {
 	return fmt.Sprintf("<b 0x%s><rc %d><t><r %d>", h, rcVal, rLen)
 }
 
+// encodeDNSName encodes a hostname into DNS label format (RFC 1035 §3.1).
+// Each label is prefixed with its length byte; the name is terminated with 0x00.
+// Example: "yandex.ru" → "06" + hex("yandex") + "02" + hex("ru") + "00".
+func encodeDNSName(name string) string {
+	result := ""
+	for _, label := range strings.Split(name, ".") {
+		if label == "" {
+			continue
+		}
+		result += fmt.Sprintf("%02x", len(label))
+		result += hex.EncodeToString([]byte(label))
+	}
+	result += "00" // null terminator (root label)
+	return result
+}
+
+// mkDNS generates a DNS A/AAAA query packet (RFC 1035).
+// No BFP entry — DNS queries have a deterministic structure with random txid.
+// host is the domain name to query; a random common subdomain may be prepended.
+func mkDNS(host string) string {
+	// Optionally prepend a common subdomain for variety
+	queryName := host
+	subs := []string{"www", "mail", "api", "cdn", "static", "img", "m", "ns1"}
+	if rnd(0, 1) == 1 {
+		queryName = subs[rnd(0, len(subs)-1)] + "." + host
+	}
+
+	// QTYPE: A (0x0001) or AAAA (0x001c), chosen at random
+	qtype := "0001"
+	if rnd(0, 1) == 1 {
+		qtype = "001c"
+	}
+
+	h := assertEvenHex(
+		rh(2)+ // Transaction ID (2B random)
+			"0100"+ // Flags: standard query, recursion desired
+			"0001"+ // QDCOUNT: 1 question
+			"000000000000"+ // ANCOUNT / NSCOUNT / ARCOUNT: 0
+			encodeDNSName(queryName)+ // QNAME (label-encoded)
+			qtype+ // QTYPE: A or AAAA
+			"0001", // QCLASS: IN (Internet)
+		"mkDNS",
+	)
+	return fmt.Sprintf("<b 0x%s>", h)
+}
+
 // mkTLStoQUIC generates a composite TLS→QUIC packet (TLS ClientHello then QUIC Initial).
 func mkTLStoQUIC(iv int, host, browser string) string {
 	tls := mkTLS(iv, getHost("tls_client_hello", host), browser)
@@ -563,6 +618,8 @@ func genI1(profile string, iv int, host, browser string) string {
 		return mkHTTP3(iv, getHost("quic_initial", host), browser)
 	case "sip":
 		return mkSIP(iv, getHost("sip", host))
+	case "dns_query":
+		return mkDNS(getHost("dns_query", host))
 	case "tls_to_quic":
 		return mkTLStoQUIC(iv, host, browser)
 	case "quic_burst":

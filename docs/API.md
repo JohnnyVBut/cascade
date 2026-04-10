@@ -111,7 +111,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `DELETE` | `/api/templates/:id` | Удалить шаблон |
 | `POST` | `/api/templates/:id/set-default` | Сделать дефолтным |
 | `POST` | `/api/templates/:id/apply` | Применить — возвращает AWG2 параметры со свежими H1-H4 |
-| `POST` | `/api/templates/generate` | Сгенерировать AWG2 параметры. Body: `{ profile, intensity, host?, browser?, saveName? }`. browser: chrome|firefox|safari|edge|yandex_desktop|yandex_mobile |
+| `POST` | `/api/templates/generate` | Сгенерировать AWG2 параметры. Body: `{ profile, intensity, host?, browser?, saveName? }`. profile: random|quic_initial|quic_0rtt|tls_client_hello|dtls|http3|sip|wireguard_noise|**dns_query**|tls_to_quic|quic_burst. browser: chrome|firefox|safari|edge|yandex_desktop|yandex_mobile (не применяется для sip и dns_query) |
 
 ---
 

@@ -163,6 +163,7 @@ func TestGenerate_RandomProfileResolved(t *testing.T) {
 	validProfiles := map[string]bool{
 		"quic_initial": true, "quic_0rtt": true, "tls_client_hello": true,
 		"dtls": true, "http3": true, "sip": true, "wireguard_noise": true,
+		"dns_query": true,
 	}
 	for i := 0; i < 10; i++ {
 		p := Generate(Options{Profile: "random"})
@@ -180,7 +181,7 @@ func TestGenerate_RandomProfileResolved(t *testing.T) {
 func TestGenerate_AllProfilesProduceI1(t *testing.T) {
 	profiles := []string{
 		"quic_initial", "quic_0rtt", "tls_client_hello",
-		"dtls", "http3", "sip", "wireguard_noise",
+		"dtls", "http3", "sip", "wireguard_noise", "dns_query",
 		"tls_to_quic", "quic_burst",
 	}
 	for _, profile := range profiles {
@@ -225,8 +226,8 @@ func TestGenerate_IterCountBumpsJmax(t *testing.T) {
 // ── Profiles list ─────────────────────────────────────────────────────────────
 
 func TestProfiles_Length(t *testing.T) {
-	if len(Profiles) < 10 {
-		t.Errorf("expected at least 10 profiles, got %d", len(Profiles))
+	if len(Profiles) < 11 {
+		t.Errorf("expected at least 11 profiles, got %d", len(Profiles))
 	}
 }
 
@@ -293,7 +294,7 @@ func TestBFP_UnknownBrowserFallback(t *testing.T) {
 func TestBFP_EmptyBrowserFallback(t *testing.T) {
 	baseProfiles := []string{
 		"quic_initial", "quic_0rtt", "tls_client_hello",
-		"dtls", "http3", "sip", "wireguard_noise",
+		"dtls", "http3", "sip", "wireguard_noise", "dns_query",
 	}
 	for _, profile := range baseProfiles {
 		profile := profile
@@ -341,6 +342,72 @@ func TestComposite_QUICBurst(t *testing.T) {
 	// Three packets concatenated — must be substantially longer than a single packet
 	if len(p.I1) <= 100 {
 		t.Errorf("quic_burst: I1 length %d is too short (expected > 100), got: %s", len(p.I1), p.I1)
+	}
+}
+
+// ── DNS Query profile ─────────────────────────────────────────────────────────
+
+func TestDNS_EncodeName(t *testing.T) {
+	cases := []struct {
+		input string
+		// expected: each label prefixed by its length byte (hex), terminated by "00"
+		wantPrefix string // first label length hex
+	}{
+		{"google.com", "06"}, // "google" = 6 chars
+		{"yandex.ru", "06"}, // "yandex" = 6 chars
+		{"a.b.c", "01"},     // "a" = 1 char
+	}
+	for _, tc := range cases {
+		got := encodeDNSName(tc.input)
+		if !strings.HasPrefix(got, tc.wantPrefix) {
+			t.Errorf("encodeDNSName(%q): expected prefix %q, got %q", tc.input, tc.wantPrefix, got)
+		}
+		if !strings.HasSuffix(got, "00") {
+			t.Errorf("encodeDNSName(%q): expected null terminator '00', got %q", tc.input, got)
+		}
+		if len(got)%2 != 0 {
+			t.Errorf("encodeDNSName(%q): odd-length hex %q", tc.input, got)
+		}
+	}
+}
+
+func TestDNS_I1Format(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		p := Generate(Options{Profile: "dns_query"})
+		if p.I1 == "" {
+			t.Fatalf("iteration %d: dns_query I1 is empty", i)
+		}
+		// Must be a single <b 0x...> tag — no <rc>, <r>, or <t> tags
+		if !strings.HasPrefix(p.I1, "<b 0x") {
+			t.Errorf("iteration %d: dns_query I1 does not start with '<b 0x': %s", i, p.I1)
+		}
+		if strings.Contains(p.I1, "<rc") {
+			t.Errorf("iteration %d: dns_query I1 must not contain <rc> (no BFP): %s", i, p.I1)
+		}
+		if p.Profile != "dns_query" {
+			t.Errorf("iteration %d: expected Profile=dns_query, got %s", i, p.Profile)
+		}
+	}
+}
+
+func TestDNS_NoBFPEntry(t *testing.T) {
+	// dns_query has no BFP table entry — BFP map must not contain it
+	if _, ok := BFP["dns_query"]; ok {
+		t.Error("BFP map should not have a 'dns_query' entry — DNS profile has no browser fingerprint")
+	}
+}
+
+func TestDNS_InRandomPool(t *testing.T) {
+	seen := false
+	for i := 0; i < 200; i++ {
+		p := Generate(Options{Profile: "random"})
+		if p.Profile == "dns_query" {
+			seen = true
+			break
+		}
+	}
+	if !seen {
+		t.Error("dns_query never appeared in 200 random generations — must be in random pool")
 	}
 }
 

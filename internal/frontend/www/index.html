@@ -4880,6 +4880,7 @@
                   <option value="http3">HTTP/3 over QUIC</option>
                   <option value="sip">SIP REGISTER</option>
                   <option value="wireguard_noise">Noise_IK (WireGuard)</option>
+                  <option value="dns_query">DNS Query (RFC 1035)</option>
                   <option value="tls_to_quic">TLS→QUIC (composite)</option>
                   <option value="quic_burst">QUIC Burst (composite)</option>
                 </select>
@@ -4903,7 +4904,7 @@
                   class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm"/>
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Leave empty for a random host from the pool.</p>
               </div>
-              <div>
+              <div v-show="generateForm.profile !== 'sip' && generateForm.profile !== 'dns_query'">
                 <label class="block text-sm font-medium mb-1">Browser Fingerprint <span class="text-gray-400 font-normal">(optional)</span></label>
                 <select v-model="generateForm.browser"
                   class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm">
