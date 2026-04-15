@@ -219,6 +219,16 @@ new Vue({
     peerEditAddress: null,
     peerEditExpireDateId: null,
     peerEditExpireDate: null,
+    // Peer Edit Modal
+    showPeerEditModal: false,
+    peerEditForm: {
+      _peer: null,          // original peer reference (for type checks + API call)
+      name: '',
+      persistentKeepalive: 0,
+      endpoint: '',         // interconnect only
+      allowedIPs: '',       // interconnect only (editable)
+      clientAllowedIPs: '', // client only
+    },
     // Settings
     globalSettings: {
       dns: '1.1.1.1, 8.8.8.8',
@@ -2426,6 +2436,47 @@ new Vue({
         this.peerDelete = null;
         await this._refreshPeersOrAll();
         await this.loadTunnelInterfaces();
+      } catch (err) {
+        this.showToast(err.message || err.toString(), 'error');
+      }
+    },
+
+    openPeerEdit(peer) {
+      this.peerEditForm = {
+        _peer: peer,
+        name: peer.name || '',
+        persistentKeepalive: peer.persistentKeepalive || 0,
+        endpoint: peer.endpoint || '',
+        allowedIPs: peer.allowedIPs || '',
+        clientAllowedIPs: peer.clientAllowedIPs || '',
+      };
+      this.showPeerEditModal = true;
+    },
+
+    async savePeerEdit() {
+      const peer = this.peerEditForm._peer;
+      if (!peer) return;
+      const isInterconnect = peer.peerType === 'interconnect';
+      const updates = {
+        name: this.peerEditForm.name,
+        persistentKeepalive: Number(this.peerEditForm.persistentKeepalive) || 0,
+      };
+      if (isInterconnect) {
+        updates.endpoint = this.peerEditForm.endpoint;
+        updates.allowedIPs = this.peerEditForm.allowedIPs;
+      } else {
+        updates.clientAllowedIPs = this.peerEditForm.clientAllowedIPs;
+      }
+      try {
+        await this.api.updateTunnelInterfacePeer({
+          interfaceId: this._peerIfaceId(peer),
+          peerId: peer.id,
+          ...updates,
+        });
+        this.showPeerEditModal = false;
+        this.peerEditForm._peer = null;
+        await this._refreshPeersOrAll();
+        this.showToast('Peer updated', 'success');
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');
       }
