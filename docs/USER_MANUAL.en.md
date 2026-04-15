@@ -215,14 +215,16 @@ WireGuard uses `allowedIPs` as its routing table. When there are **multiple** S2
 
 ### Step-by-Step S2S Setup
 
-Example: Server A (network 10.100.0.0/24) ↔ Server B (network 10.100.1.0/24)
+Example: Server A ↔ Server B, tunnel interface addresses `10.100.0.1/30` and `10.100.0.2/30`.
+
+> `/30` is the standard choice for a point-to-point tunnel (4 addresses, 2 usable). Use `/24` or wider only if you plan to have a full client subnet behind the interface.
 
 #### Step 1 — Server A: Create an Interface
 
 1. **Interfaces → + New Interface**
 2. Protocol: choose as needed
-3. Address: `10.100.0.1/24`
-4. **Disable Routes: ✓** (you will add routes manually)
+3. Address: `10.100.0.1/30`
+4. **Disable Routes: ✓** (WireGuard will not touch the routing table)
 5. Save and click **Start**
 
 #### Step 2 — Server A: Export Parameters
@@ -238,7 +240,7 @@ Share this file with Server B's administrator.
 
 #### Step 3 — Server B: Create an Interface and Import
 
-1. Create an interface on Server B (Address: `10.100.1.1/24`, Disable Routes: ✓)
+1. Create an interface on Server B (Address: `10.100.0.2/30`, Disable Routes: ✓)
 2. Click **"Import JSON"** on the interface peers page
 3. Upload the file from Server A
 4. The system automatically creates an Interconnect peer with Server A's parameters
@@ -254,21 +256,20 @@ Share this file with Server B's administrator.
 
 1. **Import JSON** → upload the file from Server B
 2. The PSK is synchronized automatically
-3. The tunnel is ready
+3. The tunnel is ready — both servers can reach each other at `10.100.0.1` and `10.100.0.2`
 
-#### Step 6 — Add Routes
+### Static Routes for Additional Subnets
 
-On each server, add a static route to the partner's subnet:
+Once the tunnel is up, each server automatically knows the connected subnet of its own interface (`10.100.0.0/30`). Static routes are only needed when you want to reach **other subnets behind the remote router** — for example, its client interface subnet.
 
-- **Server A → Routing → Static Routes → + Add**
-  - Destination: `10.100.1.0/24`
-  - Via: `10.100.1.1` (Server B's tunnel interface IP)
-  - Dev: `wg10`
+**Example:** Server A has a client interface `wg11` with subnet `10.8.0.0/24`. For Server B to reach Server A's clients:
 
 - **Server B → Routing → Static Routes → + Add**
-  - Destination: `10.100.0.0/24`
-  - Via: `10.100.0.1`
+  - Destination: `10.8.0.0/24`
+  - Via: `10.100.0.1` (Server A's tunnel IP)
   - Dev: `wg10`
+
+Repeat symmetrically if Server B also has a client interface.
 
 ### Editing an S2S Peer
 
