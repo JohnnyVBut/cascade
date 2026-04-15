@@ -21,6 +21,8 @@
 
 <p align="center">
   <a href="README.ru.md">🇷🇺 Русский</a>
+  &nbsp;·&nbsp;
+  <a href="docs/USER_MANUAL.en.md">📖 User Manual</a>
 </p>
 
 ---
