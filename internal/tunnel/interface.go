@@ -392,18 +392,19 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 		inp.PresharedKey = psk
 	}
 
-	// Derive peer tunnel address from AllowedIPs + interface mask when not set.
-	// address is shown in UI separately from AllowedIPs (e.g. AllowedIPs=0.0.0.0/0
-	// but address=10.8.0.2/24 — the actual tunnel interface address of the peer).
-	if inp.Address == "" && inp.AllowedIPs != "" && t.Address != "" {
+	// Derive peer tunnel address from AllowedIPs when not set.
+	// Use the mask from AllowedIPs itself (e.g. /32 for client peers).
+	// The interface mask is NOT used here — it would show /24 for client peers
+	// whose AllowedIPs is already /32, which is confusing in the UI.
+	if inp.Address == "" && inp.AllowedIPs != "" {
 		firstCIDR := strings.TrimSpace(strings.Split(inp.AllowedIPs, ",")[0])
 		peerIP := strings.SplitN(firstCIDR, "/", 2)[0]
 		if peerIP != "" && peerIP != "0.0.0.0" {
-			ifaceMask := "24"
-			if parts := strings.SplitN(t.Address, "/", 2); len(parts) == 2 {
-				ifaceMask = parts[1]
+			mask := "32"
+			if parts := strings.SplitN(firstCIDR, "/", 2); len(parts) == 2 {
+				mask = parts[1]
 			}
-			inp.Address = peerIP + "/" + ifaceMask
+			inp.Address = peerIP + "/" + mask
 		}
 	}
 

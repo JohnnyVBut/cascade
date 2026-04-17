@@ -221,8 +221,8 @@ func TestGenerateCompleteConfig_WireGuard(t *testing.T) {
 	if !strings.Contains(cfg, "PrivateKey = privatekey123") {
 		t.Error("expected PrivateKey line")
 	}
-	if !strings.Contains(cfg, "Address = 10.8.0.2/24") {
-		t.Error("expected derived Address from AllowedIPs + iface mask")
+	if !strings.Contains(cfg, "Address = 10.8.0.2/32") {
+		t.Error("expected derived Address from AllowedIPs mask (/32 for client peers)")
 	}
 	if !strings.Contains(cfg, "DNS = 1.1.1.1") {
 		t.Error("expected DNS line")

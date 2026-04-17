@@ -394,16 +394,20 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 	sb.WriteString("[Interface]\n")
 	fmt.Fprintf(&sb, "PrivateKey = %s\n", p.PrivateKey)
 
-	// Address: use stored address, or derive from AllowedIPs + iface mask (FIX-6).
+	// Address: use stored address, or derive from AllowedIPs mask (not iface mask).
+	// Client peers have AllowedIPs=/32, so Address gets /32 — matches UI display.
 	if p.Address != "" {
 		fmt.Fprintf(&sb, "Address = %s\n", p.Address)
-	} else if p.AllowedIPs != "" && iface.Address != "" {
-		peerIP := strings.SplitN(p.AllowedIPs, "/", 2)[0]
-		mask := "24"
-		if parts := strings.SplitN(iface.Address, "/", 2); len(parts) == 2 {
+	} else if p.AllowedIPs != "" {
+		firstCIDR := strings.TrimSpace(strings.Split(p.AllowedIPs, ",")[0])
+		peerIP := strings.SplitN(firstCIDR, "/", 2)[0]
+		mask := "32"
+		if parts := strings.SplitN(firstCIDR, "/", 2); len(parts) == 2 {
 			mask = parts[1]
 		}
-		fmt.Fprintf(&sb, "Address = %s/%s\n", peerIP, mask)
+		if peerIP != "" && peerIP != "0.0.0.0" {
+			fmt.Fprintf(&sb, "Address = %s/%s\n", peerIP, mask)
+		}
 	}
 
 	dns := iface.DNS
@@ -484,13 +488,16 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 
 	if p.Address != "" {
 		fmt.Fprintf(&sb, "Address = %s\n", p.Address)
-	} else if p.AllowedIPs != "" && iface.Address != "" {
-		peerIP := strings.SplitN(p.AllowedIPs, "/", 2)[0]
-		mask := "24"
-		if parts := strings.SplitN(iface.Address, "/", 2); len(parts) == 2 {
+	} else if p.AllowedIPs != "" {
+		firstCIDR := strings.TrimSpace(strings.Split(p.AllowedIPs, ",")[0])
+		peerIP := strings.SplitN(firstCIDR, "/", 2)[0]
+		mask := "32"
+		if parts := strings.SplitN(firstCIDR, "/", 2); len(parts) == 2 {
 			mask = parts[1]
 		}
-		fmt.Fprintf(&sb, "Address = %s/%s\n", peerIP, mask)
+		if peerIP != "" && peerIP != "0.0.0.0" {
+			fmt.Fprintf(&sb, "Address = %s/%s\n", peerIP, mask)
+		}
 	}
 
 	dns := iface.DNS
