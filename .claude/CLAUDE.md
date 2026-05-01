@@ -117,9 +117,8 @@ this.tunnelInterfaces.splice(idx, 1, updatedIface); // НЕ array[idx] = item
 ## Правила работы
 
 - Репо: `git@github.com:JohnnyVBut/cascade.git`
-- **`master`** — стабильная ветка. Прямые коммиты в неё запрещены.
-- Разработка ведётся в `feature/...` ветках, merge в `master` через явный запрос пользователя.
-- Текущая рабочая ветка: **`feature/go-rewrite`** (основная ветка разработки Go rewrite)
+- Текущая ветка: **`master`** — Go rewrite, продакшн-готовая.
+- Разработка фич ведётся в `feature/...` ветках, merge в `master` через явный запрос пользователя.
 - После каждого пуша напоминать команды деплоя на сервере
 - Каждый коммит — подробное сообщение (что, почему, какие файлы)
 
@@ -234,47 +233,45 @@ Go рандомизирует порядок map → пиры перемешив
 
 ## Compat layer (`internal/api/compat.go`)
 
-**RegisterCompat** (без авторизации): `/lang → "en"`, `/release → 999999`, `/remember-me → true`, `/ui-traffic-stats → false`, `/ui-chart-type → 0`, `/wg-enable-one-time-links → false`, `/ui-sort-clients → false`, `/wg-enable-expire-time → false`, `/ui-avatar-settings → {dicebear:null}`
+**RegisterCompat** (без авторизации): `/lang → "en"`, `/release → 999999`, `/remember-me → true`, `/ui-traffic-stats → true`, `/ui-chart-type → 1`, `/wg-enable-one-time-links → false`, `/ui-sort-clients → false`, `/wg-enable-expire-time → false`, `/ui-avatar-settings → {dicebear:null}`
 
 **RegisterCompatAuth** (требует auth): `GET /wireguard/client → []`, `ALL /wireguard/* → 501`, `GET /system/interfaces → {interfaces:[...]}`
 
 ---
 
-## Checkpoint (feature/go-rewrite → master)
+## Checkpoint (master — текущее состояние)
 
-**Последний коммит:** `637e655` fix(firewall): address code review findings for default policy feature
+**Последний коммит:** `8ca674a` fix(peers): use AllowedIPs mask for peer address, not iface mask
 
-**Коммиты feature-default-fw-policy (смержены в master):**
-- `d1e7e6e` feat(firewall): default firewall policy setting (accept/drop)
-- `905cb1e` fix(ui): firewall interface dropdown shows .name instead of full JSON object
-- `2b4060c` fix(ui): remove misleading WireGuard disclaimer from default policy card
-- `637e655` fix(firewall): address code review findings for default policy feature
+**Что работает (полностью реализовано и протестировано):**
 
-**Что работает:**
-- Interfaces: CRUD, start/stop/restart, peers, S2S interconnect, export-params, backup/restore
-- Peers: полный CRUD + name/address/expireDate/oneTimeLink/export-json
-- Routing: static routes + kernel routes + routing tables + SimulateTrace (PBR)
-- NAT: Outbound MASQUERADE/SNAT CRUD + alias source + auto-правила
-- Gateways: CRUD + live ping/HTTP monitoring + Gateway Groups + fallback
-- Firewall Aliases: host/network/ipset/group + L4 port/port-group + upload + generate
-- Firewall Rules: ACCEPT/DROP/REJECT + PBR (gateway) + port matching + ↑↓ order + default policy (accept/drop)
-- AWG2 Templates: CRUD + Generate (7 CPS-профилей)
-- Auth: session cookie, bcrypt, API tokens
-- Caddy reverse proxy: HTTPS/HTTP3, hidden admin path, rate limit, decoy site
-- Router identity: routerName (SQLite) + hostname (host UTS) + public IP (auto/manual)
-- Firewall default policy: `accept`/`drop` — настраивается через карточку на странице Firewall Rules; при `drop` терминальное DROP-правило добавляется в конец `FIREWALL_FORWARD`; хранится в SQLite (key/value settings)
+| Область | Детали |
+|---------|--------|
+| **Interfaces** | CRUD, start/stop/restart, quick-create (one-click), export-params, backup/restore |
+| **Peers** | CRUD, client/S2S, auto-allocate IP (/32), QR, config download, enable/disable, name/address/expireDate, export-json, one-time links (endpoint готов, UI кнопка скрыта feature flag) |
+| **S2S Interconnect** | export-params → import-json, PSK sync, address из JSON |
+| **Routing** | Static routes CRUD, kernel routes (ip route show), routing tables (ip rule show), SimulateTrace (PBR trace), route test |
+| **NAT Outbound** | SNAT/MASQUERADE CRUD + alias source + auto-правила от интерфейсов |
+| **NAT Port Forwarding** | DNAT CRUD — протокол tcp/udp/both, inbound port, dest IP/port, masquerade toggle |
+| **Gateways** | CRUD + live ping/HTTP monitoring + Gateway Groups + fallback (blackhole/default, 30s anti-flap) |
+| **Firewall Aliases** | 6 типов: host/network/ipset/group/port/port-group; upload; async generate (RIPE) |
+| **Firewall Rules** | ACCEPT/DROP/REJECT + PBR (gateway) + port alias matching + ↑↓ order + default policy (accept/drop) |
+| **AWG2 Templates** | CRUD + Generate (11 профилей: QUIC, TLS 1.3, DTLS, HTTP/3, SIP, Noise_IK, dns_query + др.) |
+| **Auth** | Multi-user, bcrypt (cost 12), TOTP 2FA (RFC 6238, Google Authenticator), API tokens (Bearer ws_...), sessions (HttpOnly, SameSite=Strict), rate limit 5/min, 500ms delay |
+| **Traffic stats** | persistent total_rx/total_tx в SQLite, flush каждые 60s + при graceful shutdown |
+| **Settings** | Global config: dns, keepalive, clientAllowedIPs, subnetPool, portPool, defaultFwPolicy, gateway thresholds, publicIP override |
+| **Deploy** | setup.sh: swap, kernel, Docker, AWG userspace/kernel, TLS (acme.sh shortlived), Caddy (HTTPS/HTTP3, hidden admin path, decoy site) |
+| **Peer address** | Всегда /32 для клиентских пиров (маска берётся из AllowedIPs, не из интерфейса) |
 
-**Что не реализовано:**
-- Admin Tunnel (wg0) — заглушка 501
-- Port Forwarding (DNAT)
-- One-time links (`/cnf/:link` не реализован)
-- **Накопление трафика между перезапусками** — миграция v11: добавить `transfer_rx_total`/`transfer_tx_total` в SQLite `peers`; в `GetStatus()` накапливать дельту (сброс счётчика при рестарте интерфейса детектировать как new < prev); сохранять в DB каждые ~30s; API возвращать `transferRxTotal`/`transferTxTotal`; frontend показывать total из API
+**Что НЕ реализовано:**
+- **Admin Tunnel (wg0)** — заглушка: `GET /api/wireguard/client → []`, все мутации → 501
+- **acme.sh cron** — `--install-cronjob` не вызывается в setup.sh; 6-дневный сертификат истечёт без ручной установки cron
 
-**Хотелки (не запланированы):**
+**Хотелки (обсуждались, не запланированы):**
 - INPUT chain в FirewallManager (управление доступом к серверу из UI)
-- Multi-user RBAC (superadmin / operator / viewer)
-- TOTP 2FA (Google Authenticator, RFC 6238)
+- Multi-user RBAC (superadmin / operator / viewer с resource-scoped доступом)
 - Telegram Bot для управления роутером
+- Ethernet-интерфейсы в dashboard (live TX/RX из /proc/net/dev)
 
 **S2S топология — ограничения:**
 - `allowedIPs=0.0.0.0/0` работает только для **одного** пира — при 2+ пирах WG выберет один
