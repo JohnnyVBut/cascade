@@ -14,9 +14,8 @@
 *__.js
 *-old.js
 
-# Claude internal
-.claude/worktrees/
-.claude/plan.md
+# Claude internal — kept locally, not in public repo
+.claude/
 
 # Debug scripts
 collect-awg-deadlock.sh
