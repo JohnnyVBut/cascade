@@ -438,6 +438,17 @@ ALTER TABLE nat_dnat_rules ADD COLUMN in_interface TEXT NOT NULL DEFAULT '';
 ALTER TABLE nat_dnat_rules ADD COLUMN masquerade INTEGER NOT NULL DEFAULT 1;
 `,
 	},
+	{
+		version: 16,
+		sql: `
+-- Per-interface public host override.
+-- When set, this value is used as the Endpoint in peer client configs instead of
+-- the global WG_HOST env / Settings UI → Public IP. Useful for transit (relay) setups
+-- where one interface is reachable via a different IP than the server's own public IP.
+-- Empty string = use global setting (default behaviour).
+ALTER TABLE interfaces ADD COLUMN public_host TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

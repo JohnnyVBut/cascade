@@ -63,6 +63,7 @@ type TunnelInterface struct {
 	Enabled       bool               `json:"enabled"`
 	DisableRoutes bool               `json:"disableRoutes"`  // Table = off (S2S / PBR setups)
 	NatDisabled   bool               `json:"natDisabled"`    // when true, PostUp omits MASQUERADE
+	PublicHost    string             `json:"publicHost"`     // per-interface endpoint override (e.g. transit server IP)
 	PrivateKey    string             `json:"-"`              // never exposed in API responses
 	PublicKey     string             `json:"publicKey"`
 	AWG2          *peer.AWG2Settings `json:"settings"`       // nil for wireguard-1.0
@@ -94,6 +95,7 @@ type InterfaceUpdate struct {
 	ListenPort    *int
 	DisableRoutes *bool
 	NatDisabled   *bool
+	PublicHost    *string            // per-interface endpoint override; empty string = clear (use global)
 	AWG2          *peer.AWG2Settings // non-nil = replace all AWG2 params
 }
 
@@ -186,6 +188,9 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.NatDisabled != nil {
 		t.NatDisabled = *upd.NatDisabled
 	}
+	if upd.PublicHost != nil {
+		t.PublicHost = strings.TrimSpace(*upd.PublicHost)
+	}
 	if upd.AWG2 != nil {
 		t.AWG2 = upd.AWG2
 	}
@@ -265,15 +270,15 @@ func (t *TunnelInterface) save() error {
 	_, err := db.DB().Exec(`
 		INSERT INTO interfaces
 			(id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-			 private_key, public_key,
+			 public_host, private_key, public_key,
 			 jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 			 i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, address=excluded.address,
 			listen_port=excluded.listen_port, protocol=excluded.protocol,
 			enabled=excluded.enabled, disable_routes=excluded.disable_routes,
-			nat_disabled=excluded.nat_disabled,
+			nat_disabled=excluded.nat_disabled, public_host=excluded.public_host,
 			private_key=excluded.private_key, public_key=excluded.public_key,
 			jc=excluded.jc, jmin=excluded.jmin, jmax=excluded.jmax,
 			s1=excluded.s1, s2=excluded.s2, s3=excluded.s3, s4=excluded.s4,
@@ -281,7 +286,7 @@ func (t *TunnelInterface) save() error {
 			i1=excluded.i1, i2=excluded.i2, i3=excluded.i3, i4=excluded.i4, i5=excluded.i5`,
 		t.ID, t.Name, t.Address, t.ListenPort, t.Protocol,
 		boolInt(t.Enabled), boolInt(t.DisableRoutes), boolInt(t.NatDisabled),
-		t.PrivateKey, t.PublicKey,
+		t.PublicHost, t.PrivateKey, t.PublicKey,
 		jc, jmin, jmax, s1, s2, s3, s4,
 		h1, h2, h3, h4,
 		i1, i2, i3, i4, i5,
@@ -1119,6 +1124,16 @@ func (t *TunnelInterface) AutoAllocateIP() (string, error) {
 	return "", fmt.Errorf("no available IP addresses in subnet %s", ipNet)
 }
 
+// resolvedHost returns the effective public host for this interface.
+// Priority: per-interface PublicHost → wgHostResolved (caller's pre-resolved global value).
+// The caller must resolve the global host (via settings.GetWGHost) before calling this.
+func (t *TunnelInterface) resolvedHost(wgHostResolved string) string {
+	if t.PublicHost != "" {
+		return t.PublicHost
+	}
+	return wgHostResolved
+}
+
 // ── Export helpers ────────────────────────────────────────────────────────────
 
 // ExportInterfaceParams returns this interface's parameters for S2S interconnect.
@@ -1129,9 +1144,10 @@ func (t *TunnelInterface) AutoAllocateIP() (string, error) {
 //
 //	A exports (no PSK yet) → B imports → B generates PSK → B exports (PSK included) → A imports PSK
 func (t *TunnelInterface) ExportInterfaceParams(wgHost string) InterfaceExport {
+	host := t.resolvedHost(wgHost)
 	endpoint := ""
-	if wgHost != "" {
-		endpoint = fmt.Sprintf("%s:%d", wgHost, t.ListenPort)
+	if host != "" {
+		endpoint = fmt.Sprintf("%s:%d", host, t.ListenPort)
 	}
 
 	// Find PSK from the most recent interconnect peer.
@@ -1204,7 +1220,7 @@ func boolInt(b bool) int {
 func scanInterface(id string) (*TunnelInterface, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-		       private_key, public_key,
+		       public_host, private_key, public_key,
 		       jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 		       i1, i2, i3, i4, i5, created_at
 		FROM interfaces WHERE id = ?`, id)
@@ -1221,7 +1237,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 	err := row.Scan(
 		&t.ID, &t.Name, &t.Address, &t.ListenPort, &t.Protocol,
 		&enabled, &disableRoutes, &natDisabled,
-		&t.PrivateKey, &t.PublicKey,
+		&t.PublicHost, &t.PrivateKey, &t.PublicKey,
 		&jc, &jmin, &jmax,
 		&s1, &s2, &s3, &s4,
 		&h1, &h2, &h3, &h4,
