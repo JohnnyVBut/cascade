@@ -787,20 +787,33 @@
         <!-- ============================================================== -->
         <div v-if="activePage === 'interfaces'">
 
-          <!-- Tab bar: (+) + "All" dashboard tab + interface tabs -->
-          <div class="flex gap-2 mb-4 overflow-x-auto whitespace-nowrap" style="padding-bottom: 4px;">
+          <!-- Action buttons row -->
+          <div class="flex gap-2 mb-3">
             <button @click="showInterfaceCreate = true"
-              class="px-4 py-2 rounded-lg font-medium transition text-sm"
+              class="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition"
               style="background:#16a34a; color:white;"
-              title="Create Interface">
-              +
+              title="Create new interface">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+              </svg>
+              New
             </button>
             <button @click="showImportConf = true"
-              class="px-4 py-2 rounded-lg font-medium transition text-sm"
-              style="background:#0891b2; color:white;"
+              class="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition"
+              style="background:transparent; color:#0891b2; border:1px solid #0891b2;"
               title="Import WireGuard .conf file — create a client (uplink) interface">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/>
+              </svg>
               Import .conf
             </button>
+          </div>
+
+          <!-- Separator -->
+          <div style="border-top:1px solid #e5e7eb; margin-bottom:12px;" class="dark:border-neutral-600"></div>
+
+          <!-- Tab bar: "All" dashboard tab + interface tabs -->
+          <div class="flex gap-2 mb-4 overflow-x-auto whitespace-nowrap" style="padding-bottom: 4px;">
             <!-- "All" dashboard tab: selected when no interface is active -->
             <button @click="activeInterfaceId = null"
               class="px-4 py-2 rounded-lg font-medium transition text-sm"
