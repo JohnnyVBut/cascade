@@ -63,7 +63,12 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 
 		// Section header.
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
-			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
+			next := strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
+			// If we're entering a second [Peer] section, mark the first as done.
+			if next == "peer" && c.PeerPublicKey != "" {
+				peerDone = true
+			}
+			section = next
 			continue
 		}
 
@@ -73,7 +78,13 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 			continue
 		}
 		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
+		// Strip inline comments (e.g. "0.0.0.0/0 # all traffic" → "0.0.0.0/0").
+		// wg-quick reference implementation does the same.
+		rawVal := parts[1]
+		if idx := strings.Index(rawVal, "#"); idx >= 0 {
+			rawVal = rawVal[:idx]
+		}
+		val := strings.TrimSpace(rawVal)
 
 		switch section {
 		case "interface":
@@ -142,13 +153,17 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 			switch strings.ToLower(key) {
 			case "publickey":
 				c.PeerPublicKey = val
-				peerDone = true // first peer's public key seen — ignore any subsequent [Peer]
 			case "presharedkey":
 				c.PeerPresharedKey = val
 			case "endpoint":
 				c.PeerEndpoint = val
 			case "allowedips":
-				c.PeerAllowedIPs = val
+				// Accumulate multiple AllowedIPs lines (some generators emit one per line).
+				if c.PeerAllowedIPs == "" {
+					c.PeerAllowedIPs = val
+				} else {
+					c.PeerAllowedIPs += ", " + val
+				}
 			case "persistentkeepalive":
 				if n, err := strconv.Atoi(val); err == nil {
 					c.PeerKeepalive = n
@@ -160,6 +175,9 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 	// Validate required fields.
 	if c.PrivateKey == "" {
 		return nil, fmt.Errorf("missing PrivateKey in [Interface] section")
+	}
+	if c.Address == "" {
+		return nil, fmt.Errorf("missing Address in [Interface] section")
 	}
 	if c.PeerPublicKey == "" {
 		return nil, fmt.Errorf("missing PublicKey in [Peer] section")
