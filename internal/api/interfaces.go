@@ -65,6 +65,24 @@ func mgr() *tunnel.Manager {
 	return tunnel.Get()
 }
 
+// peerJSON builds the JSON-serialisable view of a peer.Peer.
+// PrivateKey is always excluded — consistent with ifaceJSON for TunnelInterface.
+func peerJSON(p *peer.Peer) fiber.Map {
+	return fiber.Map{
+		"id":                  p.ID,
+		"name":                p.Name,
+		"publicKey":           p.PublicKey,
+		"presharedKey":        p.PresharedKey,
+		"endpoint":            p.Endpoint,
+		"allowedIPs":          p.AllowedIPs,
+		"clientAllowedIPs":    p.ClientAllowedIPs,
+		"peerType":            p.PeerType,
+		"persistentKeepalive": p.PersistentKeepalive,
+		"enabled":             p.Enabled,
+		"createdAt":           p.CreatedAt,
+	}
+}
+
 // ifaceJSON builds the JSON-serialisable view of a TunnelInterface.
 // PrivateKey is always excluded; peers slice is included if withPeers=true.
 func ifaceJSON(t *tunnel.TunnelInterface, withPeers bool) fiber.Map {
@@ -285,7 +303,7 @@ func importConfInterface(c *fiber.Ctx) error {
 
 	resp := fiber.Map{
 		"interface": ifaceJSON(result.Interface, false),
-		"peer":      result.Peer,
+		"peer":      peerJSON(result.Peer),
 		"started":   result.Started,
 	}
 	if result.StartError != nil {

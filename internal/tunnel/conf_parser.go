@@ -142,6 +142,7 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 			switch strings.ToLower(key) {
 			case "publickey":
 				c.PeerPublicKey = val
+				peerDone = true // first peer's public key seen — ignore any subsequent [Peer]
 			case "presharedkey":
 				c.PeerPresharedKey = val
 			case "endpoint":
@@ -154,11 +155,6 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 				}
 			}
 		}
-	}
-
-	// Mark end of first peer section when we've seen a public key.
-	if section == "peer" && c.PeerPublicKey != "" {
-		peerDone = true
 	}
 
 	// Validate required fields.

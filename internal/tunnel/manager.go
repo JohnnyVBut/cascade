@@ -23,6 +23,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/settings"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // Manager manages the collection of all TunnelInterface instances.
@@ -315,10 +316,10 @@ func (m *Manager) QuickCreate(name, protocol string) (*QuickCreateResult, error)
 
 // ImportConfResult is returned by Manager.ImportConf.
 type ImportConfResult struct {
-	Interface  *TunnelInterface
-	Peer       interface{} // *peer.Peer
-	Started    bool
-	StartError error
+	Interface       *TunnelInterface
+	Peer            *peer.Peer
+	Started         bool
+	StartError      error
 	// ConflictWarning is set when the imported address subnet overlaps with
 	// an existing interface (the address was converted to /32 to avoid conflicts).
 	ConflictWarning string
@@ -339,6 +340,12 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 	parsed, err := ParseWGConf(confContent)
 	if err != nil {
 		return nil, fmt.Errorf("parse conf: %w", err)
+	}
+
+	// Validate private key before using it in shell commands (prevent injection).
+	// Same check AddPeer performs — see newline injection note in interface.go.
+	if err := validate.WGKey(parsed.PrivateKey); err != nil {
+		return nil, fmt.Errorf("invalid PrivateKey: %w", err)
 	}
 
 	// Force address to /32 to avoid subnet routing conflicts.
@@ -410,6 +417,8 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 		PersistentKeepalive: keepalive,
 	})
 	if err != nil {
+		// Roll back the interface so no orphan is left in the DB.
+		_ = m.DeleteInterface(iface.ID)
 		return nil, fmt.Errorf("add upstream peer: %w", err)
 	}
 
