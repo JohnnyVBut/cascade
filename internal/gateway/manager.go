@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
@@ -129,9 +130,33 @@ func (m *Manager) CreateGateway(inp GatewayInput) (*Gateway, error) {
 		return nil, err
 	}
 
+	// If the gateway interface is a WireGuard/AmneziaWG device, add a host route
+	// so that the monitor can ping the inner tunnel IP (which has no route in the
+	// main table when DisableRoutes=true). Without this the ping would fail with
+	// "no route to host" even though the tunnel is up.
+	ensureHostRoute(gw.GatewayIP, gw.Interface)
+
 	m.monitor.Start(gw)
 	log.Printf("gateway-manager: created gateway %q (%s)", gw.Name, gw.ID)
 	return &gw, nil
+}
+
+// ensureHostRoute adds a /32 host route for ip via dev if it does not already exist.
+// Used when a gateway points to a WireGuard tunnel IP (DisableRoutes=true interface)
+// where the kernel has no route to the inner peer IP.
+// Errors are logged and ignored — monitoring degrades gracefully.
+func ensureHostRoute(ip, dev string) {
+	if ip == "" || dev == "" {
+		return
+	}
+	// Skip non-WireGuard interfaces (eth0, ens3, etc.) — they don't need this.
+	if !strings.HasPrefix(dev, "wg") && !strings.HasPrefix(dev, "awg") {
+		return
+	}
+	cmd := fmt.Sprintf("ip route replace %s/32 dev %s", ip, dev)
+	if _, err := util.ExecDefault(cmd); err != nil {
+		log.Printf("gateway: ensureHostRoute %s/32 dev %s: %v (monitoring may degrade)", ip, dev, err)
+	}
 }
 
 // UpdateGateway replaces gateway fields, persists, and restarts its monitor.

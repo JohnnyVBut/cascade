@@ -328,6 +328,14 @@ class API {
     });
   }
 
+  async importTunnelConf({ name, conf }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/import-conf',
+      body: { name, conf },
+    });
+  }
+
   async updateTunnelInterface({ interfaceId, ...updates }) {
     return this.call({
       method: 'patch',

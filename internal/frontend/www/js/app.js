@@ -161,6 +161,9 @@ new Vue({
     allPeers: [],            // dashboard: flat list of peers from all interfaces
     showInterfaceCreate: false,
     createMode: 'quick',        // 'quick' | 'manual' — controls which form is shown in the create modal
+    showImportConf: false,
+    importConfForm: { name: '', conf: '' },
+    importConfWarning: '',
     showInterfaceEdit: false,
     interfaceEdit: {
       id: null,
@@ -943,6 +946,39 @@ new Vue({
         }
       } catch (err) {
         console.error('Quick create failed:', err);
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    async doImportConf() {
+      const name = (this.importConfForm.name || '').trim();
+      const conf = (this.importConfForm.conf || '').trim();
+      if (!name) { this.showToast('Please enter a name', 'error'); return; }
+      if (!conf)  { this.showToast('Please paste the .conf content', 'error'); return; }
+
+      this.importConfWarning = '';
+      try {
+        const res = await this.api.importTunnelConf({ name, conf });
+        this.showImportConf = false;
+        this.importConfForm = { name: '', conf: '' };
+        await this.loadTunnelInterfaces();
+
+        const iface = res.interface || {};
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        if (res.conflictWarning) {
+          this.showToast(`⚠️ ${res.conflictWarning}`, 'error');
+        }
+        if (res.started) {
+          this.showToast(`✅ ${iface.id} imported & started · ${iface.address}${proto}`);
+          this.activeInterfaceId = iface.id;
+        } else {
+          this.showToast(
+            `⚠️ ${iface.id} imported but failed to start\n${res.startError || 'Unknown error'}`,
+            'error'
+          );
+        }
+      } catch (err) {
+        console.error('Import conf failed:', err);
         this.showToast(`Failed: ${err.message}`, 'error');
       }
     },

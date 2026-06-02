@@ -795,6 +795,12 @@
               title="Create Interface">
               +
             </button>
+            <button @click="showImportConf = true"
+              class="px-4 py-2 rounded-lg font-medium transition text-sm"
+              style="background:#0891b2; color:white;"
+              title="Import WireGuard .conf file — create a client (uplink) interface">
+              Import .conf
+            </button>
             <!-- "All" dashboard tab: selected when no interface is active -->
             <button @click="activeInterfaceId = null"
               class="px-4 py-2 rounded-lg font-medium transition text-sm"
@@ -1630,6 +1636,55 @@
                   {{ createMode === 'quick' ? 'Create &amp; Start' : 'Create' }}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== Import .conf Modal ==================== -->
+        <div v-if="showImportConf" class="modal-overlay" @click.self="showImportConf = false">
+          <div class="modal-panel bg-white dark:bg-neutral-700" style="max-width:560px; margin:0 auto;">
+            <div class="modal-header">
+              <h3 class="text-lg font-semibold dark:text-neutral-100">Import WireGuard .conf</h3>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+              <div class="rounded p-3 text-sm" style="background:#e0f2fe; color:#0c4a6e;">
+                <strong>Client (uplink) interface.</strong>
+                Routing table is not modified — use Firewall → Rules for PBR after import.
+              </div>
+              <div v-if="importConfWarning" class="rounded p-3 text-sm"
+                style="background:#fef9c3; color:#713f12;">
+                ⚠ {{ importConfWarning }}
+              </div>
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                  Name <span class="text-red-500">*</span>
+                </label>
+                <input v-model="importConfForm.name" type="text" placeholder="e.g. NL Uplink"
+                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+              </div>
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                  Config content <span class="text-red-500">*</span>
+                </label>
+                <textarea v-model="importConfForm.conf" rows="12"
+                  placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = 10.8.0.5/24&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = vpn.example.com:51820&#10;AllowedIPs = 0.0.0.0/0"
+                  class="w-full px-3 py-2 border rounded font-mono text-xs dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                  style="resize:vertical;"></textarea>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Paste the .conf file. AWG 2.0 configs (with Jc/S1/H1 params) are detected automatically.
+                </p>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button @click="showImportConf = false"
+                class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded dark:text-neutral-200 transition">
+                Cancel
+              </button>
+              <button @click="doImportConf()"
+                class="px-4 py-2 text-white rounded transition"
+                style="background:#0891b2;">
+                Import &amp; Start
+              </button>
             </div>
           </div>
         </div>

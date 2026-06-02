@@ -313,6 +313,126 @@ func (m *Manager) QuickCreate(name, protocol string) (*QuickCreateResult, error)
 	}, nil
 }
 
+// ImportConfResult is returned by Manager.ImportConf.
+type ImportConfResult struct {
+	Interface  *TunnelInterface
+	Peer       interface{} // *peer.Peer
+	Started    bool
+	StartError error
+	// ConflictWarning is set when the imported address subnet overlaps with
+	// an existing interface (the address was converted to /32 to avoid conflicts).
+	ConflictWarning string
+}
+
+// ImportConf parses a WireGuard / AmneziaWG client .conf file and creates:
+//  1. A new tunnel interface with the address from [Interface] (forced to /32)
+//     and DisableRoutes=true — the server's kernel routing table is not modified.
+//  2. An interconnect peer with the [Peer] parameters (PublicKey, Endpoint, AllowedIPs, …).
+//
+// The interface is immediately started. If start fails the error is returned in
+// StartError (non-nil) but the interface and peer are still persisted.
+//
+// DisableRoutes=true is always set: importing a client conf on a running server
+// must not redirect all traffic through the new tunnel (that would break existing
+// clients and firewall rules). PBR via Firewall → Rules is the correct mechanism.
+func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error) {
+	parsed, err := ParseWGConf(confContent)
+	if err != nil {
+		return nil, fmt.Errorf("parse conf: %w", err)
+	}
+
+	// Force address to /32 to avoid subnet routing conflicts.
+	address32 := AddressToHost32(parsed.Address)
+	var conflictWarning string
+	if parsed.Address != "" && parsed.Address != address32 {
+		// Check if the original /NN subnet overlaps with existing interfaces.
+		m.mu.RLock()
+		for _, t := range m.interfaces {
+			if subnetsOverlap(t.Address, parsed.Address) {
+				conflictWarning = fmt.Sprintf(
+					"Address %s overlaps with existing interface %s (%s); using %s instead.",
+					parsed.Address, t.ID, t.Address, address32,
+				)
+				break
+			}
+		}
+		m.mu.RUnlock()
+	}
+
+	// Derive public key from private key using the appropriate binary.
+	syncBin := "wg"
+	if parsed.Protocol == "amneziawg-2.0" {
+		syncBin = "awg"
+	}
+	keys, err := peer.DerivePublicKey(syncBin, parsed.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("derive public key: %w", err)
+	}
+
+	iface, err := m.CreateInterface(CreateInput{
+		Name:          name,
+		Protocol:      parsed.Protocol,
+		Address:       address32,
+		DisableRoutes: true, // always — do not pollute kernel routing table
+		AWG2:          parsed.AWG2,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create interface: %w", err)
+	}
+
+	// Override the auto-generated key pair with the one from the .conf file.
+	iface.PrivateKey = parsed.PrivateKey
+	iface.PublicKey = keys
+	if err := iface.save(); err != nil {
+		return nil, fmt.Errorf("save interface keys: %w", err)
+	}
+	if err := iface.RegenerateConfig(); err != nil {
+		return nil, fmt.Errorf("regenerate config: %w", err)
+	}
+
+	// Add the remote server as an interconnect peer.
+	allowedIPs := parsed.PeerAllowedIPs
+	if allowedIPs == "" {
+		allowedIPs = "0.0.0.0/0"
+	}
+	keepalive := parsed.PeerKeepalive
+	if keepalive == 0 {
+		keepalive = 25
+	}
+	p, err := iface.AddPeer(peer.PeerInput{
+		Name:                "upstream",
+		PublicKey:           parsed.PeerPublicKey,
+		PresharedKey:        parsed.PeerPresharedKey,
+		Endpoint:            parsed.PeerEndpoint,
+		AllowedIPs:          allowedIPs,
+		ClientAllowedIPs:    allowedIPs,
+		PeerType:            "interconnect",
+		PersistentKeepalive: keepalive,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("add upstream peer: %w", err)
+	}
+
+	startErr := iface.Start()
+	return &ImportConfResult{
+		Interface:       iface,
+		Peer:            p,
+		Started:         startErr == nil,
+		StartError:      startErr,
+		ConflictWarning: conflictWarning,
+	}, nil
+}
+
+// subnetsOverlap returns true if two CIDR addresses share any IP range.
+func subnetsOverlap(cidr1, cidr2 string) bool {
+	_, net1, err1 := net.ParseCIDR(cidr1)
+	_, net2, err2 := net.ParseCIDR(cidr2)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return net1.Contains(net2.IP) || net2.Contains(net1.IP)
+}
+
 // GetInterface returns the TunnelInterface for the given ID, or nil if not found.
 func (m *Manager) GetInterface(id string) *TunnelInterface {
 	m.mu.RLock()
