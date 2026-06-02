@@ -31,7 +31,7 @@
 
 | Module | Description |
 |--------|-------------|
-| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click |
+| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click, import `.conf` as uplink |
 | 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes and lifetime traffic stats |
 | 🌐 **Routing** | Static routes, policy-based routing (PBR), kernel route inspection |
 | 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support + Port Forwarding (DNAT) with per-interface scoping |
@@ -50,6 +50,7 @@
 - ✅ **Full AmneziaWG 2.0** — S3, S4, I5 parameters, H-range obfuscation, 7 CPS profiles + browser fingerprint
 - ✅ **Policy-based routing** — route traffic per-source through different gateways
 - ✅ **Port Forwarding (DNAT)** — transparent traffic cascading with optional source NAT
+- ✅ **Import .conf as uplink** — connect Cascade as a client to any WireGuard server; use as PBR gateway without touching the routing table
 - ✅ **Gateway monitoring** — ICMP ping + HTTP/S probes, auto-fallback on failure
 - ✅ **Multi-user + TOTP 2FA** — per-user accounts with Google Authenticator support
 - ✅ **HTTPS by default** — Caddy + acme.sh, works with bare IPs via Let's Encrypt shortlived certs

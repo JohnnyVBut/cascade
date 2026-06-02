@@ -15,6 +15,15 @@
 11. [Global Settings](#11-global-settings)
 12. [Administration](#12-administration)
 
+**Appendices:**
+- [Appendix A: Common Scenarios](#appendix-common-scenarios)
+  - [Scenario 1: Simple Client VPN](#scenario-1-simple-client-vpn)
+  - [Scenario 2: Cascaded VPN](#scenario-2-cascaded-vpn-traffic-through-two-servers)
+  - [Scenario 3: Country-Based Routing](#scenario-3-country-based-routing)
+  - [Scenario 4: Relay Third-Party WireGuard via DNAT](#scenario-4-relay-third-party-wireguard-via-dnat)
+  - [Scenario 5: Cascade as a WireGuard Client (Uplink + PBR)](#scenario-5-cascade-as-a-wireguard-client-uplink--pbr)
+- [Appendix B: Transit (Relay) Server](#appendix-b-transit-relay-server)
+
 ---
 
 ## 1. First Login and Setup
@@ -647,3 +656,166 @@ Client → Server:
    - Rule 1: Dst = `ru_prefixes`, Action = Accept, Gateway = RU ISP
    - Rule 2: Dst = any, Action = Accept, Gateway = Abroad VPN
 4. **Route Test**: verify that `8.8.8.8` goes through Abroad VPN and `ya.ru` through RU ISP
+
+### Scenario 4: Relay Third-Party WireGuard via DNAT
+
+**Use case:** the client has a config from a third-party WireGuard server (NL, DE, etc.) but
+cannot connect to it directly. The Cascade intermediate server transparently forwards traffic —
+the client is unaware of the real server.
+
+```
+Client ──UDP:51820──► Cascade RU ──UDP:51820──► WG server NL
+                      (DNAT + MASQUERADE)        (any, not Cascade)
+```
+
+The WireGuard session is **end-to-end** between client and NL server. Cascade RU only forwards
+encrypted UDP datagrams and cannot see the traffic content.
+
+**Setup on Cascade RU — one rule:**
+
+1. **NAT → Port Forwarding → + New Rule**
+   - Protocol: `UDP`
+   - In Port: `51820` (port from NL server config)
+   - Redirect to Host: `<NL server IP>`
+   - Redirect to Port: `51820`
+   - Interface: external interface (`eth0`)
+   - **Masquerade: ✅** — required; without it NL server replies directly to the client, bypassing Cascade RU
+
+No WireGuard interface on Cascade RU is needed.
+
+**What the client changes in their config** (received from NL server):
+
+```ini
+[Peer]
+PublicKey = <NL server public key — unchanged>
+Endpoint = <Cascade RU IP>:51820   # ← change only this
+AllowedIPs = 0.0.0.0/0             # unchanged
+```
+
+> **Note:** if Cascade RU already has its own WireGuard interface on port 51820, use a different
+> In Port (e.g. 51821) — the client connects to 51821, Cascade forwards to NL server's 51820.
+
+### Scenario 5: Cascade as a WireGuard Client (Uplink + PBR)
+
+**Use case:** you have a ready-made `.conf` file from a third-party WireGuard server
+(VPN provider, colleague's server, any WireGuard server not running Cascade). You want
+to connect Cascade to that server and use the tunnel as a gateway for selective
+policy-based routing — routing specific traffic through the foreign server.
+
+```
+Clients → Cascade (wg11: uplink to NL server) → NL WG server → Internet
+                   ↑
+            PBR: selected traffic only
+```
+
+**Key properties:**
+- The kernel routing table is **not modified** — existing clients and rules remain intact
+- The address from `.conf` is converted to `/32` — subnet conflicts are prevented
+- Traffic control is via Firewall → Rules (PBR)
+
+**Step 1 — Import the `.conf` file:**
+
+1. **Interfaces → Import .conf**
+2. Click **"Browse file…"** and select the `.conf`, or paste the content manually
+3. The **Name** field is pre-filled from the filename — edit if needed
+4. Click **"Import & Start"**
+
+Cascade creates an interface (e.g. `wg11`) with the address from `.conf` (e.g. `10.8.0.5/32`)
+and automatically adds an upstream peer with the remote server's public key and endpoint.
+
+> The interface will connect and WireGuard handshake with the remote server happens
+> automatically — no additional setup on the server side is needed (it already knows your key).
+
+**Step 2 — Create a gateway for PBR:**
+
+1. **Gateways → + New Gateway**
+   - Name: `NL Uplink`
+   - Interface: `wg11`
+   - Gateway IP: remote server's tunnel IP (e.g. `10.8.0.1` — the first address in the subnet)
+   - Monitor Address: leave empty (= ping Gateway IP)
+
+Cascade automatically adds a `/32` host route for the gateway IP via wg11 so that monitoring
+can ping the inner tunnel IP.
+
+**Step 3 — Configure PBR rules:**
+
+1. **Firewall → Rules → + New Rule**
+   - Source: your client subnet (or `any`)
+   - Destination: target resources (alias, subnet, or `any`)
+   - Action: `Accept`
+   - Gateway: `NL Uplink`
+
+Traffic matching the rule is routed through wg11 to the NL server.
+All other traffic uses the normal routing path.
+
+**Verification:**
+
+```bash
+# From a client connected to Cascade:
+curl ifconfig.io        # should return the NL server's IP for traffic matching the rule
+```
+
+The wg11 interface card in Cascade will show RX/TX counters and latest handshake time.
+
+---
+
+## Appendix B: Transit (Relay) Server
+
+**Use case:** the main VPN server (Server B) is inaccessible to clients directly — blocked,
+in a private network, or its real IP needs to be hidden. The relay server (Server A) accepts
+client UDP traffic and transparently forwards it to Server B.
+
+```
+Client ──UDP:51820──► Server A ──UDP:51820──► Server B ──► Internet
+            public IP             hidden server
+            (visible to clients)  (real VPN)
+```
+
+The WireGuard session is **end-to-end** between client and Server B — Server A only forwards
+UDP datagrams and cannot see the traffic content.
+
+**Why two NAT rules on Server A:**
+
+1. **DNAT** — changes the destination: `Client→A:51820` becomes `Client→B:51820`
+2. **MASQUERADE** — changes the source: `Client→B:51820` becomes `A→B:51820`
+   Without MASQUERADE, Server B would reply **directly to the client** (which it cannot reach),
+   and the tunnel would not work.
+
+**Setup on Server B** (normal WireGuard/AWG server):
+
+1. **Interfaces → + New Interface**
+   - Address: `10.8.0.1/24`
+   - Listen Port: `51820`
+   - **Host (Endpoint)**: `<Server A public IP>` ← this goes into client peer configs
+2. Start the interface — Cascade automatically adds MASQUERADE for client internet traffic
+3. Create peers — downloaded configs will have endpoint `<Server A IP>:51820`
+
+**Setup on Server A** (pure relay, no WireGuard interface):
+
+**Step 1 — Port Forwarding (DNAT):**
+
+1. **NAT → Port Forwarding → + New Rule**
+   - Protocol: `UDP`
+   - In Port: `51820`
+   - Redirect to Host: `<Server B IP>`
+   - Redirect to Port: `51820`
+   - Interface: external interface (`eth0`)
+
+**Step 2 — Outbound NAT (MASQUERADE):**
+
+1. **NAT → Outbound → + New Rule**
+   - Name: `Masquerade to Server B`
+   - Source: `any`
+   - Outbound Interface: interface towards Server B (usually `eth0`)
+   - Type: `MASQUERADE`
+
+**Verification:**
+
+```bash
+# On client: connect to <Server A IP>:51820
+ping 10.8.0.1          # ping to Server B gateway should work
+curl ifconfig.io       # should show Server B's exit IP (not Server A or client)
+```
+
+On Server B, the peer card should show RX/TX and last handshake time — confirming the
+tunnel is working through the relay.
