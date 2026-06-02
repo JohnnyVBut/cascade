@@ -726,7 +726,20 @@ and automatically adds an upstream peer with the remote server's public key and 
 > The interface will connect and WireGuard handshake with the remote server happens
 > automatically — no additional setup on the server side is needed (it already knows your key).
 
-**Step 2 — Create a gateway for PBR:**
+**Step 2 — Outbound NAT on wg11 (required):**
+
+Client traffic leaves Cascade towards the NL server with the client's inner source IP
+(e.g. `10.8.0.2`). The NL server has no route to the `10.8.0.0/24` subnet and cannot
+reply — the traffic is one-way. The fix: MASQUERADE rewrites the source IP to Cascade's
+own tunnel address (`10.8.0.5`), which the NL server knows as a registered peer.
+
+1. **NAT → Outbound → + New Rule**
+   - Name: `Masquerade via NL Uplink`
+   - Source: client subnet (e.g. `10.8.0.0/24`, or `any` for all interfaces)
+   - Outbound Interface: `wg11`
+   - Type: `MASQUERADE`
+
+**Step 3 — Create a gateway for PBR:**
 
 1. **Gateways → + New Gateway**
    - Name: `NL Uplink`
@@ -737,7 +750,7 @@ and automatically adds an upstream peer with the remote server's public key and 
 Cascade automatically adds a `/32` host route for the gateway IP via wg11 so that monitoring
 can ping the inner tunnel IP.
 
-**Step 3 — Configure PBR rules:**
+**Step 4 — Configure PBR rules:**
 
 1. **Firewall → Rules → + New Rule**
    - Source: your client subnet (or `any`)
