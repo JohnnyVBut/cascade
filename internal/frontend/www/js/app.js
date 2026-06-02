@@ -162,7 +162,7 @@ new Vue({
     showInterfaceCreate: false,
     createMode: 'quick',        // 'quick' | 'manual' — controls which form is shown in the create modal
     showImportConf: false,
-    importConfForm: { name: '', conf: '' },
+    importConfForm: { name: '', conf: '', fileName: '' },
     importConfWarning: '',
     showInterfaceEdit: false,
     interfaceEdit: {
@@ -950,6 +950,23 @@ new Vue({
       }
     },
 
+    onConfFileSelected(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      // Auto-fill Name from filename (strip .conf / .txt extension).
+      if (!this.importConfForm.name) {
+        this.importConfForm.name = file.name.replace(/\.(conf|txt)$/i, '');
+      }
+      this.importConfForm.fileName = file.name;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.importConfForm.conf = e.target.result || '';
+      };
+      reader.readAsText(file);
+      // Reset input so the same file can be re-selected if needed.
+      event.target.value = '';
+    },
+
     async doImportConf() {
       const name = (this.importConfForm.name || '').trim();
       const conf = (this.importConfForm.conf || '').trim();
@@ -960,7 +977,7 @@ new Vue({
       try {
         const res = await this.api.importTunnelConf({ name, conf });
         this.showImportConf = false;
-        this.importConfForm = { name: '', conf: '' };
+        this.importConfForm = { name: '', conf: '', fileName: '' };
         await this.loadTunnelInterfaces();
 
         const iface = res.interface || {};
