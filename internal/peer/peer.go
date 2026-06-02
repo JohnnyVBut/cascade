@@ -347,6 +347,21 @@ func GenerateKeys(bin string) (GeneratedKeys, error) {
 	return GeneratedKeys{PrivateKey: priv, PublicKey: pub, PresharedKey: psk}, nil
 }
 
+// DerivePublicKey derives the public key from an existing private key using
+// the given WireGuard binary (wg or awg). Used when importing a .conf file
+// where the private key is already known.
+func DerivePublicKey(bin, privateKey string) (string, error) {
+	if bin == "" {
+		bin = "wg"
+	}
+	pubCmd := fmt.Sprintf("echo %s | %s pubkey", privateKey, bin)
+	pub, err := util.Exec(pubCmd, util.DefaultTimeout, false) // log=false: hides private key
+	if err != nil {
+		return "", fmt.Errorf("derive pubkey: %w", err)
+	}
+	return strings.TrimSpace(pub), nil
+}
+
 // ── Config generation ─────────────────────────────────────────────────────────
 
 // ToWgConfig returns the [Peer] section for the hub-side wg-quick config.

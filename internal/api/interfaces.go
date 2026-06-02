@@ -39,9 +39,10 @@ func RegisterInterfaces(api fiber.Router) {
 	g.Get("", listInterfaces)
 	g.Post("", createInterface)
 
-	// quick-create MUST be registered before /:id to avoid Fiber routing
-	// the literal path segment "quick-create" as a parameter value.
+	// quick-create and import-conf MUST be registered before /:id to avoid Fiber routing
+	// the literal path segment as a parameter value.
 	g.Post("/quick-create", quickCreateInterface)
+	g.Post("/import-conf", importConfInterface)
 
 	g.Get("/:id", getInterface)
 	g.Patch("/:id", updateInterface)
@@ -62,6 +63,24 @@ func RegisterInterfaces(api fiber.Router) {
 
 func mgr() *tunnel.Manager {
 	return tunnel.Get()
+}
+
+// peerJSON builds the JSON-serialisable view of a peer.Peer.
+// PrivateKey is always excluded — consistent with ifaceJSON for TunnelInterface.
+func peerJSON(p *peer.Peer) fiber.Map {
+	return fiber.Map{
+		"id":                  p.ID,
+		"name":                p.Name,
+		"publicKey":           p.PublicKey,
+		"presharedKey":        p.PresharedKey,
+		"endpoint":            p.Endpoint,
+		"allowedIPs":          p.AllowedIPs,
+		"clientAllowedIPs":    p.ClientAllowedIPs,
+		"peerType":            p.PeerType,
+		"persistentKeepalive": p.PersistentKeepalive,
+		"enabled":             p.Enabled,
+		"createdAt":           p.CreatedAt,
+	}
 }
 
 // ifaceJSON builds the JSON-serialisable view of a TunnelInterface.
@@ -247,6 +266,53 @@ func updateInterface(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	return c.JSON(ifaceJSON(t, true))
+}
+
+// POST /api/tunnel-interfaces/import-conf
+// Body: { name: string, conf: string }
+// Parses a WireGuard / AmneziaWG client .conf and creates an interface + upstream peer.
+// DisableRoutes is always set to true — the server routing table is not modified.
+// Response: { interface, peer, started, startError?, conflictWarning? }
+func importConfInterface(c *fiber.Ctx) error {
+	var body struct {
+		Name string `json:"name"`
+		Conf string `json:"conf"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "name is required")
+	}
+	if strings.TrimSpace(body.Conf) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "conf is required")
+	}
+
+	result, err := mgr().ImportConf(name, body.Conf)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after import-conf %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	resp := fiber.Map{
+		"interface": ifaceJSON(result.Interface, false),
+		"peer":      peerJSON(result.Peer),
+		"started":   result.Started,
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
+	}
+	if result.ConflictWarning != "" {
+		resp["conflictWarning"] = result.ConflictWarning
+	}
+	return c.Status(fiber.StatusCreated).JSON(resp)
 }
 
 // DELETE /api/tunnel-interfaces/:id
