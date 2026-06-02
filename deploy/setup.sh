@@ -641,6 +641,12 @@ else
 fi
 ok "RENEW_DAYS=1 set in acme.sh account.conf"
 
+# Install acme.sh cron job — required for automatic renewal.
+# Without this the crontab entry is never created and 6-day shortlived certs expire.
+# --install-cronjob is idempotent: safe to call on every setup run.
+"$ACME" --install-cronjob
+ok "acme.sh cron job installed (automatic renewal enabled)"
+
 # Check if cert already exists and is valid
 if [[ -f "$CERT_DIR/server.crt" ]]; then
   EXPIRY=$(openssl x509 -in "$CERT_DIR/server.crt" -noout -enddate 2>/dev/null | cut -d= -f2 || true)
