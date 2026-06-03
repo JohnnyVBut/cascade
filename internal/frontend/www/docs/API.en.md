@@ -112,7 +112,9 @@ Returns `GlobalSettings` merged with runtime-only fields:
 
 **PUT /api/settings — accepted fields:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
+`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
+
+`lang` — UI language: `"en"` or `"ru"`. Also reflected in `GET /api/lang`.
 
 ---
 
@@ -138,8 +140,9 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `GET` | `/api/tunnel-interfaces` | List interfaces. Returns `{ interfaces: [...] }` |
 | `POST` | `/api/tunnel-interfaces` | Create. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: create and start a client interface in one step. Body: `{ name?: string, protocol?: string }`. Address and port are auto-assigned from SubnetPool/PortPool settings. AWG2 params come from the default template or a random profile. Response: `{ interface, started: bool, startError?: string }` |
+| `POST` | `/api/tunnel-interfaces/import-conf` | Import a WireGuard/AmneziaWG client `.conf` file as an uplink (client-mode) interface. `DisableRoutes` is always set to `true` — the kernel routing table is not modified. Body: `{ name: string, conf: string }`. Response: `{ interface, peer, started: bool, startError?: string, conflictWarning?: string }` |
 | `GET` | `/api/tunnel-interfaces/:id` | Get interface |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, settings? }`. Changing `natDisabled` on a running interface triggers `Restart()` |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, settings? }`. `publicHost` overrides the global Public IP for this interface's peer configs (useful for transit/relay setups). Changing `natDisabled` on a running interface triggers `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Delete interface |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Start. Returns `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Stop. Returns `{ interface }` |

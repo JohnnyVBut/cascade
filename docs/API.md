@@ -112,7 +112,9 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 **PUT /api/settings — принимаемые поля:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType? }`
+`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
+
+`lang` — язык UI: `"en"` или `"ru"`. Также отражается в `GET /api/lang`.
 
 ---
 
@@ -138,8 +140,9 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `GET` | `/api/tunnel-interfaces` | Список интерфейсов. Возвращает `{ interfaces: [...] }` |
 | `POST` | `/api/tunnel-interfaces` | Создать. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: создать и запустить клиентский интерфейс одной командой. Body: `{ name?: string, protocol?: string }`. Адрес и порт назначаются автоматически из SubnetPool/PortPool. AWG2 параметры — из шаблона по умолчанию или random. Ответ: `{ interface, started: bool, startError?: string }` |
+| `POST` | `/api/tunnel-interfaces/import-conf` | Импорт клиентского `.conf` файла WireGuard/AmneziaWG как аплинк-интерфейс. `DisableRoutes` всегда `true` — таблица маршрутизации не изменяется. Body: `{ name: string, conf: string }`. Ответ: `{ interface, peer, started: bool, startError?: string, conflictWarning?: string }` |
 | `GET` | `/api/tunnel-interfaces/:id` | Получить интерфейс |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, settings? }`. Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, settings? }`. `publicHost` переопределяет глобальный Public IP для конфигов пиров этого интерфейса (для транзит/relay). Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Удалить интерфейс |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Запустить. Возвращает `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Остановить. Возвращает `{ interface }` |
