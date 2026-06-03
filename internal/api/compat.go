@@ -24,9 +24,10 @@ func RegisterCompat(r fiber.Router) {
 	// ── Unauthenticated stubs (called before login) ─────────────────────────
 
 	// GET /api/lang — returns the UI locale stored in settings (default "en").
+	// s.Lang is always non-empty: defaults.Lang = "en" guarantees it after GetSettings().
 	r.Get("/lang", func(c *fiber.Ctx) error {
 		s, err := settings.GetSettings()
-		if err != nil || s.Lang == "" {
+		if err != nil {
 			return c.JSON("en")
 		}
 		return c.JSON(s.Lang)
