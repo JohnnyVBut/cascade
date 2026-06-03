@@ -249,6 +249,8 @@ new Vue({
       routerName:     '',
       publicIPMode:   'auto',
       publicIPManual: '',
+      // UI preferences
+      lang: 'en',
       // Runtime-only (returned by GET, not sent in PUT)
       hostname:         '',
       resolvedPublicIP: '',
@@ -2907,6 +2909,10 @@ new Vue({
         if (typeof this.globalSettings.chartType === 'number') {
           this.uiChartType = this.globalSettings.chartType;
         }
+        if (this.globalSettings.lang && i18n.availableLocales.includes(this.globalSettings.lang)) {
+          i18n.locale = this.globalSettings.lang;
+          localStorage.setItem('lang', this.globalSettings.lang);
+        }
         const { templates } = await this.api.getTemplates();
         this.templates = templates;
       } catch (err) {
@@ -2923,6 +2929,11 @@ new Vue({
         const updated = await this.api.updateSettings(storable);
         // Merge response back (includes fresh resolvedPublicIP / hostname).
         this.globalSettings = { ...this.globalSettings, ...updated };
+        // Apply language change immediately.
+        if (updated.lang && i18n.availableLocales.includes(updated.lang)) {
+          i18n.locale = updated.lang;
+          localStorage.setItem('lang', updated.lang);
+        }
         this.settingsSaved = true;
         setTimeout(() => { this.settingsSaved = false; }, 2500);
       } catch (err) {

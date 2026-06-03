@@ -2119,6 +2119,19 @@
                 </div>
               </div>
 
+              <!-- Language -->
+              <div style="border-top-width:1px; padding-top:12px;" class="dark:border-neutral-600">
+                <p class="text-sm font-semibold dark:text-neutral-300 mb-3">Language</p>
+                <div class="flex gap-2">
+                  <button v-for="l in [{code:'en',label:'English'},{code:'ru',label:'Русский'}]" :key="l.code"
+                    @click="globalSettings.lang = l.code"
+                    :class="(globalSettings.lang === l.code ? 'bg-purple-600 text-white' : 'bg-gray-100 dark:bg-neutral-600 text-gray-700 dark:text-neutral-300') + ' px-3 py-1 rounded text-sm font-medium transition'">
+                    {{ l.label }}
+                  </button>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-2">UI language. Applied after saving.</p>
+              </div>
+
               <!-- Traffic Charts -->
               <div style="border-top-width:1px; padding-top:12px;" class="dark:border-neutral-600">
                 <p class="text-sm font-semibold dark:text-neutral-300 mb-3">Traffic Charts</p>

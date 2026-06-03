@@ -37,7 +37,8 @@ type GlobalSettings struct {
 	PublicIPManual string `json:"publicIPManual"` // used when PublicIPMode == "manual"
 
 	// UI preferences
-	ChartType int `json:"chartType"` // 0=none, 1=line, 2=area, 3=bar
+	ChartType int    `json:"chartType"` // 0=none, 1=line, 2=area, 3=bar
+	Lang      string `json:"lang"`      // UI language: "en" | "ru"
 
 	// Quick-create pools
 	SubnetPool string `json:"subnetPool"` // CIDR block for auto-assigning /24 subnets, e.g. "192.168.0.0/16"
@@ -108,6 +109,7 @@ var defaults = GlobalSettings{
 	GatewayDegradedThreshold:   90,
 	PublicIPMode:               "auto",
 	ChartType:                  2,              // area by default
+	Lang:                       "en",
 	SubnetPool:                 "192.168.0.0/16",
 	PortPool:                   "51831-65535",
 	DefaultFwPolicy:            "accept",
@@ -591,6 +593,8 @@ func isValidSettingValue(k, v string) bool {
 		return err == nil
 	case "defaultFwPolicy":
 		return v == "accept" || v == "drop"
+	case "lang":
+		return v == "en" || v == "ru"
 	}
 	return true // unknown keys pass through (applySettingKey will ignore them)
 }
@@ -643,6 +647,10 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 	case "defaultFwPolicy":
 		if v == "accept" || v == "drop" {
 			s.DefaultFwPolicy = v
+		}
+	case "lang":
+		if v == "en" || v == "ru" {
+			s.Lang = v
 		}
 	}
 }
