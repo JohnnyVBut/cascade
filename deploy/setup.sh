@@ -618,9 +618,22 @@ fi
 
 mkdir -p "$CERT_DIR"
 
+# Ensure cron daemon is installed — required for automatic cert renewal.
+# Ubuntu 22.04 minimal images ship without cron; acme.sh --install-cronjob
+# adds a crontab entry but the daemon must be running for it to fire.
+if ! command -v crontab &>/dev/null; then
+  info "Installing cron..."
+  apt-get install -y -qq cron
+  systemctl enable cron --now 2>/dev/null || true
+  ok "cron installed and started"
+else
+  ok "cron already available"
+fi
+
 # Install acme.sh if needed.
-# --force: skip the cron pre-check — cron may not be installed yet on minimal images
-# (e.g. Ubuntu 22.04 minimal). The cron job is installed explicitly below via
+# --force: skip the cron pre-check (we just ensured cron is present above,
+# but --force also handles edge cases where crontab exists but acme.sh
+# reports it as missing). The cron job is installed explicitly below via
 # --install-cronjob after acme.sh is available.
 if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
   info "Installing acme.sh..."
