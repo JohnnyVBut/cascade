@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/nat"
+	"github.com/JohnnyVBut/cascade/internal/settings"
 )
 
 // RegisterCompat wires the legacy shim routes onto the given router group.
@@ -22,10 +23,14 @@ import (
 func RegisterCompat(r fiber.Router) {
 	// ── Unauthenticated stubs (called before login) ─────────────────────────
 
-	// GET /api/lang — returns the UI locale stored in ENV/settings.
-	// Stub: always return "en"; the browser falls back to localStorage anyway.
+	// GET /api/lang — returns the UI locale stored in settings (default "en").
+	// s.Lang is always non-empty: defaults.Lang = "en" guarantees it after GetSettings().
 	r.Get("/lang", func(c *fiber.Ctx) error {
-		return c.JSON("en")
+		s, err := settings.GetSettings()
+		if err != nil {
+			return c.JSON("en")
+		}
+		return c.JSON(s.Lang)
 	})
 
 	// GET /api/release — current release version integer.
