@@ -53,19 +53,6 @@ fi
 echo -e "${GREEN}✓ Network interface: ${INTERFACE}${NC}"
 echo ""
 
-# Check WG_DEVICE setting
-echo -e "${BLUE}Checking WG_DEVICE setting...${NC}"
-WG_DEVICE=$(docker exec cascade printenv WG_DEVICE 2>/dev/null || true)
-if [ -z "$WG_DEVICE" ]; then
-    echo -e "${YELLOW}⚠ WG_DEVICE is not set in container (not required in Go version)${NC}"
-elif [ "$WG_DEVICE" != "$INTERFACE" ]; then
-    echo -e "${YELLOW}⚠ WG_DEVICE ($WG_DEVICE) differs from actual interface ($INTERFACE)${NC}"
-    echo "This might cause routing issues!"
-    echo ""
-else
-    echo -e "${GREEN}✓ WG_DEVICE matches: ${WG_DEVICE}${NC}"
-fi
-echo ""
 
 # Check WireGuard interface
 echo -e "${BLUE}Checking WireGuard interface...${NC}"
@@ -139,7 +126,6 @@ echo -e "${BLUE}  Summary${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 echo "Network interface:  $INTERFACE"
-echo "WG_DEVICE setting:  $WG_DEVICE"
 echo "IP forwarding:      $FORWARD"
 echo "WireGuard status:   UP"
 echo "Peers:              $PEER_COUNT"
