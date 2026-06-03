@@ -4141,16 +4141,14 @@
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm"
                     autocomplete="off">
                   <div v-if="showCountryDrop && countryPickerForm === 'create'"
-                    style="position:absolute;z-index:200;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:white;border:1px solid #d1d5db;border-radius:4px;box-shadow:0 4px 6px rgba(0,0,0,.1);"
-                    class="dark:bg-neutral-700 dark:border-neutral-500">
+                    :style="'position:absolute;z-index:200;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;border-radius:4px;box-shadow:0 4px 6px rgba(0,0,0,.15);' + (theme==='dark' ? 'background:#404040;border:1px solid #525252;' : 'background:#fff;border:1px solid #d1d5db;')">
                     <div v-if="filteredCountries.length === 0"
                       style="padding:8px 12px;font-size:13px;color:#9ca3af;">No results</div>
                     <div v-for="c in filteredCountries" :key="c.code"
                       @mousedown.prevent="selectCountry(c)"
-                      style="padding:6px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;"
-                      class="dark:text-neutral-200 hover-country-item">
+                      :style="'padding:6px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;' + (theme==='dark' ? 'color:#e5e5e5;' : 'color:#111827;')">
                       <span>{{ c.name }}</span>
-                      <span style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:8px;">{{ c.code }}</span>
+                      <span :style="'font-family:monospace;font-size:11px;margin-left:8px;' + (theme==='dark' ? 'color:#a3a3a3;' : 'color:#6b7280;')">{{ c.code }}</span>
                     </div>
                   </div>
                 </div>
@@ -4279,16 +4277,14 @@
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm"
                     autocomplete="off">
                   <div v-if="showCountryDrop && countryPickerForm === 'edit'"
-                    style="position:absolute;z-index:200;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:white;border:1px solid #d1d5db;border-radius:4px;box-shadow:0 4px 6px rgba(0,0,0,.1);"
-                    class="dark:bg-neutral-700 dark:border-neutral-500">
+                    :style="'position:absolute;z-index:200;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;border-radius:4px;box-shadow:0 4px 6px rgba(0,0,0,.15);' + (theme==='dark' ? 'background:#404040;border:1px solid #525252;' : 'background:#fff;border:1px solid #d1d5db;')">
                     <div v-if="filteredCountries.length === 0"
                       style="padding:8px 12px;font-size:13px;color:#9ca3af;">No results</div>
                     <div v-for="c in filteredCountries" :key="c.code"
                       @mousedown.prevent="selectCountry(c)"
-                      style="padding:6px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;"
-                      class="dark:text-neutral-200">
+                      :style="'padding:6px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;' + (theme==='dark' ? 'color:#e5e5e5;' : 'color:#111827;')">
                       <span>{{ c.name }}</span>
-                      <span style="font-family:monospace;font-size:11px;color:#6b7280;margin-left:8px;">{{ c.code }}</span>
+                      <span :style="'font-family:monospace;font-size:11px;margin-left:8px;' + (theme==='dark' ? 'color:#a3a3a3;' : 'color:#6b7280;')">{{ c.code }}</span>
                     </div>
                   </div>
                 </div>
