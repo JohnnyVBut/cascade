@@ -637,9 +637,14 @@ fi
 # --install-cronjob after acme.sh is available.
 if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
   info "Installing acme.sh..."
-  ACME_INSTALL_ARGS=("--force")
-  [[ -n "${ACME_EMAIL:-}" ]] && ACME_INSTALL_ARGS+=("email=${ACME_EMAIL}")
-  curl -fsSL https://get.acme.sh | sh -s -- "${ACME_INSTALL_ARGS[@]}"
+  # Installer accepts only key=value args (no dashes). email= is optional.
+  # --force is NOT a valid installer flag (it's for acme.sh --install --force).
+  # Cron is already installed above, so no bypass flags are needed.
+  if [[ -n "${ACME_EMAIL:-}" ]]; then
+    curl -fsSL https://get.acme.sh | sh -s "email=${ACME_EMAIL}"
+  else
+    curl -fsSL https://get.acme.sh | sh
+  fi
   # Verify the binary was actually created — fail loudly if installation silently failed.
   if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
     fail "acme.sh installation failed — binary not found at ~/.acme.sh/acme.sh"
