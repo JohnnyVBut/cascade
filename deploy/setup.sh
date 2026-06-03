@@ -618,12 +618,19 @@ fi
 
 mkdir -p "$CERT_DIR"
 
-# Install acme.sh if needed
+# Install acme.sh if needed.
+# --force: skip the cron pre-check — cron may not be installed yet on minimal images
+# (e.g. Ubuntu 22.04 minimal). The cron job is installed explicitly below via
+# --install-cronjob after acme.sh is available.
 if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
   info "Installing acme.sh..."
-  ACME_INSTALL_ARGS=()
-  [[ -n "${ACME_EMAIL:-}" ]] && ACME_INSTALL_ARGS=("email=${ACME_EMAIL}")
+  ACME_INSTALL_ARGS=("--force")
+  [[ -n "${ACME_EMAIL:-}" ]] && ACME_INSTALL_ARGS+=("email=${ACME_EMAIL}")
   curl -fsSL https://get.acme.sh | sh -s "${ACME_INSTALL_ARGS[@]}"
+  # Verify the binary was actually created — fail loudly if installation silently failed.
+  if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
+    fail "acme.sh installation failed — binary not found at ~/.acme.sh/acme.sh"
+  fi
   ok "acme.sh installed"
 else
   ok "acme.sh already installed"
