@@ -55,8 +55,10 @@ echo ""
 
 # Check WG_DEVICE setting
 echo -e "${BLUE}Checking WG_DEVICE setting...${NC}"
-WG_DEVICE=$(docker exec cascade printenv WG_DEVICE)
-if [ "$WG_DEVICE" != "$INTERFACE" ]; then
+WG_DEVICE=$(docker exec cascade printenv WG_DEVICE 2>/dev/null || true)
+if [ -z "$WG_DEVICE" ]; then
+    echo -e "${YELLOW}⚠ WG_DEVICE is not set in container (not required in Go version)${NC}"
+elif [ "$WG_DEVICE" != "$INTERFACE" ]; then
     echo -e "${YELLOW}⚠ WG_DEVICE ($WG_DEVICE) differs from actual interface ($INTERFACE)${NC}"
     echo "This might cause routing issues!"
     echo ""
