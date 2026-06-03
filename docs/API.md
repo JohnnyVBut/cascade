@@ -62,6 +62,22 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 ---
 
+## Версия и обновления
+
+| Метод | Путь | Auth | Описание |
+|-------|------|------|----------|
+| `GET` | `/api/version` | ❌ публичный | Текущая версия + инфо о последнем релизе с GitHub. Ответ: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `GET` | `/api/health` | ❌ публичный | Health-check. Ответ: `{ status: "ok", version, host }` |
+
+`version` равен `"dev"` для локальных сборок без ldflags. Инжектируется при сборке через:
+```
+-ldflags "-X ...version.Version=v1.2.3 -X ...version.GitCommit=abc1234"
+```
+Проверка обновлений поллит `https://api.github.com/repos/JohnnyVBut/cascade/releases/latest` раз в 24 ч.
+Первая проверка — через 10 с после старта. Результат кэшируется в памяти — `/api/version` всегда отвечает мгновенно.
+
+---
+
 ## Настройки
 
 | Метод | Путь | Описание |
@@ -81,9 +97,9 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `gatewayWindowSeconds` | int | Скользящее окно мониторинга шлюзов (сек) |
 | `gatewayHealthyThreshold` | int | Порог healthy (% потерь пакетов) |
 | `gatewayDegradedThreshold` | int | Порог degraded (% потерь пакетов) |
-| `subnetPool` | string | CIDR-пул для авто-назначения подсетей при quick-create, напр. `"192.168.0.0/16"` |
-| `portPool` | string | Пул портов для авто-назначения при quick-create, напр. `"51831-65535"` (поддерживает диапазоны и запятые) |
-| `defaultFwPolicy` | string | Дефолтная политика файрвола: `"accept"` (разрешить непопавший трафик) или `"drop"` (сбросить). По умолчанию `"accept"`. Трафик WireGuard-пиров всегда разрешён независимо от значения |
+| `subnetPool` | string | CIDR-пул для авто-назначения подсетей при quick-create, напр. `"192.168.0.0/16"`. Невалидное значение → **400** |
+| `portPool` | string | Пул портов для quick-create, напр. `"51831-65535"` (диапазоны и запятые). Невалидное значение → **400** |
+| `defaultFwPolicy` | string | Дефолтная политика файрвола: `"accept"` или `"drop"`. По умолчанию `"accept"` |
 | `routerName` | string | Человекочитаемое имя роутера (отображается в сайдбаре) |
 | `publicIPMode` | string | Режим определения публичного IP: `"auto"` или `"manual"` |
 | `publicIPManual` | string | Ручной публичный IP (используется при `publicIPMode="manual"`) |

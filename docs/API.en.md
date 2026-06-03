@@ -62,6 +62,22 @@ curl -H "Authorization: Bearer ws_<token>" \
 
 ---
 
+## Version & Updates
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/api/version` | ❌ public | Current version + latest release info from GitHub. Response: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `GET` | `/api/health` | ❌ public | Health check. Response: `{ status: "ok", version, host }` |
+
+`version` is `"dev"` for local builds without ldflags. Injected at build time via:
+```
+-ldflags "-X ...version.Version=v1.2.3 -X ...version.GitCommit=abc1234"
+```
+Update check polls `https://api.github.com/repos/JohnnyVBut/cascade/releases/latest` every 24 h.
+First check happens 10 s after startup. Results are cached in memory — `/api/version` always returns instantly.
+
+---
+
 ## Settings
 
 | Method | Path | Description |
@@ -81,9 +97,9 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `gatewayWindowSeconds` | int | Gateway monitoring sliding window (seconds) |
 | `gatewayHealthyThreshold` | int | Healthy threshold (% packet loss) |
 | `gatewayDegradedThreshold` | int | Degraded threshold (% packet loss) |
-| `subnetPool` | string | CIDR pool for auto-assigning subnets on quick-create, e.g. `"192.168.0.0/16"` |
-| `portPool` | string | Port pool for quick-create, e.g. `"51831-65535"` (ranges and comma-lists supported) |
-| `defaultFwPolicy` | string | Default firewall policy: `"accept"` (pass unmatched traffic) or `"drop"` (silently discard). Default `"accept"`. WireGuard peer traffic is always permitted regardless of this setting |
+| `subnetPool` | string | CIDR pool for auto-assigning subnets on quick-create, e.g. `"192.168.0.0/16"`. Must be a network address. Invalid value → **400** |
+| `portPool` | string | Port pool for quick-create, e.g. `"51831-65535"` (ranges and comma-lists supported). Invalid value → **400** |
+| `defaultFwPolicy` | string | Default firewall policy: `"accept"` or `"drop"`. Default `"accept"` |
 | `routerName` | string | Human-readable router name (shown in sidebar) |
 | `publicIPMode` | string | Public IP resolution mode: `"auto"` or `"manual"` |
 | `publicIPManual` | string | Manual public IP (used when `publicIPMode="manual"`) |

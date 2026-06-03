@@ -15,11 +15,19 @@ COPY internal/ ./internal/
 # Cached unless go.mod or source changes.
 RUN go mod tidy
 
+# Version metadata injected at build time so the binary knows its own version.
+# ARG VERSION defaults to "dev" for local builds without explicit --build-arg.
+# CI passes the git tag (e.g. "v1.2.3") and short commit hash.
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+
 # Build static binary.
 # CGO_ENABLED=0: fully static binary, no libc dependency.
 # -ldflags="-s -w": strip debug symbols → smaller binary.
 RUN CGO_ENABLED=0 GOOS=linux go build \
-    -ldflags="-s -w" \
+    -ldflags="-s -w \
+      -X github.com/JohnnyVBut/cascade/internal/version.Version=${VERSION} \
+      -X github.com/JohnnyVBut/cascade/internal/version.GitCommit=${GIT_COMMIT}" \
     -o cascade \
     ./cmd/awg-easy
 
