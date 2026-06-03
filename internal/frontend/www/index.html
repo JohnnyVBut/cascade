@@ -4130,9 +4130,28 @@
                   <option value="asn">By ASN</option>
                   <option value="asn-list">By ASN List</option>
                 </select>
-                <input v-if="aliasCreate.genSource === 'country'" v-model="aliasCreate.genCountry"
-                  type="text" placeholder="RU"
-                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm font-mono" />
+                <div v-if="aliasCreate.genSource === 'country'" style="position:relative;">
+                  <input
+                    v-model="countrySearch"
+                    @focus="openCountryPicker('create')"
+                    @input="showCountryDrop = true; countryPickerForm = 'create'"
+                    @blur="onCountryBlur"
+                    type="text"
+                    placeholder="Search country…"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm"
+                    autocomplete="off">
+                  <div v-if="showCountryDrop && countryPickerForm === 'create'"
+                    :style="'position:absolute;z-index:200;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;border-radius:4px;box-shadow:0 4px 6px rgba(0,0,0,.15);' + (theme==='dark' ? 'background:#404040;border:1px solid #525252;' : 'background:#fff;border:1px solid #d1d5db;')">
+                    <div v-if="filteredCountries.length === 0"
+                      style="padding:8px 12px;font-size:13px;color:#9ca3af;">No results</div>
+                    <div v-for="c in filteredCountries" :key="c.code"
+                      @mousedown.prevent="selectCountry(c)"
+                      :style="'padding:6px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;' + (theme==='dark' ? 'color:#e5e5e5;' : 'color:#111827;')">
+                      <span>{{ c.name }}</span>
+                      <span :style="'font-family:monospace;font-size:11px;margin-left:8px;' + (theme==='dark' ? 'color:#a3a3a3;' : 'color:#6b7280;')">{{ c.code }}</span>
+                    </div>
+                  </div>
+                </div>
                 <input v-if="aliasCreate.genSource === 'asn'" v-model="aliasCreate.genAsn"
                   type="text" placeholder="AS12345"
                   class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm font-mono" />
@@ -4247,9 +4266,28 @@
                   <option value="asn">By ASN</option>
                   <option value="asn-list">By ASN List</option>
                 </select>
-                <input v-if="aliasEdit.genSource === 'country'" v-model="aliasEdit.genCountry"
-                  type="text" placeholder="RU"
-                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm font-mono mb-2" />
+                <div v-if="aliasEdit.genSource === 'country'" style="position:relative;" class="mb-2">
+                  <input
+                    v-model="countrySearch"
+                    @focus="openCountryPicker('edit')"
+                    @input="showCountryDrop = true; countryPickerForm = 'edit'"
+                    @blur="onCountryBlur"
+                    type="text"
+                    placeholder="Search country…"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm"
+                    autocomplete="off">
+                  <div v-if="showCountryDrop && countryPickerForm === 'edit'"
+                    :style="'position:absolute;z-index:200;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;border-radius:4px;box-shadow:0 4px 6px rgba(0,0,0,.15);' + (theme==='dark' ? 'background:#404040;border:1px solid #525252;' : 'background:#fff;border:1px solid #d1d5db;')">
+                    <div v-if="filteredCountries.length === 0"
+                      style="padding:8px 12px;font-size:13px;color:#9ca3af;">No results</div>
+                    <div v-for="c in filteredCountries" :key="c.code"
+                      @mousedown.prevent="selectCountry(c)"
+                      :style="'padding:6px 12px;font-size:13px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;' + (theme==='dark' ? 'color:#e5e5e5;' : 'color:#111827;')">
+                      <span>{{ c.name }}</span>
+                      <span :style="'font-family:monospace;font-size:11px;margin-left:8px;' + (theme==='dark' ? 'color:#a3a3a3;' : 'color:#6b7280;')">{{ c.code }}</span>
+                    </div>
+                  </div>
+                </div>
                 <input v-if="aliasEdit.genSource === 'asn'" v-model="aliasEdit.genAsn"
                   type="text" placeholder="AS12345"
                   class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm font-mono mb-2" />
