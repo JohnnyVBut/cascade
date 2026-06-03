@@ -639,7 +639,7 @@ if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
   info "Installing acme.sh..."
   ACME_INSTALL_ARGS=("--force")
   [[ -n "${ACME_EMAIL:-}" ]] && ACME_INSTALL_ARGS+=("email=${ACME_EMAIL}")
-  curl -fsSL https://get.acme.sh | sh -s "${ACME_INSTALL_ARGS[@]}"
+  curl -fsSL https://get.acme.sh | sh -s -- "${ACME_INSTALL_ARGS[@]}"
   # Verify the binary was actually created — fail loudly if installation silently failed.
   if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
     fail "acme.sh installation failed — binary not found at ~/.acme.sh/acme.sh"
