@@ -334,7 +334,15 @@ class API {
       path: '/tunnel-interfaces/import-conf',
       body: { name, conf },
     });
-  }
+  },
+
+  async importTunnelBackup({ json, listenPort }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/import-backup',
+      body: { json, listenPort },
+    });
+  },
 
   async updateTunnelInterface({ interfaceId, ...updates }) {
     return this.call({

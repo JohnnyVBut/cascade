@@ -39,10 +39,11 @@ func RegisterInterfaces(api fiber.Router) {
 	g.Get("", listInterfaces)
 	g.Post("", createInterface)
 
-	// quick-create and import-conf MUST be registered before /:id to avoid Fiber routing
-	// the literal path segment as a parameter value.
+	// quick-create, import-conf and import-backup MUST be registered before /:id
+	// to avoid Fiber routing the literal path segment as a parameter value.
 	g.Post("/quick-create", quickCreateInterface)
 	g.Post("/import-conf", importConfInterface)
+	g.Post("/import-backup", importBackupInterface)
 
 	g.Get("/:id", getInterface)
 	g.Patch("/:id", updateInterface)
@@ -316,6 +317,54 @@ func importConfInterface(c *fiber.Ctx) error {
 	}
 	if result.ConflictWarning != "" {
 		resp["conflictWarning"] = result.ConflictWarning
+	}
+	return c.Status(fiber.StatusCreated).JSON(resp)
+}
+
+// POST /api/tunnel-interfaces/import-backup
+// Imports an AWG-Easy JSON backup: creates a new interface with server keys
+// from the backup and recreates all clients.  No keys are regenerated.
+// Body: { json: "<raw backup JSON string>", listenPort: 51831 }
+func importBackupInterface(c *fiber.Ctx) error {
+	var body struct {
+		JSON       string `json:"json"`
+		ListenPort int    `json:"listenPort"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if strings.TrimSpace(body.JSON) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "json is required")
+	}
+	if body.ListenPort <= 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "listenPort is required")
+	}
+
+	result, err := mgr().ImportBackup(tunnel.ImportBackupInput{
+		RawJSON:    body.JSON,
+		ListenPort: body.ListenPort,
+	})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after import-backup %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	resp := fiber.Map{
+		"interface":    ifaceJSON(result.Interface, true),
+		"peersCreated": result.PeersCreated,
+		"started":      result.Started,
+	}
+	if len(result.PeersFailed) > 0 {
+		resp["peersFailed"] = result.PeersFailed
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
 	}
 	return c.Status(fiber.StatusCreated).JSON(resp)
 }

@@ -165,6 +165,8 @@ new Vue({
     showImportConf: false,
     importConfForm: { name: '', conf: '', fileName: '' },
     importConfWarning: '',
+    showImportBackup: false,
+    importBackupForm: { json: '', listenPort: '', fileName: '' },
     showInterfaceEdit: false,
     interfaceEdit: {
       id: null,
@@ -1074,6 +1076,55 @@ new Vue({
         }
       } catch (err) {
         console.error('Import conf failed:', err);
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    onBackupFileSelected(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.importBackupForm.fileName = file.name;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.importBackupForm.json = e.target.result || '';
+      };
+      reader.readAsText(file);
+    },
+
+    async doImportBackup() {
+      const json = (this.importBackupForm.json || '').trim();
+      const port = parseInt(this.importBackupForm.listenPort, 10);
+      if (!json)        { this.showToast('Please select a backup file', 'error'); return; }
+      if (!port || port < 1 || port > 65535) {
+        this.showToast('Please enter a valid UDP port (1–65535)', 'error'); return;
+      }
+
+      try {
+        const res = await this.api.importTunnelBackup({ json, listenPort: port });
+        this.showImportBackup = false;
+        this.importBackupForm = { json: '', listenPort: '', fileName: '' };
+        await this.loadTunnelInterfaces();
+
+        const iface = res.interface || {};
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const failed = (res.peersFailed || []).length;
+
+        if (res.started) {
+          let msg = `✅ Backup imported: ${iface.id} · ${iface.address}${proto} · ${res.peersCreated} clients`;
+          if (failed > 0) msg += ` (${failed} failed)`;
+          this.showToast(msg);
+          this.activeInterfaceId = iface.id;
+        } else {
+          this.showToast(
+            `⚠️ Backup imported but interface failed to start\n${res.startError || ''}`,
+            'error'
+          );
+        }
+        if (failed > 0) {
+          this.showToast(`⚠️ Failed to import clients: ${res.peersFailed.join(', ')}`, 'error');
+        }
+      } catch (err) {
+        console.error('Import backup failed:', err);
         this.showToast(`Failed: ${err.message}`, 'error');
       }
     },
