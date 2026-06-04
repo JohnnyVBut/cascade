@@ -111,8 +111,12 @@ is_ip() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 
 detect_ip() {
   local ip
-  ip=$(curl -s --max-time 5 https://ifconfig.me 2>/dev/null) && [[ -n "$ip" ]] && echo "$ip" && return
-  ip=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/{print $7}') && [[ -n "$ip" ]] && echo "$ip" && return
+  # Always prefer IPv4 (-4 forces IPv4 transport, returns A-record address).
+  # On dual-stack hosts curl without -4 may pick IPv6 → admin URL gets IPv6 literal
+  # which breaks access for users without IPv6 connectivity.
+  ip=$(curl -4 -s --max-time 5 https://ifconfig.me 2>/dev/null) && [[ -n "$ip" ]] && echo "$ip" && return
+  ip=$(curl -4 -s --max-time 5 https://api4.ipify.org 2>/dev/null)  && [[ -n "$ip" ]] && echo "$ip" && return
+  ip=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/{print $7}')    && [[ -n "$ip" ]] && echo "$ip" && return
   echo ""
 }
 
