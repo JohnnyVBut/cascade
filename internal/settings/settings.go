@@ -46,6 +46,10 @@ type GlobalSettings struct {
 
 	// Firewall
 	DefaultFwPolicy string `json:"defaultFwPolicy"` // "accept" | "drop" — appended to FIREWALL_FORWARD after all rules
+
+	// MTU for client configs. 0 = not set (WireGuard picks automatically).
+	// Per-interface MTU overrides this value when non-zero.
+	MTU int `json:"mtu"`
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -595,6 +599,10 @@ func isValidSettingValue(k, v string) bool {
 		return v == "accept" || v == "drop"
 	case "lang":
 		return v == "en" || v == "ru"
+	case "mtu":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		return n == 0 || (n >= 576 && n <= 9000)
 	}
 	return true // unknown keys pass through (applySettingKey will ignore them)
 }
@@ -651,6 +659,12 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 	case "lang":
 		if v == "en" || v == "ru" {
 			s.Lang = v
+		}
+	case "mtu":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n == 0 || (n >= 576 && n <= 9000) {
+			s.MTU = n
 		}
 	}
 }

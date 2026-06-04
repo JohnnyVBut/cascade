@@ -117,8 +117,9 @@ type InterfaceData struct {
 	ListenPort              int
 	DNS                     string // for client [Interface] section
 	DefaultClientAllowedIPs string
-	Host                    string // WG_HOST env (used in Endpoint line of client config)
+	Host                    string        // WG_HOST env (used in Endpoint line of client config)
 	Settings                *AWG2Settings // nil for WireGuard 1.0
+	MTU                     int           // 0 = omit MTU line; >0 = write "MTU = N"
 }
 
 // AWG2Settings holds AmneziaWG 2.0 obfuscation parameters for config generation.
@@ -435,6 +436,10 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		dns = "1.1.1.1, 8.8.8.8"
 	}
 	fmt.Fprintf(&sb, "DNS = %s\n", dns)
+
+	if iface.MTU > 0 {
+		fmt.Fprintf(&sb, "MTU = %d\n", iface.MTU)
+	}
 
 	// AmneziaWG 2.0 obfuscation parameters (must match exactly on both sides).
 	if iface.Protocol == "amneziawg-2.0" && iface.Settings != nil {

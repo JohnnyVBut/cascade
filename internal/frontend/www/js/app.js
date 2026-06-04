@@ -176,6 +176,7 @@ new Vue({
       disableRoutes: false,
       natDisabled: false,
       publicHost: '',
+      mtu: 0,
       protocol: 'wireguard-1.0',
       selectedTemplateId: '',
       settings: {
@@ -251,6 +252,8 @@ new Vue({
       routerName:     '',
       publicIPMode:   'auto',
       publicIPManual: '',
+      // MTU for client configs (0 = auto)
+      mtu: 0,
       // UI preferences
       lang: 'en',
       // Runtime-only (returned by GET, not sent in PUT)
@@ -1214,6 +1217,7 @@ new Vue({
         disableRoutes: !!iface.disableRoutes,
         natDisabled: !!iface.natDisabled,
         publicHost: iface.publicHost || '',
+        mtu: iface.mtu || 0,
         protocol: iface.protocol || 'wireguard-1.0',
         selectedTemplateId: '',
         settings: {
@@ -1240,7 +1244,7 @@ new Vue({
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, natDisabled, publicHost, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, publicHost, mtu, protocol, settings } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
@@ -1261,6 +1265,7 @@ new Vue({
         disableRoutes,
         natDisabled,
         publicHost: publicHost || '',
+        mtu: mtu || 0,
       };
       if (protocol === 'amneziawg-2.0') {
         payload.settings = { ...settings };

@@ -449,6 +449,14 @@ ALTER TABLE nat_dnat_rules ADD COLUMN masquerade INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE interfaces ADD COLUMN public_host TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 17,
+		sql: `
+-- Per-interface MTU override for client configs.
+-- 0 = use global MTU from settings (or omit MTU line if global is also 0).
+ALTER TABLE interfaces ADD COLUMN mtu INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

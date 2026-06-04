@@ -1909,6 +1909,20 @@
                 </p>
               </div>
 
+              <!-- MTU Override -->
+              <div class="mb-4">
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                  MTU Override
+                  <span class="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input v-model.number="interfaceEdit.mtu" type="number" min="0" max="9000"
+                  placeholder="0 = use global"
+                  class="w-32 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Overrides the global MTU for this interface only. 0 = use global setting.
+                </p>
+              </div>
+
               <!-- AWG2 Settings (only for AWG 2.0 interfaces) -->
               <div v-if="interfaceEdit.protocol === 'amneziawg-2.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
                 <p class="font-medium dark:text-neutral-200 mb-3">Obfuscation Settings (AWG 2.0)</p>
@@ -2136,6 +2150,12 @@
                 <input v-model="globalSettings.dns" type="text" placeholder="1.1.1.1, 8.8.8.8"
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono text-sm">
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Comma-separated. Used in client configs.</p>
+              </div>
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">MTU <span class="font-normal text-gray-400">(client configs)</span></label>
+                <input v-model.number="globalSettings.mtu" type="number" min="0" max="9000" placeholder="0 = auto"
+                  class="w-32 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">0 = omit (WireGuard picks automatically). Typical: 1420 (WG default), 1280 (safe for all networks).</p>
               </div>
               <div>
                 <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Default PersistentKeepalive (seconds)</label>

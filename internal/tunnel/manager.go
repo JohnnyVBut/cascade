@@ -616,6 +616,12 @@ func (m *Manager) GetPeerRemoteConfig(interfaceID, peerID string) (string, error
 		awg2 = &cp
 	}
 
+	// Resolve MTU: per-interface override takes priority over global setting.
+	mtu := gs.MTU
+	if t.MTU > 0 {
+		mtu = t.MTU
+	}
+
 	ifaceData := peer.InterfaceData{
 		ID:                      t.ID,
 		Name:                    t.Name,
@@ -627,6 +633,7 @@ func (m *Manager) GetPeerRemoteConfig(interfaceID, peerID string) (string, error
 		DefaultClientAllowedIPs: gs.DefaultClientAllowedIPs,
 		Host:                    t.resolvedHost(settings.GetWGHost(m.WGHost)),
 		Settings:                awg2,
+		MTU:                     mtu,
 	}
 
 	return p.GenerateRemoteConfig(ifaceData), nil
