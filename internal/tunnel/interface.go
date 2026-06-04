@@ -345,8 +345,13 @@ func (t *TunnelInterface) GetAllPeers() []*peer.Peer {
 	}
 	// Go map iteration is non-deterministic — sort by CreatedAt so the frontend
 	// receives peers in a stable order on every poll tick.
+	// Secondary sort by ID (UUID) guarantees stability when multiple peers share
+	// the same CreatedAt timestamp (e.g. batch import creates many peers per second).
 	sort.Slice(out, func(i, j int) bool {
-		return out[i].CreatedAt < out[j].CreatedAt
+		if out[i].CreatedAt != out[j].CreatedAt {
+			return out[i].CreatedAt < out[j].CreatedAt
+		}
+		return out[i].ID < out[j].ID
 	})
 	return out
 }
