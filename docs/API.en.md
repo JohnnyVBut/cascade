@@ -92,6 +92,7 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | Field | Type | Description |
 |-------|------|-------------|
 | `dns` | string | DNS server for client configs |
+| `mtu` | int | MTU for client configs. `0` = not set (WireGuard picks automatically). Range: 576–9000 |
 | `defaultPersistentKeepalive` | int | Default keepalive (seconds) |
 | `defaultClientAllowedIPs` | string | Default AllowedIPs for new client peers |
 | `gatewayWindowSeconds` | int | Gateway monitoring sliding window (seconds) |
@@ -112,9 +113,11 @@ Returns `GlobalSettings` merged with runtime-only fields:
 
 **PUT /api/settings — accepted fields:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
+`{ dns?, mtu?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
 
 `lang` — UI language: `"en"` or `"ru"`. Also reflected in `GET /api/lang`.
+
+`mtu` — global MTU written into client config `[Interface]` sections. Can be overridden per-interface via `PATCH /api/tunnel-interfaces/:id` (`mtu` field).
 
 ---
 
@@ -141,8 +144,9 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `POST` | `/api/tunnel-interfaces` | Create. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: create and start a client interface in one step. Body: `{ name?: string, protocol?: string }`. Address and port are auto-assigned from SubnetPool/PortPool settings. AWG2 params come from the default template or a random profile. Response: `{ interface, started: bool, startError?: string }` |
 | `POST` | `/api/tunnel-interfaces/import-conf` | Import a WireGuard/AmneziaWG client `.conf` file as an uplink (client-mode) interface. `DisableRoutes` is always set to `true` — the kernel routing table is not modified. Body: `{ name: string, conf: string }`. Response: `{ interface, peer, started: bool, startError?: string, conflictWarning?: string }` |
+| `POST` | `/api/tunnel-interfaces/import-backup` | Import an AWG-Easy JSON backup. Creates a new interface with all clients from the file. Server and client keys are preserved as-is — existing client configs remain valid without reissue. Body: `{ json: string, listenPort: int }`. Response: `{ interface, peersCreated: int, peersFailed?: string[], started: bool, startError?: string }`. Port or subnet conflict → **400** |
 | `GET` | `/api/tunnel-interfaces/:id` | Get interface |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, settings? }`. `publicHost` overrides the global Public IP for this interface's peer configs (useful for transit/relay setups). Changing `natDisabled` on a running interface triggers `Restart()` |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, mtu?, settings? }`. `publicHost` overrides the global Public IP for this interface's peer configs (useful for transit/relay setups). `mtu` overrides the global MTU for this interface (`0` = use global). Changing `natDisabled` on a running interface triggers `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Delete interface |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Start. Returns `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Stop. Returns `{ interface }` |

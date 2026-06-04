@@ -92,6 +92,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `dns` | string | DNS-сервер для клиентских конфигов |
+| `mtu` | int | MTU для клиентских конфигов. `0` = не задан (WireGuard выбирает автоматически). Диапазон: 576–9000 |
 | `defaultPersistentKeepalive` | int | Keepalive по умолчанию (сек) |
 | `defaultClientAllowedIPs` | string | AllowedIPs для новых клиентских пиров |
 | `gatewayWindowSeconds` | int | Скользящее окно мониторинга шлюзов (сек) |
@@ -112,9 +113,11 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 **PUT /api/settings — принимаемые поля:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
+`{ dns?, mtu?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
 
 `lang` — язык UI: `"en"` или `"ru"`. Также отражается в `GET /api/lang`.
+
+`mtu` — глобальный MTU для клиентских конфигов. Может быть переопределён на уровне конкретного интерфейса.
 
 ---
 
@@ -141,8 +144,9 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `POST` | `/api/tunnel-interfaces` | Создать. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: создать и запустить клиентский интерфейс одной командой. Body: `{ name?: string, protocol?: string }`. Адрес и порт назначаются автоматически из SubnetPool/PortPool. AWG2 параметры — из шаблона по умолчанию или random. Ответ: `{ interface, started: bool, startError?: string }` |
 | `POST` | `/api/tunnel-interfaces/import-conf` | Импорт клиентского `.conf` файла WireGuard/AmneziaWG как аплинк-интерфейс. `DisableRoutes` всегда `true` — таблица маршрутизации не изменяется. Body: `{ name: string, conf: string }`. Ответ: `{ interface, peer, started: bool, startError?: string, conflictWarning?: string }` |
+| `POST` | `/api/tunnel-interfaces/import-backup` | Импорт бэкапа AWG-Easy. Создаёт новый интерфейс со всеми клиентами из файла. Ключи сервера и клиентов сохраняются as-is — существующие конфиги клиентов остаются валидными. Body: `{ json: string, listenPort: int }`. Ответ: `{ interface, peersCreated: int, peersFailed?: string[], started: bool, startError?: string }`. Конфликт порта или подсети → **400** |
 | `GET` | `/api/tunnel-interfaces/:id` | Получить интерфейс |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, settings? }`. `publicHost` переопределяет глобальный Public IP для конфигов пиров этого интерфейса (для транзит/relay). Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, mtu?, settings? }`. `publicHost` переопределяет глобальный Public IP для конфигов пиров этого интерфейса (для транзит/relay). `mtu` переопределяет глобальный MTU (`0` = использовать глобальный). Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Удалить интерфейс |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Запустить. Возвращает `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Остановить. Возвращает `{ interface }` |
