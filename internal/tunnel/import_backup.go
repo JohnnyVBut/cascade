@@ -206,6 +206,7 @@ func (m *Manager) ImportBackup(inp ImportBackupInput) (*ImportBackupResult, erro
 			ClientAllowedIPs: "0.0.0.0/0",
 			PeerType:         "client",
 			GenerateKeys:     false,
+			CreatedAt:        client.CreatedAt, // preserve original creation time for stable sort
 		}
 
 		p, err := iface.AddPeer(peerInput)

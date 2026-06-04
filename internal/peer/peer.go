@@ -88,8 +88,9 @@ type PeerInput struct {
 	PeerType            string `json:"peerType"`
 	PersistentKeepalive int    `json:"persistentKeepalive"`
 	// Special flags (not stored directly)
-	GenerateKeys   bool `json:"generateKeys"`   // server generates wg key pair + PSK
-	AutoAllocateIP bool `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
+	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
+	AutoAllocateIP bool   `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
+	CreatedAt      string `json:"createdAt"`       // if non-empty, overrides the auto-generated timestamp (e.g. backup import)
 }
 
 // PeerUpdate contains the fields that can be changed via PATCH.
@@ -195,6 +196,10 @@ func CreatePeer(interfaceID string, inp PeerInput) (*Peer, error) {
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
+	createdAt := now
+	if inp.CreatedAt != "" {
+		createdAt = inp.CreatedAt // preserve original timestamp (e.g. backup import)
+	}
 	p := Peer{
 		ID:                  uuid.New().String(),
 		InterfaceID:         interfaceID,
@@ -209,7 +214,7 @@ func CreatePeer(interfaceID string, inp PeerInput) (*Peer, error) {
 		PeerType:            strOr(inp.PeerType, "client"),
 		PersistentKeepalive: intOr(inp.PersistentKeepalive, 25),
 		Enabled:             true,
-		CreatedAt:           now,
+		CreatedAt:           createdAt,
 		UpdatedAt:           now,
 	}
 	p.DownloadableConfig = p.PrivateKey != ""
