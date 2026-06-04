@@ -551,6 +551,7 @@ At the bottom of the **Firewall → Rules** page is the **Default Policy** card:
 | Field | Description |
 |-------|-------------|
 | **DNS** | DNS servers for client configs (comma-separated) |
+| **MTU** | MTU written into client configs. `0` = omit (WireGuard picks automatically). Typical values: `1420` (WireGuard default), `1280` (safe for all networks including restrictive ISPs). Can be overridden per-interface via **Edit Interface → MTU Override** |
 | **Default Persistent Keepalive** | Default keepalive for new peers (seconds) |
 | **Default Client Allowed IPs** | Default AllowedIPs for client configs |
 
@@ -618,6 +619,24 @@ The **Backup** button in the top navigation downloads a complete configuration d
 #### Restore
 
 **Restore** → select a JSON backup file. The configuration will be restored over the existing one.
+
+#### Migrating from AWG-Easy (Import Backup)
+
+If you previously used **AWG-Easy** and want to move your configuration to Cascade **without reissuing client configs**:
+
+1. Download the AWG-Easy backup file (`wg0.json` or similar)
+2. **Interfaces → Import Backup** (purple button)
+3. Click **"Browse…"** and select the JSON file
+4. Enter the **UDP Listen Port** (must not conflict with existing interfaces)
+5. Click **"Import & Start"**
+
+Cascade will create a new interface and recreate all clients:
+- **Server and client keys are preserved as-is** — clients do not need to update their configs
+- **QR codes are available** immediately — client private keys are stored in the database
+- **AWG2 obfuscation parameters** are imported automatically (Jc, H1–H4, S1–S4)
+- Disabled clients from AWG-Easy remain disabled
+
+> **Port or address space conflict** — the import is cancelled entirely with an explanation.
 
 ---
 
