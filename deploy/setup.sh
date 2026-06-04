@@ -6,6 +6,7 @@
 #         bash deploy/setup.sh --yes              # non-interactive (reads all from .env)
 #         bash deploy/setup.sh --staging          # use Let's Encrypt staging CA (testing)
 #         bash deploy/setup.sh --yes --staging    # non-interactive + staging
+#         bash deploy/setup.sh --yes --prefer-ipv6  # auto-detect IPv6 address instead of IPv4
 # =============================================================================
 set -euo pipefail
 
@@ -42,10 +43,12 @@ fail() { echo -e "${R}  [✗]${N} $*"; exit 1; }
 
 # ── Parse args ───────────────────────────────────────────────────────────────
 YES=0
+PREFER_IPV6=0
 ACME_STAGING=${ACME_STAGING:-0}   # overridable from .env; --staging flag sets to 1
 for arg in "$@"; do
-  [[ "$arg" == "--yes"     ]] && YES=1
-  [[ "$arg" == "--staging" ]] && ACME_STAGING=1
+  [[ "$arg" == "--yes"        ]] && YES=1
+  [[ "$arg" == "--staging"    ]] && ACME_STAGING=1
+  [[ "$arg" == "--prefer-ipv6" ]] && PREFER_IPV6=1
 done
 
 # ── Load .env ────────────────────────────────────────────────────────────────
@@ -111,12 +114,17 @@ is_ip() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 
 detect_ip() {
   local ip
-  # Always prefer IPv4 (-4 forces IPv4 transport, returns A-record address).
+  if [[ "${PREFER_IPV6:-0}" == "1" ]]; then
+    # IPv6 preferred (--prefer-ipv6 flag): try IPv6 first, fall back to IPv4.
+    ip=$(curl -6 -s --max-time 5 https://ifconfig.me 2>/dev/null)    && [[ -n "$ip" ]] && echo "$ip" && return
+    ip=$(curl -6 -s --max-time 5 https://api6.ipify.org 2>/dev/null) && [[ -n "$ip" ]] && echo "$ip" && return
+  fi
+  # Default: prefer IPv4 (-4 forces IPv4 transport).
   # On dual-stack hosts curl without -4 may pick IPv6 → admin URL gets IPv6 literal
   # which breaks access for users without IPv6 connectivity.
-  ip=$(curl -4 -s --max-time 5 https://ifconfig.me 2>/dev/null) && [[ -n "$ip" ]] && echo "$ip" && return
-  ip=$(curl -4 -s --max-time 5 https://api4.ipify.org 2>/dev/null)  && [[ -n "$ip" ]] && echo "$ip" && return
-  ip=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/{print $7}')    && [[ -n "$ip" ]] && echo "$ip" && return
+  ip=$(curl -4 -s --max-time 5 https://ifconfig.me 2>/dev/null)    && [[ -n "$ip" ]] && echo "$ip" && return
+  ip=$(curl -4 -s --max-time 5 https://api4.ipify.org 2>/dev/null) && [[ -n "$ip" ]] && echo "$ip" && return
+  ip=$(ip route get 8.8.8.8 2>/dev/null | awk '/src/{print $7}')   && [[ -n "$ip" ]] && echo "$ip" && return
   echo ""
 }
 
