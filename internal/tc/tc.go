@@ -19,7 +19,6 @@ import (
 	"log"
 	"net"
 	"strings"
-
 	"time"
 
 	"github.com/JohnnyVBut/cascade/internal/util"
@@ -59,7 +58,7 @@ func ClassIDFromIP(ipCIDR string) int {
 // burst ≈ 100 ms worth of data, minimum 1500 bytes (one Ethernet frame).
 func burstBytes(kbps int) int {
 	// 100 ms of data at kbps: kbps * 1000 bits/s * 0.1 s / 8 bits/byte = kbps * 12.5
-	b := kbps * 1000 / 80 // kbps → bytes per 100ms
+	b := kbps * 1000 / 80
 	if b < 1500 {
 		b = 1500
 	}
@@ -69,12 +68,13 @@ func burstBytes(kbps int) int {
 // EnsureQdisc ensures the root HTB qdisc and ingress qdisc exist on the interface.
 // Safe to call multiple times — checks before adding.
 func EnsureQdisc(ifaceID string) {
-	// Root HTB qdisc (egress).
 	out, err := util.Exec(fmt.Sprintf("tc qdisc show dev %s", ifaceID), tcTimeout, false)
 	if err != nil {
 		log.Printf("tc: qdisc show %s: %v", ifaceID, err)
 		return
 	}
+
+	// Root HTB qdisc (egress).
 	if !strings.Contains(out, "htb") {
 		if _, err := util.Exec(fmt.Sprintf(
 			"tc qdisc add dev %s root handle 1: htb default %d",
@@ -107,6 +107,11 @@ func EnsureQdisc(ifaceID string) {
 // peerIP must be in CIDR notation (e.g. "10.8.0.5/32").
 // rateDown and rateUp are in kbps; 0 means remove the limit for that direction.
 // Non-fatal: errors are logged but not returned.
+//
+// Update semantics: filters are always deleted and re-added; the HTB class is
+// updated via "change" (atomically, without teardown) or created if absent.
+// This avoids the "File exists" failure that would occur if the class delete
+// had silently failed and we tried to re-add it.
 func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 	classID := ClassIDFromIP(peerIP)
 	if classID == 0 {
@@ -115,21 +120,40 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 	}
 	host := strings.SplitN(peerIP, "/", 2)[0]
 
-	// Always remove existing rules first (idempotent apply).
-	removeRules(ifaceID, host, classID)
+	// Step 1: remove existing filters (always — filters are on parent qdisc, not on class).
+	// Egress filter: attached to root HTB qdisc (parent 1:), identified by priority.
+	util.Exec(fmt.Sprintf( //nolint:errcheck
+		"tc filter del dev %s parent 1: prio %d 2>/dev/null || true",
+		ifaceID, classID,
+	), tcTimeout, false)
+	// Ingress filter: attached to ingress qdisc (parent ffff:), identified by priority.
+	util.Exec(fmt.Sprintf( //nolint:errcheck
+		"tc filter del dev %s parent ffff: prio %d 2>/dev/null || true",
+		ifaceID, classID,
+	), tcTimeout, false)
 
 	if rateDown <= 0 && rateUp <= 0 {
-		return // no limits — rules already removed above
+		// No limits — also remove the HTB class if it exists.
+		util.Exec(fmt.Sprintf( //nolint:errcheck
+			"tc class del dev %s classid 1:%d 2>/dev/null || true",
+			ifaceID, classID,
+		), tcTimeout, false)
+		return
 	}
 
-	// Egress / download limit.
+	// Step 2: egress / download limit.
 	if rateDown > 0 {
 		burst := burstBytes(rateDown)
-		if _, err := util.Exec(fmt.Sprintf(
-			"tc class add dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db",
+		// Use "change" to update an existing class, fall back to "add" for new peers.
+		// This is atomic and avoids "File exists" when the previous class delete failed.
+		classCmd := fmt.Sprintf(
+			"tc class change dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db 2>/dev/null || "+
+				"tc class add dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db",
 			ifaceID, classID, rateDown, rateDown, burst,
-		), tcTimeout, false); err != nil {
-			log.Printf("tc: add class 1:%d on %s: %v", classID, ifaceID, err)
+			ifaceID, classID, rateDown, rateDown, burst,
+		)
+		if _, err := util.Exec(classCmd, tcTimeout, false); err != nil {
+			log.Printf("tc: set class 1:%d on %s: %v", classID, ifaceID, err)
 			return
 		}
 		if _, err := util.Exec(fmt.Sprintf(
@@ -138,9 +162,15 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 		), tcTimeout, false); err != nil {
 			log.Printf("tc: add egress filter for %s on %s: %v", host, ifaceID, err)
 		}
+	} else {
+		// rateDown removed — delete class if it exists.
+		util.Exec(fmt.Sprintf( //nolint:errcheck
+			"tc class del dev %s classid 1:%d 2>/dev/null || true",
+			ifaceID, classID,
+		), tcTimeout, false)
 	}
 
-	// Ingress / upload limit (police).
+	// Step 3: ingress / upload limit (police filter).
 	if rateUp > 0 {
 		burst := burstBytes(rateUp)
 		if _, err := util.Exec(fmt.Sprintf(
@@ -159,8 +189,8 @@ func Remove(ifaceID, peerIP string) {
 	if classID == 0 {
 		return
 	}
-	host := strings.SplitN(peerIP, "/", 2)[0]
-	removeRules(ifaceID, host, classID)
+	// Apply with zero rates — cleans up filters and class.
+	Apply(ifaceID, peerIP, 0, 0)
 }
 
 // PeerLimit holds the rate limit info needed for tc restoration.
@@ -180,20 +210,4 @@ func RestoreAll(ifaceID string, limits []PeerLimit) {
 	for _, l := range limits {
 		Apply(ifaceID, l.IP, l.RateDown, l.RateUp)
 	}
-}
-
-// removeRules deletes existing egress class + ingress filter for a classid.
-func removeRules(ifaceID, host string, classID int) {
-	// Egress: delete HTB class (also removes associated filters).
-	util.Exec(fmt.Sprintf( //nolint:errcheck
-		"tc class del dev %s classid 1:%d 2>/dev/null || true",
-		ifaceID, classID,
-	), tcTimeout, false)
-
-	// Ingress: delete police filter by priority.
-	util.Exec(fmt.Sprintf( //nolint:errcheck
-		"tc filter del dev %s parent ffff: protocol ip prio %d 2>/dev/null || true",
-		ifaceID, classID,
-	), tcTimeout, false)
-	_ = host // used only in Apply for filter match
 }
