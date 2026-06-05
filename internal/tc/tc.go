@@ -100,7 +100,7 @@ func EnsureQdisc(ifaceID string) {
 	// Root HTB qdisc (egress).
 	if !strings.Contains(out, "htb") {
 		if _, err := util.Exec(fmt.Sprintf(
-			"tc qdisc add dev %s root handle 1: htb default %d",
+			"tc qdisc add dev %s root handle 1: htb default %x",
 			ifaceID, defaultClassID,
 		), tcTimeout, false); err != nil {
 			log.Printf("tc: add root qdisc on %s: %v", ifaceID, err)
@@ -108,7 +108,7 @@ func EnsureQdisc(ifaceID string) {
 		}
 		// Default class — unlimited.
 		if _, err := util.Exec(fmt.Sprintf(
-			"tc class add dev %s parent 1: classid 1:%d htb rate %s",
+			"tc class add dev %s parent 1: classid 1:%x htb rate %s",
 			ifaceID, defaultClassID, defaultRate,
 		), tcTimeout, false); err != nil {
 			log.Printf("tc: add default class on %s: %v", ifaceID, err)
@@ -159,13 +159,14 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp, ifaceMTU int) {
 	if rateDown <= 0 && rateUp <= 0 {
 		// No limits — also remove the HTB class if it exists.
 		util.Exec(fmt.Sprintf( //nolint:errcheck
-			"tc class del dev %s classid 1:%d 2>/dev/null || true",
+			"tc class del dev %s classid 1:%x 2>/dev/null || true",
 			ifaceID, classID,
 		), tcTimeout, false)
 		return
 	}
 
 	// Step 2: egress / download limit.
+	// NOTE: tc parses classid/flowid/handle as hexadecimal, prio/rate/burst as decimal.
 	if rateDown > 0 {
 		// Compensate for WireGuard overhead so the user-visible speed matches the target.
 		tcRate := tcKbps(rateDown, ifaceMTU)
@@ -173,17 +174,17 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp, ifaceMTU int) {
 		// Use "change" to update an existing class, fall back to "add" for new peers.
 		// This is atomic and avoids "File exists" when the previous class delete failed.
 		classCmd := fmt.Sprintf(
-			"tc class change dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db 2>/dev/null || "+
-				"tc class add dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db",
+			"tc class change dev %s parent 1: classid 1:%x htb rate %dkbit ceil %dkbit burst %db 2>/dev/null || "+
+				"tc class add dev %s parent 1: classid 1:%x htb rate %dkbit ceil %dkbit burst %db",
 			ifaceID, classID, tcRate, tcRate, burst,
 			ifaceID, classID, tcRate, tcRate, burst,
 		)
 		if _, err := util.Exec(classCmd, tcTimeout, false); err != nil {
-			log.Printf("tc: set class 1:%d on %s: %v", classID, ifaceID, err)
+			log.Printf("tc: set class 1:%x on %s: %v", classID, ifaceID, err)
 			return
 		}
 		if _, err := util.Exec(fmt.Sprintf(
-			"tc filter add dev %s protocol ip parent 1: prio %d u32 match ip dst %s/32 flowid 1:%d",
+			"tc filter add dev %s protocol ip parent 1: prio %d u32 match ip dst %s/32 flowid 1:%x",
 			ifaceID, classID, host, classID,
 		), tcTimeout, false); err != nil {
 			log.Printf("tc: add egress filter for %s on %s: %v", host, ifaceID, err)
@@ -191,7 +192,7 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp, ifaceMTU int) {
 	} else {
 		// rateDown removed — delete class if it exists.
 		util.Exec(fmt.Sprintf( //nolint:errcheck
-			"tc class del dev %s classid 1:%d 2>/dev/null || true",
+			"tc class del dev %s classid 1:%x 2>/dev/null || true",
 			ifaceID, classID,
 		), tcTimeout, false)
 	}
