@@ -1923,14 +1923,17 @@
                   MTU Override
                   <span class="text-gray-400 font-normal">(optional)</span>
                 </label>
-                <input v-model.number="interfaceEdit.mtu" type="number" min="0" max="9000"
-                  placeholder="0 = use global"
-                  class="w-32 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input v-model.number="interfaceEdit.mtu" type="number" min="0" max="9000"
+                    placeholder="0 = use global"
+                    class="w-32 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                  <span v-if="interfaceEdit.mtu === 0 && interfaceEdit.kernelMtu > 0"
+                    class="text-sm text-gray-400 dark:text-neutral-500">
+                    auto · <strong class="dark:text-neutral-300">{{ interfaceEdit.kernelMtu }}</strong>
+                  </span>
+                </div>
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
                   Overrides the global MTU for this interface only. 0 = use global setting.
-                  <span v-if="interfaceEdit.mtu === 0 && interfaceEdit.kernelMtu > 0">
-                    Current kernel MTU: <strong>{{ interfaceEdit.kernelMtu }}</strong>.
-                  </span>
                 </p>
               </div>
 
