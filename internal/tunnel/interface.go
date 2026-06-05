@@ -66,6 +66,7 @@ type TunnelInterface struct {
 	NatDisabled   bool               `json:"natDisabled"`    // when true, PostUp omits MASQUERADE
 	PublicHost    string             `json:"publicHost"`     // per-interface endpoint override (e.g. transit server IP)
 	MTU           int                `json:"mtu"`            // 0 = use global setting; >0 = per-interface override
+	Uplink        bool               `json:"uplink"`         // true when created via Import .conf (connects OUT to remote server)
 	PrivateKey    string             `json:"-"`              // never exposed in API responses
 	PublicKey     string             `json:"publicKey"`
 	AWG2          *peer.AWG2Settings `json:"settings"`       // nil for wireguard-1.0
@@ -276,16 +277,16 @@ func (t *TunnelInterface) save() error {
 	_, err := db.DB().Exec(`
 		INSERT INTO interfaces
 			(id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-			 public_host, mtu, private_key, public_key,
+			 public_host, mtu, uplink, private_key, public_key,
 			 jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 			 i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, address=excluded.address,
 			listen_port=excluded.listen_port, protocol=excluded.protocol,
 			enabled=excluded.enabled, disable_routes=excluded.disable_routes,
 			nat_disabled=excluded.nat_disabled, public_host=excluded.public_host,
-			mtu=excluded.mtu,
+			mtu=excluded.mtu, uplink=excluded.uplink,
 			private_key=excluded.private_key, public_key=excluded.public_key,
 			jc=excluded.jc, jmin=excluded.jmin, jmax=excluded.jmax,
 			s1=excluded.s1, s2=excluded.s2, s3=excluded.s3, s4=excluded.s4,
@@ -293,7 +294,7 @@ func (t *TunnelInterface) save() error {
 			i1=excluded.i1, i2=excluded.i2, i3=excluded.i3, i4=excluded.i4, i5=excluded.i5`,
 		t.ID, t.Name, t.Address, t.ListenPort, t.Protocol,
 		boolInt(t.Enabled), boolInt(t.DisableRoutes), boolInt(t.NatDisabled),
-		t.PublicHost, t.MTU, t.PrivateKey, t.PublicKey,
+		t.PublicHost, t.MTU, boolInt(t.Uplink), t.PrivateKey, t.PublicKey,
 		jc, jmin, jmax, s1, s2, s3, s4,
 		h1, h2, h3, h4,
 		i1, i2, i3, i4, i5,
@@ -1300,24 +1301,24 @@ func boolInt(b bool) int {
 func scanInterface(id string) (*TunnelInterface, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-		       public_host, mtu, private_key, public_key,
+		       public_host, mtu, uplink, private_key, public_key,
 		       jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 		       i1, i2, i3, i4, i5, created_at
 		FROM interfaces WHERE id = ?`, id)
 
 	t := &TunnelInterface{}
 	var (
-		enabled, disableRoutes, natDisabled int
-		jc, jmin, jmax                      sql.NullInt64
-		s1, s2, s3, s4                      sql.NullInt64
-		h1, h2, h3, h4                      sql.NullString
-		i1, i2, i3, i4, i5                  sql.NullString
+		enabled, disableRoutes, natDisabled, uplink int
+		jc, jmin, jmax                              sql.NullInt64
+		s1, s2, s3, s4                              sql.NullInt64
+		h1, h2, h3, h4                              sql.NullString
+		i1, i2, i3, i4, i5                          sql.NullString
 	)
 
 	err := row.Scan(
 		&t.ID, &t.Name, &t.Address, &t.ListenPort, &t.Protocol,
 		&enabled, &disableRoutes, &natDisabled,
-		&t.PublicHost, &t.MTU, &t.PrivateKey, &t.PublicKey,
+		&t.PublicHost, &t.MTU, &uplink, &t.PrivateKey, &t.PublicKey,
 		&jc, &jmin, &jmax,
 		&s1, &s2, &s3, &s4,
 		&h1, &h2, &h3, &h4,
@@ -1334,6 +1335,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 	t.Enabled = enabled == 1
 	t.DisableRoutes = disableRoutes == 1
 	t.NatDisabled = natDisabled == 1
+	t.Uplink = uplink == 1
 	t.peers = make(map[string]*peer.Peer)
 
 	// AWG2 params are stored as nullable columns; reconstruct only if Jc is present.

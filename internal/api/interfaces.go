@@ -114,6 +114,7 @@ func ifaceJSON(t *tunnel.TunnelInterface, withPeers bool) fiber.Map {
 		"publicHost":    t.PublicHost,
 		"mtu":           t.MTU,
 		"kernelMtu":     kernelMTU(t.ID),
+		"uplink":        t.Uplink,
 		"publicKey":     t.PublicKey,
 		"settings":      t.AWG2,
 		"createdAt":     t.CreatedAt,

@@ -389,8 +389,10 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 
 	// Override the auto-generated key pair with the one from the .conf file.
 	// Also preserve MTU if specified in the imported config.
+	// Mark as uplink: this interface connects OUT to a remote server, not a hub for clients.
 	iface.PrivateKey = parsed.PrivateKey
 	iface.PublicKey = keys
+	iface.Uplink = true
 	if parsed.MTU > 0 {
 		iface.MTU = parsed.MTU
 	}

@@ -466,6 +466,15 @@ ALTER TABLE peers ADD COLUMN rate_down INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE peers ADD COLUMN rate_up   INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 19,
+		sql: `
+-- Uplink flag: set when interface is created via Import .conf (remote server config).
+-- Uplink interfaces connect OUT to a remote server; they are not S2S hubs.
+-- Export My Params and Import JSON peer buttons are hidden for uplink interfaces.
+ALTER TABLE interfaces ADD COLUMN uplink INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
