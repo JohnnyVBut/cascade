@@ -525,7 +525,7 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 		(upd.RateDown != nil || upd.RateUp != nil) {
 		if updated.RateDown > 0 || updated.RateUp > 0 {
 			tc.EnsureQdisc(t.ID)
-			tc.Apply(t.ID, updated.AllowedIPs, updated.RateDown, updated.RateUp)
+			tc.Apply(t.ID, updated.AllowedIPs, updated.RateDown, updated.RateUp, t.kernelMTU())
 		} else {
 			tc.Remove(t.ID, updated.AllowedIPs)
 		}
@@ -649,6 +649,20 @@ func (t *TunnelInterface) Start() error {
 
 // restoreTCLimits rebuilds tc rules for all client peers with rate limits.
 // Called asynchronously after Start() so it doesn't block the interface startup.
+// kernelMTU reads the actual MTU of this interface from kernel sysfs.
+// Returns 0 if the interface is not yet up or the file is unreadable.
+func (t *TunnelInterface) kernelMTU() int {
+	data, err := os.ReadFile("/sys/class/net/" + t.ID + "/mtu")
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
 func (t *TunnelInterface) restoreTCLimits() {
 	t.peersMu.RLock()
 	var limits []tc.PeerLimit
@@ -666,7 +680,7 @@ func (t *TunnelInterface) restoreTCLimits() {
 		})
 	}
 	t.peersMu.RUnlock()
-	tc.RestoreAll(t.ID, limits)
+	tc.RestoreAll(t.ID, limits, t.kernelMTU())
 }
 
 // Stop brings down the interface and ignores benign errors (FIX-3):

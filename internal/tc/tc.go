@@ -66,9 +66,15 @@ const (
 // tcKbps converts a user-specified kbps target into the tc rate needed to
 // achieve that throughput at the application level, compensating for
 // WireGuard packet overhead.
-//   targetKbps=10000 → tc rate ≈ 10563 kbps → user sees ~10.0 Mbit/s
-func tcKbps(targetKbps int) int {
-	return targetKbps * outerMTU / wgMTU
+// ifaceMTU is the actual WireGuard inner MTU; 0 means use the default (1420).
+//   targetKbps=10000, ifaceMTU=1420 → tc rate ≈ 10563 kbps → user sees ~10.0 Mbit/s
+//   targetKbps=10000, ifaceMTU=1280 → tc rate ≈ 11719 kbps → user sees ~10.0 Mbit/s
+func tcKbps(targetKbps, ifaceMTU int) int {
+	inner := ifaceMTU
+	if inner <= 0 {
+		inner = wgMTU
+	}
+	return targetKbps * outerMTU / inner
 }
 
 // burstBytes calculates an appropriate tc burst size for a given tc rate in kbps.
@@ -123,13 +129,14 @@ func EnsureQdisc(ifaceID string) {
 // Apply sets (or updates) bandwidth limits for a peer on an interface.
 // peerIP must be in CIDR notation (e.g. "10.8.0.5/32").
 // rateDown and rateUp are in kbps; 0 means remove the limit for that direction.
+// ifaceMTU is the WireGuard inner MTU of the interface (0 = use default 1420).
 // Non-fatal: errors are logged but not returned.
 //
 // Update semantics: filters are always deleted and re-added; the HTB class is
 // updated via "change" (atomically, without teardown) or created if absent.
 // This avoids the "File exists" failure that would occur if the class delete
 // had silently failed and we tried to re-add it.
-func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
+func Apply(ifaceID, peerIP string, rateDown, rateUp, ifaceMTU int) {
 	classID := ClassIDFromIP(peerIP)
 	if classID == 0 {
 		log.Printf("tc: cannot derive classid from IP %q — skipping", peerIP)
@@ -161,7 +168,7 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 	// Step 2: egress / download limit.
 	if rateDown > 0 {
 		// Compensate for WireGuard overhead so the user-visible speed matches the target.
-		tcRate := tcKbps(rateDown)
+		tcRate := tcKbps(rateDown, ifaceMTU)
 		burst := burstBytes(tcRate)
 		// Use "change" to update an existing class, fall back to "add" for new peers.
 		// This is atomic and avoids "File exists" when the previous class delete failed.
@@ -191,7 +198,7 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 
 	// Step 3: ingress / upload limit (police filter).
 	if rateUp > 0 {
-		tcRate := tcKbps(rateUp)
+		tcRate := tcKbps(rateUp, ifaceMTU)
 		burst := burstBytes(tcRate)
 		if _, err := util.Exec(fmt.Sprintf(
 			"tc filter add dev %s parent ffff: protocol ip prio %d u32 match ip src %s/32 police rate %dkbit burst %db drop flowid :1",
@@ -205,12 +212,8 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 // Remove removes all tc rules for a peer identified by its VPN IP.
 // Non-fatal.
 func Remove(ifaceID, peerIP string) {
-	classID := ClassIDFromIP(peerIP)
-	if classID == 0 {
-		return
-	}
 	// Apply with zero rates — cleans up filters and class.
-	Apply(ifaceID, peerIP, 0, 0)
+	Apply(ifaceID, peerIP, 0, 0, 0)
 }
 
 // PeerLimit holds the rate limit info needed for tc restoration.
@@ -221,13 +224,14 @@ type PeerLimit struct {
 }
 
 // RestoreAll re-applies tc rules for a set of peers after an interface restart.
+// ifaceMTU is the actual WireGuard inner MTU (0 = use default 1420).
 // Call this after wg-quick up. Only peers with at least one non-zero rate are processed.
-func RestoreAll(ifaceID string, limits []PeerLimit) {
+func RestoreAll(ifaceID string, limits []PeerLimit, ifaceMTU int) {
 	if len(limits) == 0 {
 		return
 	}
 	EnsureQdisc(ifaceID)
 	for _, l := range limits {
-		Apply(ifaceID, l.IP, l.RateDown, l.RateUp)
+		Apply(ifaceID, l.IP, l.RateDown, l.RateUp, ifaceMTU)
 	}
 }
