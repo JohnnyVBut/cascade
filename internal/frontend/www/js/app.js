@@ -1283,7 +1283,8 @@ new Vue({
     },
 
     async deleteTunnelInterface(iface) {
-      if (!confirm(`Delete interface "${iface.name}"? This will also delete all peers.`)) return;
+      const noun = iface.disableRoutes ? 'peers' : 'clients';
+      if (!confirm(`Delete interface "${iface.name}"? This will also delete all ${noun}.`)) return;
       try {
         await this.api.deleteTunnelInterface({ interfaceId: iface.id });
         if (this.activeInterfaceId === iface.id) {
@@ -2709,7 +2710,7 @@ new Vue({
         this.showPeerEditModal = false;
         this.peerEditForm._peer = null;
         await this._refreshPeersOrAll();
-        this.showToast('Peer updated', 'success');
+        this.showToast(isInterconnect ? 'Peer updated' : 'Client updated', 'success');
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');
       }

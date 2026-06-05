@@ -5319,7 +5319,7 @@
               </div>
 
               <div class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Peer Name</label>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">{{ peerCreate.peerType === 'client' ? 'Client Name' : 'Peer Name' }}</label>
                 <input v-model="peerCreate.name"
                   type="text"
                   placeholder="e.g., Phone, Laptop, Office-A"
@@ -5523,7 +5523,7 @@
               <!-- Name -->
               <div>
                 <label class="block text-sm font-medium mb-1 dark:text-neutral-200">Name</label>
-                <input v-model="peerEditForm.name" type="text" placeholder="Peer name"
+                <input v-model="peerEditForm.name" type="text" :placeholder="peerEditForm._peer && peerEditForm._peer.peerType === 'interconnect' ? 'Peer name' : 'Client name'"
                   class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm"/>
               </div>
 
