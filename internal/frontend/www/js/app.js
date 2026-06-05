@@ -2687,8 +2687,8 @@ new Vue({
         endpoint: peer.endpoint || '',
         allowedIPs: peer.allowedIPs || '',
         clientAllowedIPs: peer.clientAllowedIPs || '',
-        rateDown: peer.rateDown || 0,
-        rateUp: peer.rateUp || 0,
+        rateDown: peer.rateDown ? peer.rateDown / 1000 : 0,
+        rateUp:   peer.rateUp   ? peer.rateUp   / 1000 : 0,
       };
       this.showPeerEditModal = true;
     },
@@ -2713,8 +2713,8 @@ new Vue({
         updates.allowedIPs = this.peerEditForm.allowedIPs;
       } else {
         updates.clientAllowedIPs = this.peerEditForm.clientAllowedIPs;
-        updates.rateDown = Number(this.peerEditForm.rateDown) || 0;
-        updates.rateUp = Number(this.peerEditForm.rateUp) || 0;
+        updates.rateDown = Math.round((Number(this.peerEditForm.rateDown) || 0) * 1000);
+        updates.rateUp   = Math.round((Number(this.peerEditForm.rateUp)   || 0) * 1000);
       }
       try {
         await this.api.updateTunnelInterfacePeer({

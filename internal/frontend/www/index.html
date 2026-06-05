@@ -1257,10 +1257,15 @@
                             style="margin-left:6px;font-size:0.65rem;padding:1px 6px;background:rgba(59,130,246,0.12);color:#2563eb;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;">
                             S2S
                           </span>
-                          <span v-if="peer.peerType !== 'interconnect' && (peer.rateDown > 0 || peer.rateUp > 0) && peerEditNameId !== peer.id"
-                            style="margin-left:6px;font-size:0.65rem;padding:1px 6px;background:rgba(234,88,12,0.1);color:#c2410c;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
-                            :title="'Download: ' + (peer.rateDown > 0 ? formatRate(peer.rateDown) + 'bps' : '∞') + '  Upload: ' + (peer.rateUp > 0 ? formatRate(peer.rateUp) + 'bps' : '∞')">
-                            <span v-if="peer.rateDown > 0">↓{{formatRate(peer.rateDown)}}</span><span v-if="peer.rateDown > 0 && peer.rateUp > 0"> </span><span v-if="peer.rateUp > 0">↑{{formatRate(peer.rateUp)}}</span>
+                          <span v-if="peer.peerType !== 'interconnect' && peer.rateDown > 0 && peerEditNameId !== peer.id"
+                            style="margin-left:6px;font-size:0.65rem;padding:1px 5px;background:rgba(220,38,38,0.1);color:#dc2626;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                            :title="'Download limit: ' + formatRate(peer.rateDown) + 'bit/s'">
+                            ↓{{formatRate(peer.rateDown)}}
+                          </span>
+                          <span v-if="peer.peerType !== 'interconnect' && peer.rateUp > 0 && peerEditNameId !== peer.id"
+                            style="margin-left:4px;font-size:0.65rem;padding:1px 5px;background:rgba(22,163,74,0.1);color:#16a34a;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                            :title="'Upload limit: ' + formatRate(peer.rateUp) + 'bit/s'">
+                            ↑{{formatRate(peer.rateUp)}}
                           </span>
                           <span v-show="peerEditNameId !== peer.id"
                             @click="peerEditName = peer.name; peerEditNameId = peer.id; setTimeout(() => $refs['peer-' + peer.id + '-name'][0].select(), 1);"
@@ -5587,22 +5592,22 @@
               <div v-if="peerEditForm._peer.peerType !== 'interconnect'">
                 <label class="block text-sm font-medium mb-1 dark:text-neutral-200">
                   Bandwidth Limit
-                  <span class="text-gray-400 font-normal">(kbps, 0 = unlimited)</span>
+                  <span class="text-gray-400 font-normal">(Mbit/s, 0 = unlimited)</span>
                 </label>
-                <div style="display:flex; gap:8px; align-items:center;">
+                <div style="display:flex; gap:8px; align-items:flex-end;">
                   <div style="flex:1;">
-                    <label class="block text-xs text-gray-400 dark:text-neutral-500 mb-1">↓ Download</label>
-                    <input v-model.number="peerEditForm.rateDown" type="number" min="0" placeholder="0"
+                    <label class="block text-xs mb-1" style="color:#dc2626;">↓ Download</label>
+                    <input v-model.number="peerEditForm.rateDown" type="number" min="0" step="0.1" placeholder="0"
                       class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm"/>
                   </div>
                   <div style="flex:1;">
-                    <label class="block text-xs text-gray-400 dark:text-neutral-500 mb-1">↑ Upload</label>
-                    <input v-model.number="peerEditForm.rateUp" type="number" min="0" placeholder="0"
+                    <label class="block text-xs mb-1" style="color:#16a34a;">↑ Upload</label>
+                    <input v-model.number="peerEditForm.rateUp" type="number" min="0" step="0.1" placeholder="0"
                       class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm"/>
                   </div>
                 </div>
                 <p class="text-xs text-gray-400 dark:text-neutral-500" style="margin-top:4px;">
-                  Examples: 10000 = 10 Mbit/s, 1000 = 1 Mbit/s, 512 = 512 Kbit/s. Applied via tc on the server.
+                  Examples: 10 = 10 Mbit/s, 0.5 = 500 Kbit/s. WireGuard overhead compensated automatically.
                 </p>
               </div>
 

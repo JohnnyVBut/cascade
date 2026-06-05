@@ -54,7 +54,24 @@ func ClassIDFromIP(ipCIDR string) int {
 	return classID
 }
 
-// burstBytes calculates an appropriate tc burst size for a given rate in kbps.
+// Standard WireGuard MTU values used for overhead compensation.
+// tc counts outer (encrypted) packet bytes; the user-visible throughput is
+// based on inner (payload) bytes. To achieve targetKbps of useful throughput,
+// the tc rate must be set higher by the ratio outerMTU/wgMTU.
+const (
+	outerMTU = 1500 // standard Ethernet MTU
+	wgMTU    = 1420 // default WireGuard inner MTU (1500 - 80 bytes overhead)
+)
+
+// tcKbps converts a user-specified kbps target into the tc rate needed to
+// achieve that throughput at the application level, compensating for
+// WireGuard packet overhead.
+//   targetKbps=10000 → tc rate ≈ 10563 kbps → user sees ~10.0 Mbit/s
+func tcKbps(targetKbps int) int {
+	return targetKbps * outerMTU / wgMTU
+}
+
+// burstBytes calculates an appropriate tc burst size for a given tc rate in kbps.
 // burst ≈ 100 ms worth of data, minimum 1500 bytes (one Ethernet frame).
 func burstBytes(kbps int) int {
 	// 100 ms of data at kbps: kbps * 1000 bits/s * 0.1 s / 8 bits/byte = kbps * 12.5
@@ -143,14 +160,16 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 
 	// Step 2: egress / download limit.
 	if rateDown > 0 {
-		burst := burstBytes(rateDown)
+		// Compensate for WireGuard overhead so the user-visible speed matches the target.
+		tcRate := tcKbps(rateDown)
+		burst := burstBytes(tcRate)
 		// Use "change" to update an existing class, fall back to "add" for new peers.
 		// This is atomic and avoids "File exists" when the previous class delete failed.
 		classCmd := fmt.Sprintf(
 			"tc class change dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db 2>/dev/null || "+
 				"tc class add dev %s parent 1: classid 1:%d htb rate %dkbit ceil %dkbit burst %db",
-			ifaceID, classID, rateDown, rateDown, burst,
-			ifaceID, classID, rateDown, rateDown, burst,
+			ifaceID, classID, tcRate, tcRate, burst,
+			ifaceID, classID, tcRate, tcRate, burst,
 		)
 		if _, err := util.Exec(classCmd, tcTimeout, false); err != nil {
 			log.Printf("tc: set class 1:%d on %s: %v", classID, ifaceID, err)
@@ -172,10 +191,11 @@ func Apply(ifaceID, peerIP string, rateDown, rateUp int) {
 
 	// Step 3: ingress / upload limit (police filter).
 	if rateUp > 0 {
-		burst := burstBytes(rateUp)
+		tcRate := tcKbps(rateUp)
+		burst := burstBytes(tcRate)
 		if _, err := util.Exec(fmt.Sprintf(
 			"tc filter add dev %s parent ffff: protocol ip prio %d u32 match ip src %s/32 police rate %dkbit burst %db drop flowid :1",
-			ifaceID, classID, host, rateUp, burst,
+			ifaceID, classID, host, tcRate, burst,
 		), tcTimeout, false); err != nil {
 			log.Printf("tc: add ingress filter for %s on %s: %v", host, ifaceID, err)
 		}
