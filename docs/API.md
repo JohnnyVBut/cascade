@@ -168,7 +168,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `POST` | `/peers` | Создать пира. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Ответ содержит `totalRx`/`totalTx` (lifetime-счётчики трафика из SQLite) |
 | `POST` | `/peers/import-json` | Создать interconnect-пира из экспортированного JSON |
 | `GET` | `/peers/:peerId` | Получить пира |
-| `PATCH` | `/peers/:peerId` | Обновить поля пира |
+| `PATCH` | `/peers/:peerId` | Обновить поля пира. Принимает: `name?, endpoint?, allowedIPs?, clientAllowedIPs?, persistentKeepalive?, enabled?, expiredAt?, oneTimeLink?, rateDown?, rateUp?`. Поля `rateDown`/`rateUp` — ограничение скорости в **кбит/с** (0 = без ограничений), применяется через `tc HTB + police` на сервере; в UI вводится в **Мбит/с** и конвертируется автоматически |
 | `DELETE` | `/peers/:peerId` | Удалить пира |
 | `GET` | `/peers/:peerId/config` | Скачать WireGuard config файл |
 | `GET` | `/peers/:peerId/qrcode.svg` | QR-код SVG (только client-пиры) |

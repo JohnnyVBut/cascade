@@ -32,7 +32,7 @@
 | Module | Description |
 |--------|-------------|
 | 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click, import `.conf` as uplink |
-| 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes and lifetime traffic stats |
+| 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes, lifetime traffic stats and per-client bandwidth limiting |
 | 🌐 **Routing** | Static routes, policy-based routing (PBR), kernel route inspection |
 | 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support + Port Forwarding (DNAT) with per-interface scoping |
 | 🛡️ **Firewall** | Filter rules (ACCEPT / DROP / REJECT) + PBR via gateway |

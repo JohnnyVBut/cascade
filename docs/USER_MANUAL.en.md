@@ -190,6 +190,24 @@ Click the pencil icon on the peer card. A modal opens with the following fields:
 - **Name** — change the display name
 - **Client Allowed IPs** — change routes pushed to the client
 - **Persistent Keepalive** — change the keepalive interval
+- **Bandwidth Limit** — per-client speed limit (see below)
+
+### Bandwidth Limiting
+
+Allows you to independently limit the data transfer speed for each client.
+
+| Field | Description |
+|-------|-------------|
+| **↓ Download** | Maximum download speed for the client (server → client), Mbit/s |
+| **↑ Upload** | Maximum upload speed from the client (client → server), Mbit/s |
+
+**Example values:** `10` = 10 Mbit/s, `0.5` = 500 Kbit/s, `0` = unlimited.
+
+Limiting is implemented via Linux `tc` (`HTB` for egress and `police` for ingress) and takes effect immediately — no interface restart required. WireGuard overhead (~5%) is compensated automatically: specifying 10 Mbit/s gives the client exactly 10 Mbit/s on a speed test.
+
+When a limit is set, colored badges appear on the peer card:
+- 🔴 `↓10M` — download limit
+- 🟢 `↑5M` — upload limit
 
 ### Enabling / Disabling a Peer
 
