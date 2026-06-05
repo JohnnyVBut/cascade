@@ -206,6 +206,14 @@ func updatePeer(c *fiber.Ctx) error {
 	if v, ok := raw["oneTimeLink"].(string); ok {
 		upd.OneTimeLink = &v
 	}
+	if v, ok := raw["rateDown"].(float64); ok {
+		n := int(v)
+		upd.RateDown = &n
+	}
+	if v, ok := raw["rateUp"].(float64); ok {
+		n := int(v)
+		upd.RateUp = &n
+	}
 
 	p, err := mgr().UpdatePeer(ifaceID, peerID, upd)
 	if err != nil {

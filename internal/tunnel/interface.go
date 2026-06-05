@@ -32,6 +32,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/tc"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
@@ -518,12 +519,29 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 			}
 		}
 	}
+
+	// Apply/remove tc bandwidth limits when rate fields change.
+	if t.Enabled && updated.PeerType == "client" &&
+		(upd.RateDown != nil || upd.RateUp != nil) {
+		if updated.RateDown > 0 || updated.RateUp > 0 {
+			tc.EnsureQdisc(t.ID)
+			tc.Apply(t.ID, updated.AllowedIPs, updated.RateDown, updated.RateUp)
+		} else {
+			tc.Remove(t.ID, updated.AllowedIPs)
+		}
+	}
+
 	return updated, nil
 }
 
 // RemovePeer deletes the peer from SQLite, removes it from the cache,
 // regenerates config, and removes it from the running kernel.
 func (t *TunnelInterface) RemovePeer(peerID string) error {
+	// Capture peer data before deletion (needed for tc cleanup).
+	t.peersMu.RLock()
+	removed := t.peers[peerID]
+	t.peersMu.RUnlock()
+
 	if err := peer.DeletePeer(peerID); err != nil {
 		return err
 	}
@@ -541,6 +559,10 @@ func (t *TunnelInterface) RemovePeer(peerID string) error {
 	}
 	if t.Enabled {
 		t.KernelRemovePeer(peerID)
+		// Remove tc rules for the deleted peer (client peers only).
+		if removed != nil && removed.PeerType == "client" {
+			tc.Remove(t.ID, removed.AllowedIPs)
+		}
 	}
 	return nil
 }
@@ -615,7 +637,36 @@ func (t *TunnelInterface) Start() error {
 	}
 
 	t.Enabled = true
-	return t.save()
+	if err := t.save(); err != nil {
+		return err
+	}
+
+	// Restore per-client bandwidth limits after interface comes up.
+	go t.restoreTCLimits()
+
+	return nil
+}
+
+// restoreTCLimits rebuilds tc rules for all client peers with rate limits.
+// Called asynchronously after Start() so it doesn't block the interface startup.
+func (t *TunnelInterface) restoreTCLimits() {
+	t.peersMu.RLock()
+	var limits []tc.PeerLimit
+	for _, p := range t.peers {
+		if p.PeerType != "client" {
+			continue
+		}
+		if p.RateDown <= 0 && p.RateUp <= 0 {
+			continue
+		}
+		limits = append(limits, tc.PeerLimit{
+			IP:       p.AllowedIPs,
+			RateDown: p.RateDown,
+			RateUp:   p.RateUp,
+		})
+	}
+	t.peersMu.RUnlock()
+	tc.RestoreAll(t.ID, limits)
 }
 
 // Stop brings down the interface and ignores benign errors (FIX-3):

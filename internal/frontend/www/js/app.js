@@ -237,6 +237,8 @@ new Vue({
       endpoint: '',         // interconnect only
       allowedIPs: '',       // interconnect only (editable)
       clientAllowedIPs: '', // client only
+      rateDown: 0,          // kbps, 0 = unlimited
+      rateUp: 0,            // kbps, 0 = unlimited
     },
     // Settings
     globalSettings: {
@@ -2685,8 +2687,17 @@ new Vue({
         endpoint: peer.endpoint || '',
         allowedIPs: peer.allowedIPs || '',
         clientAllowedIPs: peer.clientAllowedIPs || '',
+        rateDown: peer.rateDown || 0,
+        rateUp: peer.rateUp || 0,
       };
       this.showPeerEditModal = true;
+    },
+
+    // Format kbps rate for display. 0 = unlimited.
+    formatRate(kbps) {
+      if (!kbps || kbps <= 0) return '';
+      if (kbps >= 1000) return (kbps / 1000).toFixed(kbps % 1000 === 0 ? 0 : 1) + 'M';
+      return kbps + 'K';
     },
 
     async savePeerEdit() {
@@ -2702,6 +2713,8 @@ new Vue({
         updates.allowedIPs = this.peerEditForm.allowedIPs;
       } else {
         updates.clientAllowedIPs = this.peerEditForm.clientAllowedIPs;
+        updates.rateDown = Number(this.peerEditForm.rateDown) || 0;
+        updates.rateUp = Number(this.peerEditForm.rateUp) || 0;
       }
       try {
         await this.api.updateTunnelInterfacePeer({

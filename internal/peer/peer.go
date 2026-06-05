@@ -57,6 +57,11 @@ type Peer struct {
 	ExpiredAt           string `json:"expiredAt"`   // "" = no expiry
 	OneTimeLink         string `json:"oneTimeLink"` // "" = no one-time link
 
+	// Bandwidth limits (kbps). 0 = unlimited.
+	// Applied via tc HTB (egress/download) + tc police (ingress/upload).
+	RateDown int `json:"rateDown"`
+	RateUp   int `json:"rateUp"`
+
 	// Computed from PrivateKey (not stored separately)
 	DownloadableConfig bool `json:"downloadableConfig"`
 
@@ -104,6 +109,8 @@ type PeerUpdate struct {
 	Enabled             *bool   `json:"enabled"`
 	ExpiredAt           *string `json:"expiredAt"`
 	OneTimeLink         *string `json:"oneTimeLink"`
+	RateDown            *int    `json:"rateDown"`
+	RateUp              *int    `json:"rateUp"`
 }
 
 // InterfaceData carries the interface fields needed for config/QR generation.
@@ -151,7 +158,7 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
-		       total_rx, total_tx
+		       total_rx, total_tx, rate_down, rate_up
 		FROM peers
 		WHERE interface_id = ?
 		ORDER BY created_at
@@ -179,7 +186,7 @@ func GetPeer(id string) (*Peer, error) {
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
-		       total_rx, total_tx
+		       total_rx, total_tx, rate_down, rate_up
 		FROM peers WHERE id = ?
 	`, id)
 	p, err := scanPeerRow(row)
@@ -262,6 +269,18 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 	}
 	if upd.OneTimeLink != nil {
 		p.OneTimeLink = *upd.OneTimeLink
+	}
+	if upd.RateDown != nil {
+		if *upd.RateDown < 0 {
+			*upd.RateDown = 0
+		}
+		p.RateDown = *upd.RateDown
+	}
+	if upd.RateUp != nil {
+		if *upd.RateUp < 0 {
+			*upd.RateUp = 0
+		}
+		p.RateUp = *upd.RateUp
 	}
 	p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -637,6 +656,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 		&p.PeerType, &p.PersistentKeepalive, &enabled,
 		&p.CreatedAt, &p.UpdatedAt, &p.ExpiredAt, &p.OneTimeLink,
 		&p.TotalRx, &p.TotalTx,
+		&p.RateDown, &p.RateUp,
 	)
 	if err != nil {
 		return nil, err
@@ -664,13 +684,15 @@ func insertPeer(p Peer) error {
 		    (id, interface_id, name, public_key, private_key, preshared_key,
 		     endpoint, allowed_ips, address, client_allowed_ips,
 		     peer_type, persistent_keepalive, enabled,
-		     created_at, updated_at, expired_at, one_time_link)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     created_at, updated_at, expired_at, one_time_link,
+		     rate_down, rate_up)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		p.ID, p.InterfaceID, p.Name, p.PublicKey, p.PrivateKey, p.PresharedKey,
 		p.Endpoint, p.AllowedIPs, p.Address, p.ClientAllowedIPs,
 		p.PeerType, p.PersistentKeepalive, boolInt(p.Enabled),
 		p.CreatedAt, p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
+		p.RateDown, p.RateUp,
 	)
 	return err
 }
@@ -680,12 +702,14 @@ func updatePeer(p Peer) error {
 		UPDATE peers
 		SET name = ?, endpoint = ?, allowed_ips = ?, address = ?,
 		    client_allowed_ips = ?, persistent_keepalive = ?,
-		    enabled = ?, updated_at = ?, expired_at = ?, one_time_link = ?
+		    enabled = ?, updated_at = ?, expired_at = ?, one_time_link = ?,
+		    rate_down = ?, rate_up = ?
 		WHERE id = ?
 	`,
 		p.Name, p.Endpoint, p.AllowedIPs, p.Address,
 		p.ClientAllowedIPs, p.PersistentKeepalive,
 		boolInt(p.Enabled), p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
+		p.RateDown, p.RateUp,
 		p.ID,
 	)
 	return err

@@ -457,6 +457,15 @@ ALTER TABLE interfaces ADD COLUMN public_host TEXT NOT NULL DEFAULT '';
 ALTER TABLE interfaces ADD COLUMN mtu INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 18,
+		sql: `
+-- Per-client bandwidth limits (kbps). 0 = unlimited.
+-- Applied via Linux tc HTB (egress) + tc police (ingress) on the WireGuard interface.
+ALTER TABLE peers ADD COLUMN rate_down INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE peers ADD COLUMN rate_up   INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
