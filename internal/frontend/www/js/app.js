@@ -1374,7 +1374,7 @@ new Vue({
 
       // Validation
       if (!name || name.trim() === '') {
-        this.showToast('Please enter a peer name', 'error');
+        this.showToast('Please enter a name', 'error');
         return;
       }
       if (mode === 'manual' && !publicKey) {
@@ -1419,7 +1419,7 @@ new Vue({
         if (mode === 'generate' && peerType === 'client' && peerId) {
           this.qrcode = `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
         } else {
-          this.showToast('Peer created!');
+          this.showToast(peerType === 'client' ? 'Client created!' : 'Peer created!');
         }
       } catch (err) {
         console.error('Failed to create peer:', err);
@@ -1428,7 +1428,8 @@ new Vue({
     },
 
     async deletePeer(peer) {
-      if (!confirm(`Delete peer "${peer.name}"?`)) return;
+      const label = peer.peerType === 'interconnect' ? 'peer' : 'client';
+      if (!confirm(`Delete ${label} "${peer.name}"?`)) return;
       try {
         await this.api.deleteTunnelInterfacePeer({
           interfaceId: this.selectedInterface.id,
@@ -1436,7 +1437,7 @@ new Vue({
         });
         await this.loadInterfacePeers(this.selectedInterface.id);
         await this.loadTunnelInterfaces();
-        this.showToast('Peer deleted!');
+        this.showToast(peer.peerType === 'interconnect' ? 'Peer deleted!' : 'Client deleted!');
       } catch (err) {
         console.error('Delete failed:', err);
         this.showToast(`Failed: ${err.message}`, 'error');
@@ -2658,6 +2659,7 @@ new Vue({
 
     async confirmDeletePeer() {
       if (!this.peerDelete) return;
+      const label = this.peerDelete.peerType === 'interconnect' ? 'Peer' : 'Client';
       try {
         await this.api.deleteTunnelInterfacePeer({
           interfaceId: this._peerIfaceId(this.peerDelete),
@@ -2666,6 +2668,7 @@ new Vue({
         this.peerDelete = null;
         await this._refreshPeersOrAll();
         await this.loadTunnelInterfaces();
+        this.showToast(`${label} deleted!`);
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');
       }
