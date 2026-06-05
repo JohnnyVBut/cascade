@@ -221,7 +221,8 @@ new Vue({
 
     // Peer management (inline editing, admin-tunnel style)
     peersPersist: {},
-    peerDelete: null, // peer for delete confirmation modal
+    peerDelete: null,      // peer for delete confirmation modal
+    interfaceDelete: null, // interface for delete confirmation modal
     peerEditNameId: null,
     peerEditName: null,
     peerEditAddressId: null,
@@ -633,10 +634,12 @@ new Vue({
     // ========================================================================
     // Toast notifications
     // ========================================================================
-    showToast(message, type = 'success', duration = 7000) {
+    showToast(message, type = 'success', duration) {
       const id = Date.now() + Math.random();
+      // Errors persist until manually dismissed; success/info auto-dismiss after 5s
+      const ms = duration !== undefined ? duration : (type === 'error' ? 0 : 5000);
       this.toasts.push({ id, message, type });
-      setTimeout(() => this.dismissToast(id), duration);
+      if (ms > 0) setTimeout(() => this.dismissToast(id), ms);
     },
     dismissToast(id) {
       const idx = this.toasts.findIndex(t => t.id === id);
@@ -1287,8 +1290,13 @@ new Vue({
     },
 
     async deleteTunnelInterface(iface) {
-      const noun = iface.disableRoutes ? 'peers' : 'clients';
-      if (!confirm(`Delete interface "${iface.name}"? This will also delete all ${noun}.`)) return;
+      this.interfaceDelete = iface;
+    },
+
+    async confirmDeleteInterface() {
+      const iface = this.interfaceDelete;
+      if (!iface) return;
+      this.interfaceDelete = null;
       try {
         await this.api.deleteTunnelInterface({ interfaceId: iface.id });
         if (this.activeInterfaceId === iface.id) {
