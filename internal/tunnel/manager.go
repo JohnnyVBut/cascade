@@ -388,8 +388,12 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 	}
 
 	// Override the auto-generated key pair with the one from the .conf file.
+	// Also preserve MTU if specified in the imported config.
 	iface.PrivateKey = parsed.PrivateKey
 	iface.PublicKey = keys
+	if parsed.MTU > 0 {
+		iface.MTU = parsed.MTU
+	}
 	if err := iface.save(); err != nil {
 		return nil, fmt.Errorf("save interface keys: %w", err)
 	}

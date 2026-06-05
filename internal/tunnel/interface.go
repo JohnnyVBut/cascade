@@ -826,6 +826,10 @@ func (t *TunnelInterface) generateWgConfig() string {
 		sb.WriteString("Table = off\n")
 	}
 
+	if t.MTU > 0 {
+		sb.WriteString(fmt.Sprintf("MTU = %d\n", t.MTU))
+	}
+
 	if t.Address != "" {
 		sb.WriteString(fmt.Sprintf("Address = %s\n", t.Address))
 

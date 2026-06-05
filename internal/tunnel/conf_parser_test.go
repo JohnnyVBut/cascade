@@ -277,3 +277,33 @@ func TestSubnetsOverlap(t *testing.T) {
 		}
 	}
 }
+
+func TestParseWGConf_MTUParsed(t *testing.T) {
+	conf := `[Interface]
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Address = 10.8.0.5/24
+MTU = 1380
+
+[Peer]
+PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+Endpoint = vpn.example.com:51820
+AllowedIPs = 0.0.0.0/0
+`
+	c, err := ParseWGConf(conf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.MTU != 1380 {
+		t.Errorf("MTU = %d, want 1380", c.MTU)
+	}
+}
+
+func TestParseWGConf_MTUAbsent(t *testing.T) {
+	c, err := ParseWGConf(validConf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.MTU != 0 {
+		t.Errorf("MTU = %d, want 0 (absent)", c.MTU)
+	}
+}

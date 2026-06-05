@@ -702,3 +702,23 @@ func TestTrafficAccumulation_FlushOnlyDirty(t *testing.T) {
 		t.Error("after zero-delta tick: dirty was incorrectly cleared")
 	}
 }
+
+func TestGenerateWgConfig_MTUWritten(t *testing.T) {
+	iface := newTestIface()
+	iface.MTU = 1380
+	cfg := iface.generateWgConfig()
+
+	if !strings.Contains(cfg, "MTU = 1380") {
+		t.Errorf("config must include 'MTU = 1380' when MTU=1380, got:\n%s", cfg)
+	}
+}
+
+func TestGenerateWgConfig_MTUZeroOmitted(t *testing.T) {
+	iface := newTestIface()
+	iface.MTU = 0
+	cfg := iface.generateWgConfig()
+
+	if strings.Contains(cfg, "MTU =") {
+		t.Error("config must NOT include MTU line when MTU=0")
+	}
+}

@@ -32,6 +32,7 @@ type ParsedConf struct {
 	// From [Interface]
 	PrivateKey string
 	Address    string // raw value, e.g. "10.8.0.5/24"
+	MTU        int    // 0 = not specified
 	Protocol   string // "wireguard-1.0" or "amneziawg-2.0"
 	AWG2       *peer.AWG2Settings
 
@@ -93,6 +94,10 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 				c.PrivateKey = val
 			case "address":
 				c.Address = val
+			case "mtu":
+				if n, err := strconv.Atoi(val); err == nil && n > 0 {
+					c.MTU = n
+				}
 			// AWG2 params — presence of any one of these marks protocol as amneziawg-2.0.
 			case "jc":
 				if n, err := strconv.Atoi(val); err == nil {
