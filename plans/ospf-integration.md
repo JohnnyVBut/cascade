@@ -15,8 +15,8 @@
 | `internal/routing/manager.go` | Static route CRUD + kernel route reading (text-only, FIX-11) |
 | `internal/api/routing.go` | REST handlers for `/api/routing/*` |
 | `internal/frontend/www/index.html` | Routing page with 3 tabs: Status / Static / OSPF. OSPF tab is `<div v-if="activeRoutingTab === 'ospf'" ...>Coming soon</div>` |
-| `Dockerfile.go` | Alpine-based, `amneziavpn/amneziawg-go:latest` as runtime base |
-| `docker-compose.go.yml` | `cap_add: [NET_ADMIN, SYS_MODULE]`, `network_mode: host` |
+| `Dockerfile` | Alpine-based, `amneziavpn/amneziawg-go:latest` as runtime base |
+| `docker-compose.yml` | `cap_add: [NET_ADMIN, SYS_MODULE]`, `network_mode: host` |
 | `internal/gateway/monitor.go` | Goroutine-per-target polling pattern with `ticker` + `stopCh` channel |
 | `internal/util/exec.go` | `Exec(cmd, timeout, log)` — bash subprocess runner, non-Linux no-op, timeout=30s default |
 | DB migrations | v12 is current; new table requires v13 migration |
@@ -185,8 +185,8 @@ GET /api/ospf/routes     — { routes: [...] }
 | `internal/api/ospf.go` | CREATE | `RegisterOspf()` — 3 GET handlers |
 | `cmd/awg-easy/main.go` | MODIFY | Add `api.RegisterOspf(apiGroup)` call |
 | `internal/frontend/www/index.html` | MODIFY | Replace OSPF placeholder with status tables (~100 lines) |
-| `Dockerfile.go` | MODIFY | Add `bird2` to `apk add` |
-| `docker-compose.go.yml` | MODIFY | Add `NET_RAW` to `cap_add` |
+| `Dockerfile` | MODIFY | Add `bird2` to `apk add` |
+| `docker-compose.yml` | MODIFY | Add `NET_RAW` to `cap_add` |
 
 **Total MVP: 2 new files, 4 modified.**
 
@@ -202,8 +202,8 @@ GET /api/ospf/routes     — { routes: [...] }
 | `internal/db/db.go` | MODIFY | Migration v13: ospf_config table |
 | `cmd/awg-easy/main.go` | MODIFY | OspfManager init after tunnel.Init() + graceful shutdown |
 | `internal/frontend/www/index.html` | MODIFY | OSPF config form + status tables (~500 lines) |
-| `Dockerfile.go` | MODIFY | Add `bird2` to apk |
-| `docker-compose.go.yml` | MODIFY | Add `NET_RAW` cap |
+| `Dockerfile` | MODIFY | Add `bird2` to apk |
+| `docker-compose.yml` | MODIFY | Add `NET_RAW` cap |
 
 **Total full: 5 new files, 5 modified.**
 
@@ -249,7 +249,7 @@ GET /api/ospf/routes     — { routes: [...] }
 
 ### Challenge 1: NET_RAW capability (BREAKING CHANGE risk)
 
-OSPF uses raw IP sockets to send/receive multicast (224.0.0.5 AllSPFRouters, 224.0.0.6 AllDRouters). Bird requires `CAP_NET_RAW` to open these sockets. `NET_RAW` is NOT currently in `docker-compose.go.yml`.
+OSPF uses raw IP sockets to send/receive multicast (224.0.0.5 AllSPFRouters, 224.0.0.6 AllDRouters). Bird requires `CAP_NET_RAW` to open these sockets. `NET_RAW` is NOT currently in `docker-compose.yml`.
 
 Adding `NET_RAW` requires updating the compose file and re-deploying. This is a one-line change but it IS a breaking change for users who run without it — `bird` will fail with `Operation not permitted` on startup.
 
@@ -363,7 +363,7 @@ Per CLAUDE.md Rule 0: if these endpoints are added, both `docs/API.md` and `docs
 | New capabilities | `NET_RAW` | `NET_RAW` |
 | Daemon | bird2 (unmanaged) | bird2 (managed by Go) |
 | Config generation | No | Yes (bird.conf DSL) |
-| Breaking change | `docker-compose.go.yml` cap | Same |
+| Breaking change | `docker-compose.yml` cap | Same |
 | Highest risk | birdc parser robustness | bird.conf generation correctness |
 | Prerequisite | bird2 apk + NET_RAW cap | Same + BIRD config DSL knowledge |
 

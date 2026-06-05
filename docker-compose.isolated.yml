@@ -19,7 +19,7 @@
 #      container's network namespace. iptables, ip route, ip rule all operate
 #      on the container's netns — fully isolated from the host.
 #
-# Differences from docker-compose.go.yml (host mode):
+# Differences from docker-compose.yml (host mode):
 #   - network_mode: none  instead of  network_mode: host
 #   - No ports: section  (real IP provided by OVS; no NAT/port-mapping)
 #   - WAIT_FOR_NETWORK: 1  (entrypoint waits for OVS to attach the interface)
@@ -31,7 +31,7 @@ services:
   cascade:
     build:
       context: .
-      dockerfile: Dockerfile.go
+      dockerfile: Dockerfile
     container_name: cascade
     hostname: cascade
     restart: unless-stopped

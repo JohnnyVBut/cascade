@@ -100,17 +100,17 @@ The Docker image is built by GitHub Actions on every merge to `master` and publi
 to GitHub Container Registry. No local build required:
 
 ```bash
-docker compose -f docker-compose.go.yml pull
+docker compose -f docker-compose.yml pull
 ```
 
-> **Local development only:** to use a locally-built image, run `./build-go.sh`
+> **Local development only:** to use a locally-built image, run `./build.sh`
 > and add `-f docker-compose.override.yml` to your compose commands.
 
 ---
 
 ## Step 7 — Configure Cascade
 
-Edit `docker-compose.go.yml`. The key variables:
+Edit `docker-compose.yml`. The key variables:
 
 ```yaml
 environment:
@@ -135,7 +135,7 @@ docker run --rm -it ghcr.io/johnnybut/cascade:latest /app/cascade hash
 ## Step 8 — Start Cascade
 
 ```bash
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml up -d
 ```
 
 Verify it is healthy and listening on localhost:
@@ -248,7 +248,7 @@ Edit `.env`:
 # Secret path prefix for the admin UI — choose something random, no slashes
 ADMIN_PATH=your_random_secret_here
 
-# Cascade port (must match PORT in docker-compose.go.yml)
+# Cascade port (must match PORT in docker-compose.yml)
 CASCADE_PORT=8888
 ```
 
@@ -311,7 +311,7 @@ data/
   /etc/amnezia/amneziawg/wg10.conf   ← generated WireGuard configs (inside container)
 ```
 
-The data directory is mounted into the container via `docker-compose.go.yml`.
+The data directory is mounted into the container via `docker-compose.yml`.
 
 ---
 
@@ -320,8 +320,8 @@ The data directory is mounted into the container via `docker-compose.go.yml`.
 ```bash
 cd ~/cascade
 git pull origin master
-docker compose -f docker-compose.go.yml pull
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
 ```
 
 The image is pre-built by CI — `docker compose pull` fetches the latest version

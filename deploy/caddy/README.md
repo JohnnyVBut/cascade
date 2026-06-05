@@ -45,7 +45,7 @@ ffmpeg -f lavfi -i color=c=black:s=1280x720:r=25 \
 
 ### 4. Ensure Cascade binds to 127.0.0.1 only
 
-Set `BIND_ADDR=127.0.0.1` in `docker-compose.go.yml` (already the default).
+Set `BIND_ADDR=127.0.0.1` in `docker-compose.yml` (already the default).
 This prevents Cascade from being reachable directly from the internet — all traffic
 must go through Caddy's hidden `ADMIN_PATH`.
 

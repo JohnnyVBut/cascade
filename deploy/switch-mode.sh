@@ -10,7 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
-COMPOSE_FILE="$REPO_DIR/docker-compose.go.yml"
+COMPOSE_FILE="$REPO_DIR/docker-compose.yml"
 
 G='\033[0;32m'; Y='\033[1;33m'; R='\033[0;31m'; B='\033[0;34m'; N='\033[0m'
 ok()   { echo -e "  ${G}✓${N} $*"; }
@@ -141,7 +141,7 @@ if $COMPOSE_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | grep -q .; then
   fi
 else
   info "Container is not running — start with:"
-  echo "  $COMPOSE_CMD -f docker-compose.go.yml up -d"
+  echo "  $COMPOSE_CMD -f docker-compose.yml up -d"
 fi
 
 echo ""

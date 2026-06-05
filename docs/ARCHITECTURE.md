@@ -125,8 +125,8 @@ cascade/
 │   └── switch-mode.sh           ← переключение режимов (host/bridge/isolated)
 ├── cmd/
 │   └── awg-easy/main.go
-├── Dockerfile.go                ← multi-stage: builder (Go 1.23) + runtime (amneziawg-go)
-├── docker-compose.go.yml        ← production docker-compose
+├── Dockerfile                ← multi-stage: builder (Go 1.23) + runtime (amneziawg-go)
+├── docker-compose.yml        ← production docker-compose
 ├── go.mod                       ← module github.com/JohnnyVBut/cascade, Go 1.23
 └── go.sum
 ```
@@ -1912,8 +1912,8 @@ feat/fix/refactor(компонент): краткое описание
 
 ```bash
 git pull origin master
-./build-go.sh
-docker compose -f docker-compose.go.yml down && docker compose -f docker-compose.go.yml up -d
+./build.sh
+docker compose -f docker-compose.yml down && docker compose -f docker-compose.yml up -d
 ```
 
 ### Никогда не изменять
@@ -1928,7 +1928,7 @@ docker compose -f docker-compose.go.yml down && docker compose -f docker-compose
 ### Docker режим (текущий: host network)
 
 ```yaml
-# docker-compose.go.yml
+# docker-compose.yml
 services:
   cascade:
     image: ghcr.io/johnnyvbut/cascade:latest
@@ -1985,8 +1985,8 @@ Stage 2 (runtime): amneziavpn/amneziawg-go:latest
 
 # Обновление
 git pull origin master
-docker compose -f docker-compose.go.yml pull   # или ./build-go.sh для локальной сборки
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml pull   # или ./build.sh для локальной сборки
+docker compose -f docker-compose.yml up -d
 
 # Caddy (TLS reverse proxy)
 cd deploy/caddy

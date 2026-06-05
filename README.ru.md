@@ -113,8 +113,8 @@ sudo bash deploy/switch-mode.sh --kernel      # → kernel-модуль (быс�
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
 cd cascade
-docker compose -f docker-compose.go.yml pull
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
 # UI доступен на http://127.0.0.1:8888/
 ```
 
@@ -223,8 +223,8 @@ Admin URL: https://ВАШ_IP/<секретный-путь>/
 
 ```bash
 git pull origin master
-docker compose -f docker-compose.go.yml pull
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
 ```
 
 ### Полный стек (Caddy + setup.sh)

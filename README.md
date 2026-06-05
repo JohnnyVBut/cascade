@@ -112,8 +112,8 @@ You are responsible for network security, authentication and access control.
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
 cd cascade
-docker compose -f docker-compose.go.yml pull
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
 # UI available at http://127.0.0.1:8888/
 ```
 
@@ -222,8 +222,8 @@ Full threat model: [docs/SECURITY.md](docs/SECURITY.md)
 
 ```bash
 git pull origin master
-docker compose -f docker-compose.go.yml pull
-docker compose -f docker-compose.go.yml up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml up -d
 ```
 
 ### Full stack (Caddy + setup.sh)

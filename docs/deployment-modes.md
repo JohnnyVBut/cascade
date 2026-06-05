@@ -17,7 +17,7 @@ Cascade поддерживает три режима сетевого развё
 - Самый простой в деплое
 - **Подходит:** VPS, выделенный сервер
 
-Compose-файл: `docker-compose.go.yml`
+Compose-файл: `docker-compose.yml`
 
 ### 2. Bridge (`network_mode: bridge` / стандартная сеть Docker)
 
@@ -69,7 +69,7 @@ Compose-файл: `docker-compose.isolated.yml`
 При деплое пользователь выбирает режим. Скрипт:
 
 1. Спрашивает режим: `host` / `bridge` / `isolated`
-2. **Host**: запускает `docker-compose.go.yml`
+2. **Host**: запускает `docker-compose.yml`
 3. **Bridge**: спрашивает диапазон портов → генерирует compose → запускает
 4. **Isolated**: спрашивает OVS bridge, IP, gateway, VLAN → запускает контейнер → выполняет `attach.sh`
 
@@ -79,7 +79,7 @@ Compose-файл: `docker-compose.isolated.yml`
 
 | Режим     | Compose файл                                                          | Статус                                        |
 |-----------|-----------------------------------------------------------------------|-----------------------------------------------|
-| Host      | `docker-compose.go.yml`                                               | готов, в production                           |
+| Host      | `docker-compose.yml`                                               | готов, в production                           |
 | Bridge    | `deploy/docker-compose.bridge.yml.example` → генерируется setup.sh   | ✅ реализован                                  |
 | Isolated  | `docker-compose.isolated.yml` + `deploy/ovs/attach.sh`               | ✅ реализован, протестирован                   |
 

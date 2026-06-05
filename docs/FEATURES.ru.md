@@ -269,7 +269,7 @@ Cascade — это самостоятельно размещаемая плат�
 - Корректное завершение по SIGTERM / SIGINT
 
 ### Деплой
-- `docker compose -f docker-compose.go.yml up -d`
+- `docker compose -f docker-compose.yml up -d`
 - `BIND_ADDR=127.0.0.1` для деплоя за обратным прокси
 - Директория данных монтируется в `/etc/wireguard/data` — переживает пересоздание контейнера
 - **Сетевые режимы:** `host` (по умолчанию, общий netns хоста) или `bridge` (публикация Docker-портов через `docker-compose.bridge.yml`)

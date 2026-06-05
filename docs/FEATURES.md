@@ -260,7 +260,7 @@ See [API.en.md](API.en.md) for the full endpoint reference.
 - Graceful shutdown on SIGTERM / SIGINT
 
 ### Deployment
-- `docker compose -f docker-compose.go.yml up -d`
+- `docker compose -f docker-compose.yml up -d`
 - `BIND_ADDR=127.0.0.1` for reverse proxy deployments
 - Data directory mounted at `/etc/wireguard/data` — survives container recreate
 - **Network modes:** `host` (default, shares host netns) or `bridge` (Docker-published port range via `docker-compose.bridge.yml`)

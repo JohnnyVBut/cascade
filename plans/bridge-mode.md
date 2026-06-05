@@ -3,7 +3,7 @@
 ## Context and Goals
 
 This plan covers adding Docker bridge network mode to Cascade as the third supported
-deployment topology alongside host (`docker-compose.go.yml`) and isolated/OVS
+deployment topology alongside host (`docker-compose.yml`) and isolated/OVS
 (`docker-compose.isolated.yml`).
 
 In bridge mode the container runs inside a standard Docker bridge network namespace.
@@ -141,10 +141,10 @@ connection between deployment infrastructure and application behavior.
 
 Backend files (`internal/` tree): no changes.
 Frontend files (`internal/frontend/www/`): no changes.
-`docker-compose.go.yml`: no changes (host mode untouched).
+`docker-compose.yml`: no changes (host mode untouched).
 `docker-compose.isolated.yml`: no changes (isolated mode untouched).
 `entrypoint.sh`: no changes (already handles all three netns configurations).
-`Dockerfile.go`: no changes.
+`Dockerfile`: no changes.
 
 ---
 
@@ -155,7 +155,7 @@ Frontend files (`internal/frontend/www/`): no changes.
 This is the template committed to git. The actual generated file at setup time has
 literal port numbers substituted in.
 
-Content differences from `docker-compose.go.yml`:
+Content differences from `docker-compose.yml`:
 - Remove `network_mode: host`
 - Add `ports:` section: `- "PORTSTART-PORTEND:PORTSTART-PORTEND/udp"`
 - Remove `/etc/hostname:/host_hostname:ro` volume mount (hostname set via `hostname:`)
@@ -274,13 +274,13 @@ sqlite3 already inside the container image.
 
 #### 2e — Modify Step 5 (Build/Pull) and Step 7 (Start) to use correct compose file
 
-Currently these steps hardcode `docker-compose.go.yml`. They must be changed to select
+Currently these steps hardcode `docker-compose.yml`. They must be changed to select
 the file based on `NETWORK_MODE`:
 ```bash
 if [[ "${NETWORK_MODE:-host}" == "bridge" ]]; then
   COMPOSE_FILE="$REPO_DIR/deploy/docker-compose.bridge.yml"
 else
-  COMPOSE_FILE="$REPO_DIR/docker-compose.go.yml"
+  COMPOSE_FILE="$REPO_DIR/docker-compose.yml"
 fi
 ```
 
@@ -369,10 +369,10 @@ Step 4 (docs) — independent
 | `internal/tunnel/manager.go` | Port selection logic already correct via portPool |
 | `internal/settings/settings.go` | `ParsePortPool` already validates ranges correctly |
 | `internal/api/interfaces.go` | No API surface change needed |
-| `docker-compose.go.yml` | Host mode must stay unchanged (no regression) |
+| `docker-compose.yml` | Host mode must stay unchanged (no regression) |
 | `docker-compose.isolated.yml` | Isolated/OVS mode must stay unchanged |
 | `entrypoint.sh` | Already correct for all three netns configurations |
-| `Dockerfile.go` | No runtime dependency changes |
+| `Dockerfile` | No runtime dependency changes |
 | `deploy/caddy/docker-compose.yml` | Only generated/modified by setup.sh, not by hand |
 | `internal/frontend/www/` | No UI changes needed |
 

@@ -135,7 +135,7 @@ systemctl enable --now cascade-ovs-attach.service
 
 ## Differences from host-network mode
 
-| | Host mode (`docker-compose.go.yml`) | Isolated mode (`docker-compose.isolated.yml`) |
+| | Host mode (`docker-compose.yml`) | Isolated mode (`docker-compose.isolated.yml`) |
 |---|---|---|
 | `network_mode` | `host` | `none` (OVS attaches after start) |
 | WireGuard netns | Host | Container (isolated) |
