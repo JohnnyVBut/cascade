@@ -177,6 +177,7 @@ new Vue({
       natDisabled: false,
       publicHost: '',
       mtu: 0,
+      kernelMtu: 0,
       protocol: 'wireguard-1.0',
       selectedTemplateId: '',
       settings: {
@@ -1218,6 +1219,7 @@ new Vue({
         natDisabled: !!iface.natDisabled,
         publicHost: iface.publicHost || '',
         mtu: iface.mtu || 0,
+        kernelMtu: iface.kernelMtu || 0,
         protocol: iface.protocol || 'wireguard-1.0',
         selectedTemplateId: '',
         settings: {

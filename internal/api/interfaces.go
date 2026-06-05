@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -31,6 +32,20 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
+
+// kernelMTU reads the actual MTU of a network interface from the kernel sysfs.
+// Returns 0 if the interface is down or the file is not readable.
+func kernelMTU(ifaceID string) int {
+	data, err := os.ReadFile("/sys/class/net/" + ifaceID + "/mtu")
+	if err != nil {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0
+	}
+	return n
+}
 
 // RegisterInterfaces registers all /api/tunnel-interfaces/* routes.
 func RegisterInterfaces(api fiber.Router) {
@@ -98,6 +113,7 @@ func ifaceJSON(t *tunnel.TunnelInterface, withPeers bool) fiber.Map {
 		"natDisabled":   t.NatDisabled,
 		"publicHost":    t.PublicHost,
 		"mtu":           t.MTU,
+		"kernelMtu":     kernelMTU(t.ID),
 		"publicKey":     t.PublicKey,
 		"settings":      t.AWG2,
 		"createdAt":     t.CreatedAt,

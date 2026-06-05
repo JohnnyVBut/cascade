@@ -1109,6 +1109,14 @@
                     <span class="text-gray-500 dark:text-neutral-400">Public Key:</span>
                     <span class="font-medium dark:text-neutral-200 ml-1 font-mono text-xs">{{ currentInterface.publicKey.substring(0, 20) }}…</span>
                   </div>
+                  <div v-if="currentInterface.mtu > 0 || currentInterface.kernelMtu > 0">
+                    <span class="text-gray-500 dark:text-neutral-400">MTU:</span>
+                    <span class="font-medium dark:text-neutral-200 ml-1">
+                      <span v-if="currentInterface.mtu > 0">{{ currentInterface.mtu }}</span>
+                      <span v-else class="text-gray-400 dark:text-neutral-500">auto</span>
+                      <span v-if="currentInterface.mtu === 0 && currentInterface.kernelMtu > 0" class="text-gray-400 dark:text-neutral-500 text-xs ml-1">({{ currentInterface.kernelMtu }})</span>
+                    </span>
+                  </div>
                   <div v-if="currentInterface.disableRoutes">
                     <span class="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded">Table = off</span>
                   </div>
@@ -1920,6 +1928,9 @@
                   class="w-32 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
                   Overrides the global MTU for this interface only. 0 = use global setting.
+                  <span v-if="interfaceEdit.mtu === 0 && interfaceEdit.kernelMtu > 0">
+                    Current kernel MTU: <strong>{{ interfaceEdit.kernelMtu }}</strong>.
+                  </span>
                 </p>
               </div>
 
@@ -2155,7 +2166,7 @@
                 <label class="block text-sm font-medium dark:text-neutral-300 mb-1">MTU <span class="font-normal text-gray-400">(client configs)</span></label>
                 <input v-model.number="globalSettings.mtu" type="number" min="0" max="9000" placeholder="0 = auto"
                   class="w-32 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
-                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">0 = omit (WireGuard picks automatically). Typical: 1420 (WG default), 1280 (safe for all networks).</p>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">0 = omit MTU line (WireGuard picks automatically, typically 1420). Check actual value in the interface info card. Typical overrides: 1420 (WG default), 1280 (safe for all networks).</p>
               </div>
               <div>
                 <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Default PersistentKeepalive (seconds)</label>
