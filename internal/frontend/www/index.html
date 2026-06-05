@@ -1451,7 +1451,7 @@
         <!-- Create Interface Modal -->
         <div v-if="showInterfaceCreate"
           class="modal-overlay"
-          @click.self="showInterfaceCreate = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 flex flex-col modal-panel modal-panel-sm">
             <div class="modal-header dark:border-neutral-600">
@@ -1707,7 +1707,7 @@
         </div>
 
         <!-- ==================== Import .conf Modal ==================== -->
-        <div v-if="showImportConf" class="modal-overlay" @click.self="showImportConf = false">
+        <div v-if="showImportConf" class="modal-overlay">
           <div class="modal-panel bg-white dark:bg-neutral-700" style="max-width:560px; margin:0 auto;">
             <div class="modal-header">
               <h3 class="text-lg font-semibold dark:text-neutral-100">Import WireGuard .conf</h3>
@@ -1773,7 +1773,7 @@
         </div>
 
         <!-- ==================== Import Backup Modal ==================== -->
-        <div v-if="showImportBackup" class="modal-overlay" @click.self="showImportBackup = false">
+        <div v-if="showImportBackup" class="modal-overlay">
           <div class="bg-white dark:bg-neutral-700 flex flex-col modal-panel modal-panel-md">
             <div class="modal-header">
               <h3 class="text-lg font-semibold dark:text-neutral-100">Import AWG-Easy Backup</h3>
@@ -1832,7 +1832,7 @@
         <!-- Edit Interface Modal -->
         <div v-if="showInterfaceEdit"
           class="modal-overlay"
-          @click.self="showInterfaceEdit = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 flex flex-col modal-panel modal-panel-md">
 
@@ -2698,7 +2698,7 @@
           <!-- ── Create Gateway Modal ───────────────────────────────────── -->
           <div v-if="showGatewayCreate"
             class="modal-overlay"
-            @click.self="showGatewayCreate = false">
+           >
             <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-480">
 
               <!-- Header -->
@@ -2852,7 +2852,7 @@
           <!-- ── Edit Gateway Modal ─────────────────────────────────────── -->
           <div v-if="showGatewayEdit"
             class="modal-overlay"
-            @click.self="showGatewayEdit = false">
+           >
             <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-480">
 
               <!-- Header -->
@@ -3001,7 +3001,7 @@
           <!-- ── Create Group Modal ─────────────────────────────────────── -->
           <div v-if="showGroupCreate"
             class="modal-overlay"
-            @click.self="showGroupCreate = false">
+           >
             <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-md">
 
               <!-- Header -->
@@ -3085,7 +3085,7 @@
           <!-- ── Edit Group Modal ───────────────────────────────────────── -->
           <div v-if="showGroupEdit"
             class="modal-overlay"
-            @click.self="showGroupEdit = false">
+           >
             <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-md">
 
               <!-- Header -->
@@ -3412,7 +3412,7 @@
         <!-- ── Add Static Route Modal ──────────────────────────────────── -->
         <div v-if="showRouteCreate && activePage === 'routing'"
           class="modal-overlay"
-          @click.self="showRouteCreate = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-480">
             <!-- Header -->
@@ -3762,7 +3762,7 @@
           <div v-if="showDnatModal"
             class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
             style="padding:40px 24px;"
-            @click.self="showDnatModal = false">
+           >
             <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:480px; margin:0 auto;">
 
               <div class="modal-header">
@@ -3889,7 +3889,7 @@
         <!-- ── Add NAT Rule Modal ──────────────────────────────────────── -->
         <div v-if="showNatRuleCreate && activePage === 'nat'"
           class="modal-overlay"
-          @click.self="showNatRuleCreate = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-500">
             <!-- Header -->
@@ -4010,7 +4010,7 @@
         <!-- ── Edit NAT Rule Modal ─────────────────────────────────────── -->
         <div v-if="showNatRuleEdit && activePage === 'nat'"
           class="modal-overlay"
-          @click.self="showNatRuleEdit = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-500">
             <!-- Header -->
@@ -4218,7 +4218,7 @@
         <!-- ── Create Alias Modal ─────────────────────────────────────── -->
         <div v-if="showAliasCreate && activePage === 'firewall-aliases'"
           class="modal-overlay"
-          @click.self="showAliasCreate = false">
+         >
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-540">
             <div class="modal-header dark:border-neutral-600">
               <h2 class="text-xl font-medium dark:text-neutral-200">Create Alias</h2>
@@ -4352,7 +4352,7 @@
         <!-- ── Edit Alias Modal ───────────────────────────────────────── -->
         <div v-if="showAliasEdit && activePage === 'firewall-aliases'"
           class="modal-overlay"
-          @click.self="showAliasEdit = false">
+         >
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-540">
             <div class="modal-header dark:border-neutral-600">
               <h2 class="text-xl font-medium dark:text-neutral-200">Edit Alias</h2>
@@ -4641,7 +4641,7 @@
         <!-- ── Add Firewall Rule Modal ──────────────────────────────────── -->
         <div v-if="showFirewallCreate && activePage === 'firewall'"
           class="modal-overlay"
-          @click.self="showFirewallCreate = false">
+         >
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-lg">
             <div class="modal-header dark:border-neutral-600">
               <h2 class="text-xl font-medium dark:text-neutral-200">Add Firewall Rule</h2>
@@ -4844,7 +4844,7 @@
         <!-- ── Edit Firewall Rule Modal ─────────────────────────────────── -->
         <div v-if="showFirewallEdit && activePage === 'firewall'"
           class="modal-overlay"
-          @click.self="showFirewallEdit = false">
+         >
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-lg">
             <div class="modal-header dark:border-neutral-600">
               <h2 class="text-xl font-medium dark:text-neutral-200">Edit Firewall Rule</h2>
@@ -5047,7 +5047,7 @@
         <!-- Template Create / Edit Modal -->
         <div v-if="showTemplateModal"
           class="modal-overlay"
-          @click.self="showTemplateModal = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-md">
             <div class="modal-header dark:border-neutral-600">
@@ -5167,7 +5167,7 @@
         <!-- Generate AWG2 Profile Modal -->
         <div v-if="showGenerateModal"
           class="modal-overlay"
-          @click.self="showGenerateModal = false">
+         >
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-540">
             <div style="padding:24px 24px 16px; border-bottom:1px solid #e5e7eb;" class="dark:border-neutral-600">
               <div class="flex items-center justify-between">
@@ -5292,7 +5292,7 @@
         <!-- Create Peer Modal -->
         <div v-if="showPeerCreate"
           class="modal-overlay"
-          @click.self="showPeerCreate = false">
+         >
 
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-sm">
             <div class="modal-header dark:border-neutral-600">
@@ -5451,7 +5451,7 @@
         <!-- Quick Peer Create Dialog -->
         <div v-if="showQuickPeerCreate"
           class="modal-overlay"
-          @click.self="showQuickPeerCreate = false">
+         >
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-xs">
             <div class="modal-header dark:border-neutral-600">
               <h2 class="text-xl font-medium dark:text-neutral-200">New Client</h2>
@@ -5573,7 +5573,7 @@
         <!-- Peer Edit Modal -->
         <div v-if="showPeerEditModal && peerEditForm._peer"
           class="modal-overlay"
-          @click.self="showPeerEditModal = false">
+         >
           <div class="modal-panel modal-panel-md bg-white dark:bg-neutral-700">
 
             <!-- Header -->
@@ -5867,7 +5867,7 @@
 
 
     <!-- ==================== TOTP Setup Modal ==================== -->
-    <div v-if="showTOTPSetupModal" class="modal-overlay" @click.self="showTOTPSetupModal = false">
+    <div v-if="showTOTPSetupModal" class="modal-overlay">
       <div class="modal-panel modal-panel-480 bg-white dark:bg-neutral-700">
         <div class="modal-header">
           <h3 class="text-lg font-semibold dark:text-neutral-100">Enable Two-Factor Authentication</h3>
@@ -5911,7 +5911,7 @@
     </div>
 
     <!-- ==================== Disable TOTP Modal ==================== -->
-    <div v-if="showTOTPDisableModal" class="modal-overlay" @click.self="showTOTPDisableModal = false">
+    <div v-if="showTOTPDisableModal" class="modal-overlay">
       <div class="modal-panel modal-panel-sm bg-white dark:bg-neutral-700">
         <div class="modal-header">
           <h3 class="text-lg font-semibold dark:text-neutral-100">Disable Two-Factor Authentication</h3>
@@ -5941,7 +5941,7 @@
     </div>
 
     <!-- ==================== Add User Modal ==================== -->
-    <div v-if="showAddUserModal" class="modal-overlay" @click.self="showAddUserModal = false">
+    <div v-if="showAddUserModal" class="modal-overlay">
       <div class="modal-panel modal-panel-sm bg-white dark:bg-neutral-700">
         <div class="modal-header">
           <h3 class="text-lg font-semibold dark:text-neutral-100">Add User</h3>
@@ -5978,7 +5978,7 @@
     </div>
 
     <!-- ==================== Create API Token Modal ==================== -->
-    <div v-if="showCreateTokenModal" class="modal-overlay" @click.self="showCreateTokenModal = false">
+    <div v-if="showCreateTokenModal" class="modal-overlay">
       <div class="modal-panel modal-panel-sm bg-white dark:bg-neutral-700">
         <div class="modal-header">
           <h3 class="text-lg font-semibold dark:text-neutral-100">Create API Token</h3>
