@@ -172,10 +172,22 @@ func Create(inp InterfaceInput) (*TunnelInterface, error) {
 }
 
 // Update applies non-nil fields from upd, persists, regenerates config, and hot-reloads.
-// If NatDisabled changes while the interface is enabled, a full Restart() is performed
-// instead of Reload() — syncconf skips PostUp/PostDown, so MASQUERADE changes require
-// a complete wg-quick down → up cycle.
+//
+// Fields that require a full Restart() (wg-quick down → up) instead of Reload() (syncconf):
+//   - Address:     syncconf does not update kernel routing table (ip route add/del)
+//   - ListenPort:  syncconf does not rebind the UDP socket
+//   - NatDisabled: syncconf skips PostUp/PostDown, so MASQUERADE changes are not applied
+//   - MTU:         syncconf does not run `ip link set dev wgX mtu N`
+//   - DisableRoutes: changes Table=off, which affects routing setup in PostUp
+//
+// All other fields (Name, PublicHost, AWG2 params) are safe for hot-reload via syncconf.
 func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
+	addressChanged     := upd.Address      != nil && strings.TrimSpace(*upd.Address) != t.Address
+	listenPortChanged  := upd.ListenPort   != nil && *upd.ListenPort != t.ListenPort
+	natDisabledChanged := upd.NatDisabled  != nil && *upd.NatDisabled != t.NatDisabled
+	mtuChanged         := upd.MTU          != nil && *upd.MTU != t.MTU
+	disableRoutesChanged := upd.DisableRoutes != nil && *upd.DisableRoutes != t.DisableRoutes
+
 	if upd.Name != nil {
 		t.Name = strings.TrimSpace(*upd.Name)
 	}
@@ -188,7 +200,6 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.DisableRoutes != nil {
 		t.DisableRoutes = *upd.DisableRoutes
 	}
-	natDisabledChanged := upd.NatDisabled != nil && *upd.NatDisabled != t.NatDisabled
 	if upd.NatDisabled != nil {
 		t.NatDisabled = *upd.NatDisabled
 	}
@@ -208,19 +219,20 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 		return err
 	}
 	if t.Enabled {
-		if natDisabledChanged {
-			// MASQUERADE is in PostUp/PostDown — syncconf does not re-execute them.
-			// A full restart is required to apply the change to the running kernel.
+		needsRestart := addressChanged || listenPortChanged || natDisabledChanged ||
+			mtuChanged || disableRoutesChanged
+		if needsRestart {
+			// Full wg-quick down → up required to apply kernel-level changes.
 			// reloadMu must be held: concurrent awg syncconf + awg-quick up = deadlock (FIX-8/9).
 			go func() {
 				t.reloadMu.Lock()
 				defer t.reloadMu.Unlock()
 				if err := t.Restart(); err != nil {
-					log.Printf("tunnel: Update %s: restart for natDisabled change failed: %v", t.ID, err)
+					log.Printf("tunnel: Update %s: restart failed: %v", t.ID, err)
 				}
 			}()
 		} else {
-			t.Reload() // hot-reload via syncconf (fire-and-forget)
+			t.Reload() // hot-reload via syncconf — safe for Name, PublicHost, AWG2 params
 		}
 	}
 	return nil
