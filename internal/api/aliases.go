@@ -15,6 +15,7 @@ package api
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -94,15 +95,34 @@ func deleteAlias(c *fiber.Ctx) error {
 }
 
 // POST /api/aliases/:id/upload
-// Body: JSON array of CIDR strings (uploaded prefix list).
-// Writes entries to a temp file and calls UploadFromFile (which expects a file path).
+// Body: { text: string } — raw text content with one CIDR per line.
+// Lines starting with '#' and empty lines are ignored.
+// Writes valid entries to a temp file and calls UploadFromFile.
 func uploadAlias(c *fiber.Ctx) error {
-	var entries []string
-	if err := c.BodyParser(&entries); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body: expected array of strings")
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body: expected { text: string }")
+	}
+	if strings.TrimSpace(body.Text) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "file is empty")
 	}
 
-	// Write entries to a temporary file; UploadFromFile reads from disk.
+	// Parse lines: skip empty lines and comments (#).
+	var entries []string
+	for _, line := range strings.Split(body.Text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		entries = append(entries, line)
+	}
+	if len(entries) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "no valid CIDR entries found in file")
+	}
+
+	// Write to a temp file; UploadFromFile reads from disk.
 	tmpFile, err := os.CreateTemp("", "awg-alias-upload-*.txt")
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "failed to create temp file")

@@ -4491,10 +4491,10 @@
                 </div>
                 <!-- Upload from file -->
                 <div style="margin-top:12px; border-top:1px solid rgba(0,0,0,0.1); padding-top:12px;">
-                  <p class="text-xs text-gray-500 dark:text-neutral-400 mb-2">Or upload from a .txt file (one CIDR per line):</p>
+                  <p class="text-xs text-gray-500 dark:text-neutral-400 mb-2">Upload a text file — one CIDR prefix per line (comments with # are ignored):</p>
                   <label class="inline-block bg-gray-200 dark:bg-neutral-500 text-gray-700 dark:text-neutral-200 rounded px-3 py-2 text-sm font-medium cursor-pointer transition">
-                    📂 Upload file
-                    <input type="file" class="hidden" accept=".txt,.csv"
+                    📂 Upload CIDR file
+                    <input type="file" class="hidden" accept=".txt,.cidr,.lst,.csv"
                       @change="e => { uploadAliasFile(aliasEdit.id, e.target.files[0]); e.target.value=''; }">
                   </label>
                 </div>

@@ -2270,9 +2270,10 @@ new Vue({
     async uploadAliasFile(aliasId, file) {
       try {
         const text = await file.text();
-        await this.api.uploadAliasFile({ id: aliasId, text });
+        const result = await this.api.uploadAliasFile({ id: aliasId, text });
         await this.loadAliases();
-        this.showToast('File uploaded to alias', 'success');
+        const count = result && result.entryCount ? result.entryCount : '?';
+        this.showToast(`Uploaded ${count} entries from ${file.name}`, 'success');
       } catch (err) {
         this.showToast(err.message || 'Failed to upload file', 'error');
       }
