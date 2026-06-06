@@ -2252,6 +2252,8 @@ new Vue({
         name: alias.name,
         description: alias.description || '',
         type: alias.type,
+        entryCount: alias.entryCount || 0,
+        generatorOpts: alias.generatorOpts || null,
         entries: hasEntries ? (alias.entries || []).join('\n') : '',
         ipsetEntries: '',
         ipsetEntriesLoading: false,
