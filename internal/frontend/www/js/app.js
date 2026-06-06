@@ -3817,6 +3817,13 @@ new Vue({
     }).catch((err) => console.error(err));
   },
   watch: {
+    // Update browser tab title whenever router name or hostname changes.
+    pageTitle: {
+      immediate: true,
+      handler(val) {
+        document.title = val;
+      },
+    },
     activeInterfaceId(newId) {
       if (newId) {
         this.selectedInterface = this.currentInterface;
@@ -3830,6 +3837,10 @@ new Vue({
     },
   },
   computed: {
+    // Browser tab title: routerName if set, otherwise hostname, otherwise 'Cascade'.
+    pageTitle() {
+      return this.globalSettings.routerName || this.globalSettings.hostname || 'Cascade';
+    },
     filteredCountries() {
       const q = (this.countrySearch || '').trim().toLowerCase();
       if (!q) return this.countries;
