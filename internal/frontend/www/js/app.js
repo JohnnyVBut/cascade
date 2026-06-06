@@ -2424,11 +2424,29 @@ new Vue({
       if (alias) await this.openAliasEdit(alias);
     },
 
-    showAliasTooltip(event, aliasId) {
+    async showAliasTooltip(event, aliasId) {
       const alias = this.aliases.find(a => a.id === aliasId);
       if (!alias) return;
       const rect = event.target.getBoundingClientRect();
-      this.aliasTooltip = { id: aliasId, alias, x: rect.left, y: rect.bottom + 4 };
+      this.aliasTooltip = { id: aliasId, alias, x: rect.left, y: rect.bottom + 4, ipsetEntries: null, ipsetLoading: false };
+
+      if (alias.type === 'ipset') {
+        this.aliasTooltip.ipsetLoading = true;
+        try {
+          const res = await this.api.getAliasEntries({ id: aliasId });
+          // Only update if still hovering the same alias
+          if (this.aliasTooltip && this.aliasTooltip.id === aliasId) {
+            this.aliasTooltip = Object.assign({}, this.aliasTooltip, {
+              ipsetEntries: res.entries || [],
+              ipsetLoading: false,
+            });
+          }
+        } catch (e) {
+          if (this.aliasTooltip && this.aliasTooltip.id === aliasId) {
+            this.aliasTooltip = Object.assign({}, this.aliasTooltip, { ipsetLoading: false });
+          }
+        }
+      }
     },
     hideAliasTooltip() {
       this.aliasTooltip = null;

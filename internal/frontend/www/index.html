@@ -6167,9 +6167,18 @@
         </template>
         <!-- ipset -->
         <template v-else-if="aliasTooltip.alias.type === 'ipset'">
-          <div class="text-xs text-gray-500 dark:text-neutral-400">
+          <div v-if="aliasTooltip.ipsetLoading" class="text-xs text-gray-400 dark:text-neutral-500 italic">Loading…</div>
+          <template v-else-if="aliasTooltip.ipsetEntries && aliasTooltip.ipsetEntries.length">
+            <div v-for="e in aliasTooltip.ipsetEntries.slice(0, 20)" :key="e"
+              class="font-mono text-xs" style="padding:1px 0; color:#374151;">{{ e }}</div>
+            <div v-if="aliasTooltip.ipsetEntries.length > 20"
+              class="text-xs text-gray-400 dark:text-neutral-500 italic" style="padding-top:4px;">
+              … and {{ aliasTooltip.ipsetEntries.length - 20 }} more
+            </div>
+          </template>
+          <div v-else class="text-xs text-gray-400 dark:text-neutral-500 italic">
             {{ aliasTooltip.alias.entryCount || 0 }} entries
-            <span v-if="aliasTooltip.alias.generatorOpts" class="ml-1">(generated)</span>
+            <span v-if="aliasTooltip.alias.generatorOpts">(generated)</span>
           </div>
         </template>
         <!-- group / port-group -->
