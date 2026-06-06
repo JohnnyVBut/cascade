@@ -14,12 +14,15 @@ package api
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/aliases"
+	"github.com/JohnnyVBut/cascade/internal/firewall"
+	"github.com/JohnnyVBut/cascade/internal/nat"
 )
 
 // RegisterAliases registers all /api/aliases/* routes.
@@ -83,7 +86,26 @@ func updateAlias(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+	// Re-apply NAT and Firewall rules when non-ipset alias changes.
+	// ipset aliases update atomically via `ipset swap` — no re-apply needed.
+	// For host/network/group/port/port-group: iptables rules are expanded per-entry
+	// and must be replaced to pick up added or removed entries.
+	if a.Type != "ipset" {
+		reapplyAliasRules()
+	}
 	return c.JSON(a)
+}
+
+// reapplyAliasRules flushes and re-applies all NAT and Firewall rules.
+// Called after a non-ipset alias is modified so that CIDR-expanded iptables
+// rules are replaced with the current alias content.
+func reapplyAliasRules() {
+	go func() {
+		nat.Get().ReapplyAll()
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("aliases: reapplyAliasRules: firewall rebuild: %v", err)
+		}
+	}()
 }
 
 // DELETE /api/aliases/:id

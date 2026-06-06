@@ -570,6 +570,35 @@ func (m *Manager) applyRule(rule *NatRule) error {
 	return nil
 }
 
+// ReapplyAll removes all enabled NAT rules from the kernel and re-adds them.
+// Called when a non-ipset alias changes so that the expanded CIDR-based rules
+// pick up the new alias content (added or removed entries).
+func (m *Manager) ReapplyAll() {
+	rules, err := m.GetRules()
+	if err != nil {
+		log.Printf("nat: ReapplyAll: load rules: %v", err)
+		return
+	}
+	// Remove all first — clear stale CIDR-expanded rules.
+	for i := range rules {
+		if !rules[i].Enabled {
+			continue
+		}
+		if err := m.removeRule(&rules[i]); err != nil {
+			log.Printf("nat: ReapplyAll: remove %q: %v", rules[i].Name, err)
+		}
+	}
+	// Re-apply with current alias content.
+	for i := range rules {
+		if !rules[i].Enabled {
+			continue
+		}
+		if err := m.applyRule(&rules[i]); err != nil {
+			log.Printf("nat: ReapplyAll: apply %q: %v", rules[i].Name, err)
+		}
+	}
+}
+
 // removeRule deletes a NAT rule from the kernel.
 func (m *Manager) removeRule(rule *NatRule) error {
 	cmds, err := m.buildCmds(rule, "D")
