@@ -466,20 +466,42 @@ Aliases are named sets of addresses or ports. They are used in firewall rules an
 2. Enter entries (one per line)
 3. For group/port-group — select members from the list
 
-### Generating an ipset from RIPE (Countries and AS Numbers)
+### Populating an ipset Alias
 
-For **ipset** type aliases:
+Three methods are available for **ipset** type aliases (in priority order when creating):
 
-1. In the **Generate** section, select the source:
-   - **Country** — enter a country code (RU, US, CN, etc.)
-   - **ASN** — enter an autonomous system number
-   - **ASN List** — multiple AS numbers separated by commas
-2. Click **Generate**
-3. The system downloads current prefixes from RIPE NCC and populates the ipset
+#### 1. Manual CIDR Entry
 
-### Uploading from a File
+In the **Enter CIDRs manually** section, enter prefixes one per line. They are loaded into the kernel ipset on save. Takes priority over file upload.
 
-For ipset aliases, click **Upload** (in the edit modal) — upload a text file with CIDR prefixes, one per line.
+#### 2. Upload from File
+
+Click **Choose CIDR file** and select a text file with CIDR prefixes (one per line; lines starting with `#` are ignored). When creating — upload happens immediately after the alias is saved.
+
+#### 3. Generate from RIPE NCC (Countries and AS Numbers)
+
+In the **Generate** section, select the source:
+- **Country** — enter a country code (RU, US, CN, etc.)
+- **ASN** — enter an autonomous system number
+- **ASN List** — multiple AS numbers separated by commas
+
+Click **Generate** — prefixes are fetched from RIPE NCC asynchronously.
+
+### Editing an ipset Alias
+
+When clicking **Edit** on an ipset alias, the behavior depends on the set size:
+
+| Condition | What is shown |
+|-----------|---------------|
+| ≤ 200 entries, not generated | Textarea with current content — edit and click Save |
+| > 200 entries or generated | Entry count + **Replace from file** button |
+
+### Interactive Alias Badges
+
+In NAT and Firewall rule tables, aliases are shown as purple badges that support:
+
+- **Hover** — a popup showing the alias entries (for ipset: first 20 + "... and N more")
+- **Click** — navigates to Firewall → Aliases with the edit modal open for that alias
 
 ---
 
@@ -630,13 +652,40 @@ Click **Backup** on the interface card — a JSON file downloads containing:
 - Interface configuration (keys, address, port, AWG2 parameters)
 - All peers (keys, allowedIPs, settings)
 
-#### Full System Backup
+#### Interface Restore
 
-The **Backup** button in the top navigation downloads a complete configuration dump.
+**Restore** → select a JSON backup file. The interface configuration and all peers will be restored.
 
-#### Restore
+#### Full System Backup (Settings → System Backup)
 
-**Restore** → select a JSON backup file. The configuration will be restored over the existing one.
+**Settings → System Backup → Download Backup**
+
+Downloads a `cascade-backup-YYYYMMDD-HHMMSS.tar.gz` archive containing:
+- `awg.db` — all configuration: interfaces, peers, NAT/Firewall rules, aliases, users, gateways
+- `ipsets/` — kernel ipset alias contents (save files)
+
+> **Not included in the backup:** `.env` (ADMIN_PATH, environment variables), `docker-compose.yml`, TLS certificates — transfer these separately.
+
+#### Full System Restore
+
+**Settings → System Backup → Restore Backup**
+
+Select a `.tar.gz` backup file. The system will:
+1. Replace `awg.db` and `ipsets/` with the archive contents
+2. Restart the container (requires `restart: always` in `docker-compose.yml`)
+3. Reload the page after ~4 seconds
+
+> **Warning:** Restore replaces ALL current data. After restart, all active WireGuard sessions will be dropped — clients will need to reconnect.
+
+#### Migrating to a New Server
+
+1. On the old server: **Settings → System Backup → Download Backup**
+2. Transfer manually: `.env`, `docker-compose.yml` (and TLS certificates if applicable)
+3. On the new server: install Docker, clone the repo, build (`./build.sh`)
+4. Start: `docker compose up -d`
+5. Restore: **Settings → System Backup → Restore Backup**
+6. Update DNS / firewall rules to the new IP
+7. Notify users of the new endpoint (server IP has changed)
 
 #### Migrating from AWG-Easy (Import Backup)
 
