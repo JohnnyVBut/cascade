@@ -312,6 +312,106 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 ---
 
+## Системный бэкап
+
+### Создать бэкап
+
+```
+POST /api/system/backup
+Content-Type: application/json
+Authorization: Bearer ws_...
+
+{ "password": "optional" }
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `password` | string | Опционально. Если указан — файл шифруется AES-256-GCM. Пустая строка или отсутствие поля — без шифрования. |
+
+**Ответ:** бинарный поток (файл для скачивания).
+
+| Пароль | Имя файла | Content-Type |
+|--------|-----------|--------------|
+| Не указан | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz` | `application/gzip` |
+| Указан | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz.enc` | `application/octet-stream` |
+
+Содержимое архива: `awg.db` + `*.save` (ipset файлы).
+
+**Примеры (curl):**
+
+```bash
+# Без пароля
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  -o cascade-backup.tar.gz
+
+# С паролем (зашифрованный)
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "mypassword"}' \
+  -o cascade-backup.tar.gz.enc
+```
+
+### Восстановить из бэкапа
+
+```
+POST /api/system/restore
+Content-Type: multipart/form-data
+Authorization: Bearer ws_...
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `backup` | file | `.tar.gz` или `.tar.gz.enc` файл бэкапа |
+| `password` | string | Обязателен если файл зашифрован, иначе — `400` |
+
+**Ответ (200):** `{ "message": "Backup restored. Container is restarting…", "restored": N }`
+
+**Ошибки:**
+- `400 "this backup is encrypted — provide the password"` — зашифрованный файл без пароля
+- `400 "wrong password or corrupted backup file"` — неверный пароль (данные не тронуты)
+
+После успешного восстановления процесс завершается через 300 мс — Docker перезапускает контейнер (`restart: always`).
+
+**Примеры (curl):**
+
+```bash
+# Незашифрованный
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz"
+
+# Зашифрованный
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz.enc" \
+  -F "password=mypassword"
+```
+
+### Автоматический бэкап (cron)
+
+```bash
+#!/bin/bash
+# /etc/cron.daily/cascade-backup
+DATE=$(date +%Y%m%d-%H%M%S)
+DEST="/var/backups/cascade"
+mkdir -p "$DEST"
+
+curl -sf -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "your-backup-password"}' \
+  -o "$DEST/cascade-$DATE.tar.gz.enc"
+
+# Удалить бэкапы старше 30 дней
+find "$DEST" -name "*.tar.gz.enc" -mtime +30 -delete
+```
+
+---
+
 ## Заглушки совместимости (Compat Stubs)
 
 Эндпоинты из Node.js-версии, сохранённые для совместимости с фронтендом. Только чтение, возвращают безопасные дефолты.

@@ -312,6 +312,106 @@ Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× 
 
 ---
 
+## System Backup
+
+### Create Backup
+
+```
+POST /api/system/backup
+Content-Type: application/json
+Authorization: Bearer ws_...
+
+{ "password": "optional" }
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `password` | string | Optional. If provided — file is encrypted with AES-256-GCM. Empty string or absent — no encryption. |
+
+**Response:** binary stream (file download).
+
+| Password | Filename | Content-Type |
+|----------|----------|--------------|
+| Not set | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz` | `application/gzip` |
+| Set | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz.enc` | `application/octet-stream` |
+
+Archive contents: `awg.db` + `*.save` (ipset files).
+
+**Examples (curl):**
+
+```bash
+# Without password
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  -o cascade-backup.tar.gz
+
+# With password (encrypted)
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "mypassword"}' \
+  -o cascade-backup.tar.gz.enc
+```
+
+### Restore from Backup
+
+```
+POST /api/system/restore
+Content-Type: multipart/form-data
+Authorization: Bearer ws_...
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `backup` | file | `.tar.gz` or `.tar.gz.enc` backup file |
+| `password` | string | Required if file is encrypted, otherwise — `400` |
+
+**Response (200):** `{ "message": "Backup restored. Container is restarting…", "restored": N }`
+
+**Errors:**
+- `400 "this backup is encrypted — provide the password"` — encrypted file with no password
+- `400 "wrong password or corrupted backup file"` — wrong password (data untouched)
+
+After a successful restore, the process exits after 300 ms — Docker restarts the container (`restart: always`).
+
+**Examples (curl):**
+
+```bash
+# Unencrypted
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz"
+
+# Encrypted
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz.enc" \
+  -F "password=mypassword"
+```
+
+### Automated Backup (cron)
+
+```bash
+#!/bin/bash
+# /etc/cron.daily/cascade-backup
+DATE=$(date +%Y%m%d-%H%M%S)
+DEST="/var/backups/cascade"
+mkdir -p "$DEST"
+
+curl -sf -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "your-backup-password"}' \
+  -o "$DEST/cascade-$DATE.tar.gz.enc"
+
+# Delete backups older than 30 days
+find "$DEST" -name "*.tar.gz.enc" -mtime +30 -delete
+```
+
+---
+
 ## Compatibility Stubs
 
 Legacy endpoints retained for frontend compatibility. Read-only, return safe defaults.
