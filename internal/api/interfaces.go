@@ -28,6 +28,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/routing"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
 	"github.com/JohnnyVBut/cascade/internal/validate"
@@ -411,6 +412,8 @@ func startInterface(c *fiber.Ctx) error {
 	if err := firewall.Get().RebuildChains(); err != nil {
 		log.Printf("firewall rebuildChains after start %s: %v", c.Params("id"), err)
 	}
+	// Restore static routes that use this interface — wg-quick down removes them.
+	routing.Get().ReapplyForDevice(c.Params("id"))
 	return c.JSON(fiber.Map{"interface": ifaceJSON(t, false)})
 }
 
@@ -435,6 +438,8 @@ func restartInterface(c *fiber.Ctx) error {
 	if err := firewall.Get().RebuildChains(); err != nil {
 		log.Printf("firewall rebuildChains after restart %s: %v", c.Params("id"), err)
 	}
+	// Restore static routes that use this interface — wg-quick down removes them.
+	routing.Get().ReapplyForDevice(c.Params("id"))
 	return c.JSON(fiber.Map{"interface": ifaceJSON(t, false)})
 }
 
