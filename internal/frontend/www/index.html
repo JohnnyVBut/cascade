@@ -3592,7 +3592,9 @@
                     <span class="text-xs font-semibold rounded"
                       style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6; cursor:pointer;"
                       title="Click to edit alias"
-                      @click.stop="openAliasFromBadge(rule.sourceAliasId)">
+                      @click.stop="openAliasFromBadge(rule.sourceAliasId)"
+                      @mouseenter="showAliasTooltip($event, rule.sourceAliasId)"
+                      @mouseleave="hideAliasTooltip()">
                       {{ (aliases.find(a => a.id === rule.sourceAliasId) || {}).name || rule.sourceAliasId }}
                     </span>
                   </template>
@@ -4650,7 +4652,9 @@
                       class="font-semibold rounded"
                       style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6; cursor:pointer;"
                       title="Click to edit alias"
-                      @click.stop="openAliasFromBadge(rule.source.aliasId)">
+                      @click.stop="openAliasFromBadge(rule.source.aliasId)"
+                      @mouseenter="showAliasTooltip($event, rule.source.aliasId)"
+                      @mouseleave="hideAliasTooltip()">
                       {{ _aliasLabel(rule.source.aliasId) }}
                     </span>
                     <span v-else class="font-mono text-gray-600 dark:text-neutral-400">{{ _firewallEndpointLabel(rule.source) }}</span>
@@ -4668,7 +4672,9 @@
                       class="font-semibold rounded"
                       style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6; cursor:pointer;"
                       title="Click to edit alias"
-                      @click.stop="openAliasFromBadge(rule.destination.aliasId)">
+                      @click.stop="openAliasFromBadge(rule.destination.aliasId)"
+                      @mouseenter="showAliasTooltip($event, rule.destination.aliasId)"
+                      @mouseleave="hideAliasTooltip()">
                       {{ _aliasLabel(rule.destination.aliasId) }}
                     </span>
                     <span v-else class="font-mono text-gray-600 dark:text-neutral-400">{{ _firewallEndpointLabel(rule.destination) }}</span>
@@ -6137,6 +6143,44 @@
             Done
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- ==================== Alias Hover Tooltip ==================== -->
+    <div v-if="aliasTooltip" @mouseleave="hideAliasTooltip()"
+      class="bg-white dark:bg-neutral-800 rounded-lg shadow-xl text-sm dark:text-neutral-200"
+      style="position:fixed; z-index:9998; min-width:180px; max-width:320px; border:1px solid rgba(0,0,0,0.12); pointer-events:auto;"
+      :style="{ left: aliasTooltip.x + 'px', top: aliasTooltip.y + 'px' }">
+      <!-- Header -->
+      <div class="font-semibold" style="padding:8px 12px 6px; border-bottom:1px solid rgba(0,0,0,0.08); display:flex; align-items:center; gap:6px;">
+        <span class="rounded text-xs" style="padding:1px 6px; background:#ede9fe; color:#5b21b6; font-weight:700;">{{ aliasTooltip.alias.type }}</span>
+        {{ aliasTooltip.alias.name }}
+      </div>
+      <!-- Entries -->
+      <div style="padding:6px 12px 8px; max-height:200px; overflow-y:auto;">
+        <!-- host / network / port -->
+        <template v-if="aliasTooltip.alias.type !== 'ipset' && aliasTooltip.alias.type !== 'group' && aliasTooltip.alias.type !== 'port-group'">
+          <div v-if="!aliasTooltip.alias.entries || !aliasTooltip.alias.entries.length"
+            class="text-gray-400 dark:text-neutral-500 text-xs italic">empty</div>
+          <div v-for="e in aliasTooltip.alias.entries" :key="e"
+            class="font-mono text-xs" style="padding:1px 0; color:#374151;">{{ e }}</div>
+        </template>
+        <!-- ipset -->
+        <template v-else-if="aliasTooltip.alias.type === 'ipset'">
+          <div class="text-xs text-gray-500 dark:text-neutral-400">
+            {{ aliasTooltip.alias.entryCount || 0 }} entries
+            <span v-if="aliasTooltip.alias.generatorOpts" class="ml-1">(generated)</span>
+          </div>
+        </template>
+        <!-- group / port-group -->
+        <template v-else>
+          <div v-if="!aliasTooltip.alias.memberIds || !aliasTooltip.alias.memberIds.length"
+            class="text-gray-400 dark:text-neutral-500 text-xs italic">no members</div>
+          <div v-for="mid in aliasTooltip.alias.memberIds" :key="mid"
+            class="text-xs" style="padding:1px 0;">
+            {{ _aliasLabel(mid) }}
+          </div>
+        </template>
       </div>
     </div>
 

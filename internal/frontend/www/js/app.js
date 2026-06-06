@@ -429,6 +429,7 @@ new Vue({
     aliasGeneratingId: null,    // id алиаса для которого идёт генерация
     aliasGenerateJobId: null,
     aliasGenerateJobStatus: null,
+    aliasTooltip: null,         // { id, alias, x, y } — hover tooltip state
 
     // Firewall Rules (поглощает PBR)
     firewallRules: [],
@@ -2421,6 +2422,16 @@ new Vue({
       if (!this.aliases.length) await this.loadAliases();
       const alias = this.aliases.find(a => a.id === aliasId);
       if (alias) await this.openAliasEdit(alias);
+    },
+
+    showAliasTooltip(event, aliasId) {
+      const alias = this.aliases.find(a => a.id === aliasId);
+      if (!alias) return;
+      const rect = event.target.getBoundingClientRect();
+      this.aliasTooltip = { id: aliasId, alias, x: rect.left, y: rect.bottom + 4 };
+    },
+    hideAliasTooltip() {
+      this.aliasTooltip = null;
     },
 
     // ========================================================================
