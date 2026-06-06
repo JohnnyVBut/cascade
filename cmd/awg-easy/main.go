@@ -213,7 +213,10 @@ func main() {
 	}
 
 	// 6. RouteManager — RestoreAll() adds kernel routes AFTER interfaces exist.
+	//    SubscribeToMonitor registers gateway status callbacks for gateway-aware routes.
+	//    Must be called before RestoreAll() so that failover state is set up correctly.
 	rmgr := routing.New()
+	rmgr.SubscribeToMonitor(gwMgr)
 	rmgr.RestoreAll()
 	routing.SetInstance(rmgr)
 

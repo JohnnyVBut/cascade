@@ -190,9 +190,31 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | `GET` | `/api/routing/tables` | Routing tables from `ip rule show`. Returns `{ tables: [...] }` |
 | `GET` | `/api/routing/test` | Route lookup. Query: `?ip=<dst>[&src=<src>][&mark=<fwmark>]`. With `src`: SimulateTrace (PBR) → `ip route get <dst> mark <fwmark>`. Returns `{ result, matchedRule, steps }` |
 | `GET` | `/api/routing/routes` | Static routes (DB). Returns `{ routes: [...] }` |
-| `POST` | `/api/routing/routes` | Create static route. Body: `{ destination, via?, dev?, metric?, table?, comment? }` |
+| `POST` | `/api/routing/routes` | Create static route. Body: see below |
 | `PATCH` | `/api/routing/routes/:id` | Update or toggle: `{ enabled: bool }` |
 | `DELETE` | `/api/routing/routes/:id` | Delete route |
+
+**Route structure (POST/PATCH body):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `destination` | string | CIDR or `"default"` (required) |
+| `gateway` | string | Manual next-hop IP. Manual mode only |
+| `dev` | string | Interface name (optional in manual mode) |
+| `gatewayId` | string | Gateway ID from Gateways section — `via`/`dev` resolved automatically |
+| `gatewayGroupId` | string | Gateway Group ID — **automatic failover** between tiers when gateway goes down |
+| `metric` | int | Route metric (optional) |
+| `table` | string | Routing table (default `"main"`) |
+| `description` | string | Description (optional) |
+
+> `gateway`/`dev` and `gatewayId`/`gatewayGroupId` are mutually exclusive — set one of the three.
+> `gatewayId` and `gatewayGroupId` are mutually exclusive.
+
+**Failover with GatewayGroup:**
+When a route is bound to a gateway group (`gatewayGroupId`):
+- Normal operation: route goes via tier 1 gateway (highest priority)
+- When tier 1 goes down (status `"down"` from GatewayMonitor): immediate switch to tier 2
+- When tier 1 recovers: switch back to tier 1 after 30 s (anti-flap)
 
 ---
 

@@ -18,12 +18,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/gateway"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
@@ -32,15 +35,17 @@ import (
 
 // Route is a user-defined static route stored in SQLite.
 type Route struct {
-	ID          string `json:"id"`
-	Description string `json:"description"`
-	Destination string `json:"destination"` // CIDR or "default"
-	Gateway     string `json:"gateway"`     // next-hop IP; empty if dev-only
-	Dev         string `json:"dev"`         // interface name; empty if gateway-only
-	Metric      *int   `json:"metric"`      // nil = no explicit metric
-	Table       string `json:"table"`       // routing table name or number; default "main"
-	Enabled     bool   `json:"enabled"`
-	CreatedAt   string `json:"createdAt"`
+	ID             string `json:"id"`
+	Description    string `json:"description"`
+	Destination    string `json:"destination"`    // CIDR or "default"
+	Gateway        string `json:"gateway"`         // manual next-hop IP; empty if using GatewayID
+	Dev            string `json:"dev"`             // interface name; empty if gateway-only
+	Metric         *int   `json:"metric"`          // nil = no explicit metric
+	Table          string `json:"table"`           // routing table name or number; default "main"
+	Enabled        bool   `json:"enabled"`
+	GatewayID      string `json:"gatewayId"`       // linked Gateway — resolves via/dev dynamically
+	GatewayGroupID string `json:"gatewayGroupId"`  // linked GatewayGroup — failover between tiers
+	CreatedAt      string `json:"createdAt"`
 }
 
 // RoutingTable is a kernel routing table discovered via ip rule show + rt_tables.
@@ -74,10 +79,279 @@ type RouteResult struct {
 }
 
 // Manager manages static routes. All state lives in SQLite.
-type Manager struct{}
+// Gateway-aware routes (GatewayID / GatewayGroupID) are resolved at runtime:
+// the via/dev are not stored in the DB but derived from the gateway's current IP/interface.
+// When a gateway status changes, affected routes are updated via "ip route replace".
+type Manager struct {
+	gwMgr         *gateway.Manager // nil until SubscribeToMonitor is called
+	mu            sync.Mutex
+	fallbackActive map[string]bool         // routeID → true when not on primary gateway
+	restoreTimers  map[string]*time.Timer  // routeID → pending primary-restore timer
+}
 
 // New returns a Manager. db.Init() must have been called first.
-func New() *Manager { return &Manager{} }
+func New() *Manager {
+	return &Manager{
+		fallbackActive: make(map[string]bool),
+		restoreTimers:  make(map[string]*time.Timer),
+	}
+}
+
+// ── Gateway-aware failover ─────────────────────────────────────────────────────
+
+// SubscribeToMonitor registers gateway status callbacks so that routes with
+// GatewayID / GatewayGroupID are automatically updated when a gateway goes
+// down or recovers. Must be called before RestoreAll().
+func (m *Manager) SubscribeToMonitor(gwMgr *gateway.Manager) {
+	m.gwMgr = gwMgr
+	gwMgr.Monitor().OnStatusChange(func(gatewayID, newStatus, prevStatus string) {
+		m.handleGatewayStatusChange(gatewayID, newStatus, prevStatus)
+	})
+	log.Printf("routing: subscribed to gateway monitor")
+}
+
+// handleGatewayStatusChange is the GatewayMonitor callback.
+// On DOWN: immediately switch affected routes to the next available gateway.
+// On recovery (UP): schedule restore to primary after 30 s (anti-flap).
+func (m *Manager) handleGatewayStatusChange(gatewayID, newStatus, prevStatus string) {
+	if newStatus == prevStatus {
+		return
+	}
+	routes, err := m.GetRoutes()
+	if err != nil {
+		log.Printf("routing: handleGatewayStatusChange: GetRoutes: %v", err)
+		return
+	}
+
+	goingDown := newStatus == "down" && prevStatus != "down"
+	recovering := newStatus != "down" && prevStatus == "down"
+
+	for i := range routes {
+		r := &routes[i]
+		if !r.Enabled || !m.routeReferencesGateway(r, gatewayID) {
+			continue
+		}
+
+		if goingDown {
+			m.mu.Lock()
+			// Cancel any pending restore timer.
+			if t, ok := m.restoreTimers[r.ID]; ok {
+				t.Stop()
+				delete(m.restoreTimers, r.ID)
+			}
+			m.mu.Unlock()
+
+			// Re-resolve the best available gateway (may switch to backup tier).
+			via, dev, err := m.resolveGatewayVia(r)
+			if err != nil {
+				log.Printf("routing: gateway %s down, cannot re-resolve route %s: %v",
+					gatewayID, r.Destination, err)
+				continue
+			}
+			if err := m.kernelReplace(r, via, dev); err != nil {
+				log.Printf("routing: gateway %s down, replace route %s: %v",
+					gatewayID, r.Destination, err)
+				continue
+			}
+			// Determine if we switched away from primary.
+			primaryVia, primaryDev, err := m.primaryGatewayVia(r)
+			inFallback := err != nil || via != primaryVia || dev != primaryDev
+			m.mu.Lock()
+			m.fallbackActive[r.ID] = inFallback
+			m.mu.Unlock()
+			if inFallback {
+				log.Printf("routing: route %s → fallback via %s dev %s (gateway %s down)",
+					r.Destination, via, dev, gatewayID)
+			}
+
+		} else if recovering {
+			m.mu.Lock()
+			inFallback := m.fallbackActive[r.ID]
+			m.mu.Unlock()
+			if !inFallback {
+				continue
+			}
+
+			// Check if this recovery event restores the primary tier.
+			primaryVia, primaryDev, err := m.primaryGatewayVia(r)
+			if err != nil {
+				continue
+			}
+			routeCopy := *r
+			log.Printf("routing: route %s: gateway %s recovered, restore primary in 30s",
+				r.Destination, gatewayID)
+			m.mu.Lock()
+			if t, ok := m.restoreTimers[r.ID]; ok {
+				t.Stop()
+			}
+			m.restoreTimers[r.ID] = time.AfterFunc(30*time.Second, func() {
+				m.mu.Lock()
+				delete(m.restoreTimers, routeCopy.ID)
+				m.mu.Unlock()
+				if err := m.kernelReplace(&routeCopy, primaryVia, primaryDev); err != nil {
+					log.Printf("routing: restore route %s: %v", routeCopy.Destination, err)
+					return
+				}
+				m.mu.Lock()
+				m.fallbackActive[routeCopy.ID] = false
+				m.mu.Unlock()
+				log.Printf("routing: route %s → restored primary via %s dev %s",
+					routeCopy.Destination, primaryVia, primaryDev)
+			})
+			m.mu.Unlock()
+		}
+	}
+}
+
+// routeReferencesGateway returns true if the route is directly linked to
+// gatewayID or if gatewayID is a member of the route's gateway group.
+func (m *Manager) routeReferencesGateway(r *Route, gatewayID string) bool {
+	if r.GatewayID == gatewayID {
+		return true
+	}
+	if r.GatewayGroupID != "" && m.gwMgr != nil {
+		grp, err := m.gwMgr.GetGroup(r.GatewayGroupID)
+		if err != nil || grp == nil {
+			return false
+		}
+		for _, mem := range grp.Gateways {
+			if mem.GatewayID == gatewayID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// resolveGatewayVia picks the best available via/dev for a gateway-aware route.
+// For GatewayID: returns that gateway's IP + interface.
+// For GatewayGroupID: picks the lowest-tier gateway that is not "down".
+//   Falls back to the lowest-tier gateway if all are down (gateway of last resort).
+// For plain routes (no gateway reference): returns r.Gateway, r.Dev.
+func (m *Manager) resolveGatewayVia(r *Route) (via, dev string, err error) {
+	if r.GatewayID != "" && m.gwMgr != nil {
+		gw, err := m.gwMgr.GetGateway(r.GatewayID)
+		if err != nil || gw == nil {
+			return "", "", fmt.Errorf("gateway %s not found", r.GatewayID)
+		}
+		return gw.GatewayIP, gw.Interface, nil
+	}
+	if r.GatewayGroupID != "" && m.gwMgr != nil {
+		return m.resolveGroupGateway(r.GatewayGroupID)
+	}
+	return r.Gateway, r.Dev, nil
+}
+
+// primaryGatewayVia returns the via/dev for the highest-priority (tier1) gateway.
+// Used to determine if a route is currently on its primary gateway.
+func (m *Manager) primaryGatewayVia(r *Route) (via, dev string, err error) {
+	if r.GatewayID != "" && m.gwMgr != nil {
+		gw, err := m.gwMgr.GetGateway(r.GatewayID)
+		if err != nil || gw == nil {
+			return "", "", fmt.Errorf("gateway %s not found", r.GatewayID)
+		}
+		return gw.GatewayIP, gw.Interface, nil
+	}
+	if r.GatewayGroupID != "" && m.gwMgr != nil {
+		grp, err := m.gwMgr.GetGroup(r.GatewayGroupID)
+		if err != nil || grp == nil || len(grp.Gateways) == 0 {
+			return "", "", fmt.Errorf("gateway group %s not found or empty", r.GatewayGroupID)
+		}
+		// Find the member with the lowest tier number.
+		best := grp.Gateways[0]
+		for _, mem := range grp.Gateways[1:] {
+			if mem.Tier < best.Tier {
+				best = mem
+			}
+		}
+		gw, err := m.gwMgr.GetGateway(best.GatewayID)
+		if err != nil || gw == nil {
+			return "", "", fmt.Errorf("primary gateway %s not found", best.GatewayID)
+		}
+		return gw.GatewayIP, gw.Interface, nil
+	}
+	return "", "", fmt.Errorf("route has no gateway reference")
+}
+
+// resolveGroupGateway picks the best available gateway from a gateway group.
+// Iterates tiers from lowest (highest priority) upward.
+// Within a tier picks the first healthy/degraded/unknown member.
+// Falls back to the tier1 gateway if all members are "down".
+func (m *Manager) resolveGroupGateway(groupID string) (via, dev string, err error) {
+	grp, err := m.gwMgr.GetGroup(groupID)
+	if err != nil || grp == nil || len(grp.Gateways) == 0 {
+		return "", "", fmt.Errorf("gateway group %s not found or empty", groupID)
+	}
+
+	mon := m.gwMgr.Monitor()
+
+	// Sort members by tier ascending (lowest = highest priority).
+	sorted := make([]gateway.GatewayGroupMember, len(grp.Gateways))
+	copy(sorted, grp.Gateways)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Tier < sorted[j].Tier })
+
+	// Group members by tier.
+	type tierEntry struct {
+		tier    int
+		members []gateway.GatewayGroupMember
+	}
+	var tiers []tierEntry
+	for _, mem := range sorted {
+		if len(tiers) == 0 || tiers[len(tiers)-1].tier != mem.Tier {
+			tiers = append(tiers, tierEntry{tier: mem.Tier})
+		}
+		tiers[len(tiers)-1].members = append(tiers[len(tiers)-1].members, mem)
+	}
+
+	var fallbackGW *gateway.Gateway // tier1 gateway, used if all tiers down
+
+	for _, te := range tiers {
+		for _, mem := range te.members {
+			gw, err := m.gwMgr.GetGateway(mem.GatewayID)
+			if err != nil || gw == nil {
+				continue
+			}
+			if fallbackGW == nil {
+				fallbackGW = gw // remember tier1 as last resort
+			}
+			st := mon.GetStatus(mem.GatewayID)
+			// Use this gateway unless it is explicitly "down".
+			// "unknown" = not enough probes yet → treat as available.
+			if st.Status != "down" {
+				return gw.GatewayIP, gw.Interface, nil
+			}
+		}
+	}
+
+	// All gateways are "down" — route via tier1 as gateway of last resort.
+	if fallbackGW != nil {
+		return fallbackGW.GatewayIP, fallbackGW.Interface, nil
+	}
+	return "", "", fmt.Errorf("no valid gateway found in group %s", groupID)
+}
+
+// kernelReplace runs "ip route replace ..." — idempotent unlike "ip route add".
+func (m *Manager) kernelReplace(r *Route, via, dev string) error {
+	cmd := "ip route replace " + r.Destination
+	if via != "" {
+		cmd += " via " + via
+	}
+	if dev != "" {
+		cmd += " dev " + dev
+	}
+	cmd += " proto static"
+	if r.Metric != nil {
+		cmd += fmt.Sprintf(" metric %d", *r.Metric)
+	}
+	if r.Table != "" && r.Table != "main" {
+		cmd += " table " + r.Table
+	}
+	_, err := util.ExecDefault(cmd)
+	if err != nil {
+		return wrapKernelErr(err)
+	}
+	return nil
+}
 
 // ── Restore (FIX-13) ─────────────────────────────────────────────────────────
 
@@ -85,6 +359,7 @@ func New() *Manager { return &Manager{} }
 //
 // MUST be called after InterfaceManager has brought up all WireGuard interfaces
 // (FIX-13). Errors are logged but not returned — a failed restore is non-fatal.
+// Gateway-aware routes (GatewayID/GatewayGroupID) resolve via/dev at call time.
 func (m *Manager) RestoreAll() {
 	routes, err := m.GetRoutes()
 	if err != nil {
@@ -97,7 +372,7 @@ func (m *Manager) RestoreAll() {
 			continue
 		}
 		enabled++
-		if err := m.kernelAdd(&r); err != nil {
+		if err := m.kernelAddResolved(&r); err != nil {
 			// "File exists" = route already in kernel — normal after hot restart
 			log.Printf("routing: restore %s: %v", r.Destination, err)
 		} else {
@@ -113,6 +388,7 @@ func (m *Manager) RestoreAll() {
 //
 // Called after TunnelInterface start/restart because wg-quick down→up removes
 // all custom routes that use the interface from the kernel (FIX-13).
+// For gateway-aware routes, re-resolves the current best via/dev.
 func (m *Manager) ReapplyForDevice(devName string) {
 	routes, err := m.GetRoutes()
 	if err != nil {
@@ -120,7 +396,23 @@ func (m *Manager) ReapplyForDevice(devName string) {
 		return
 	}
 	for _, r := range routes {
-		if !r.Enabled || r.Dev != devName {
+		if !r.Enabled {
+			continue
+		}
+		// For gateway-aware routes, check if the resolved dev matches.
+		if r.GatewayID != "" || r.GatewayGroupID != "" {
+			via, dev, err := m.resolveGatewayVia(&r)
+			if err != nil || dev != devName {
+				continue
+			}
+			if err := m.kernelReplace(&r, via, dev); err != nil {
+				log.Printf("routing: reapply gw-route %s via %s: %v", r.Destination, devName, err)
+			} else {
+				log.Printf("routing: reapplied gw-route %s via %s", r.Destination, devName)
+			}
+			continue
+		}
+		if r.Dev != devName {
 			continue
 		}
 		if err := m.kernelAdd(&r); err != nil {
@@ -356,7 +648,8 @@ func (m *Manager) TestRoute(ip string, mark *int) (*RouteResult, error) {
 // GetRoutes returns all static routes ordered by created_at ASC.
 func (m *Manager) GetRoutes() ([]Route, error) {
 	rows, err := db.DB().Query(`
-		SELECT id, description, destination, via, dev, metric, table_name, enabled, created_at
+		SELECT id, description, destination, via, dev, metric, table_name, enabled,
+		       gateway_id, gateway_group_id, created_at
 		FROM routes ORDER BY created_at ASC
 	`)
 	if err != nil {
@@ -386,8 +679,14 @@ func (m *Manager) AddRoute(data Route) (*Route, error) {
 	if data.Destination == "" {
 		return nil, fmt.Errorf("destination is required")
 	}
-	if data.Gateway == "" && data.Dev == "" {
-		return nil, fmt.Errorf("gateway or interface is required")
+	// Require either a manual next-hop or a gateway reference.
+	hasManual := data.Gateway != "" || data.Dev != ""
+	hasGatewayRef := data.GatewayID != "" || data.GatewayGroupID != ""
+	if !hasManual && !hasGatewayRef {
+		return nil, fmt.Errorf("gateway, interface, gatewayId, or gatewayGroupId is required")
+	}
+	if data.GatewayID != "" && data.GatewayGroupID != "" {
+		return nil, fmt.Errorf("gatewayId and gatewayGroupId are mutually exclusive")
 	}
 	if data.Table == "" {
 		data.Table = "main"
@@ -397,19 +696,21 @@ func (m *Manager) AddRoute(data Route) (*Route, error) {
 	}
 
 	r := Route{
-		ID:          uuid.NewString(),
-		Description: data.Description,
-		Destination: data.Destination,
-		Gateway:     data.Gateway,
-		Dev:         data.Dev,
-		Metric:      data.Metric,
-		Table:       data.Table,
-		Enabled:     true,
-		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+		ID:             uuid.NewString(),
+		Description:    data.Description,
+		Destination:    data.Destination,
+		Gateway:        data.Gateway,
+		Dev:            data.Dev,
+		Metric:         data.Metric,
+		Table:          data.Table,
+		Enabled:        true,
+		GatewayID:      data.GatewayID,
+		GatewayGroupID: data.GatewayGroupID,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 
 	// Apply to kernel first — fail fast before persisting.
-	if err := m.kernelAdd(&r); err != nil {
+	if err := m.kernelAddResolved(&r); err != nil {
 		return nil, err
 	}
 
@@ -437,6 +738,15 @@ func (m *Manager) DeleteRoute(id string) error {
 		}
 	}
 
+	// Clear failover state.
+	m.mu.Lock()
+	delete(m.fallbackActive, r.ID)
+	if t, ok := m.restoreTimers[r.ID]; ok {
+		t.Stop()
+		delete(m.restoreTimers, r.ID)
+	}
+	m.mu.Unlock()
+
 	if _, err := db.DB().Exec(`DELETE FROM routes WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("delete route: %w", err)
 	}
@@ -454,7 +764,7 @@ func (m *Manager) ToggleRoute(id string, enabled bool) (*Route, error) {
 	}
 
 	if enabled && !r.Enabled {
-		if err := m.kernelAdd(r); err != nil {
+		if err := m.kernelAddResolved(r); err != nil {
 			return nil, err // already formatted as "ip route: ..."
 		}
 	} else if !enabled && r.Enabled {
@@ -462,6 +772,14 @@ func (m *Manager) ToggleRoute(id string, enabled bool) (*Route, error) {
 			// Route may already be gone (wg-quick down etc.) — log but don't fail.
 			log.Printf("routing: kernelDel %s on disable: %v", r.Destination, err)
 		}
+		// Clear any failover state when explicitly disabling.
+		m.mu.Lock()
+		delete(m.fallbackActive, r.ID)
+		if t, ok := m.restoreTimers[r.ID]; ok {
+			t.Stop()
+			delete(m.restoreTimers, r.ID)
+		}
+		m.mu.Unlock()
 	}
 
 	r.Enabled = enabled
@@ -474,7 +792,8 @@ func (m *Manager) ToggleRoute(id string, enabled bool) (*Route, error) {
 }
 
 // UpdateRoute applies partial updates (description, destination, gateway, dev,
-// metric, table) to a route. Disabled routes are only updated in SQLite.
+// metric, table, gatewayId, gatewayGroupId) to a route.
+// Disabled routes are only updated in SQLite.
 // Enabled routes are re-applied to the kernel (del old → add new).
 func (m *Manager) UpdateRoute(id string, data Route) (*Route, error) {
 	r, err := m.getOrNotFound(id)
@@ -491,9 +810,19 @@ func (m *Manager) UpdateRoute(id string, data Route) (*Route, error) {
 	if data.Destination != "" {
 		r.Destination = data.Destination
 	}
-	if data.Gateway != "" || data.Dev != "" {
+	// When gateway reference is being set, clear manual via/dev and vice-versa.
+	hasGatewayRef := data.GatewayID != "" || data.GatewayGroupID != ""
+	hasManual := data.Gateway != "" || data.Dev != ""
+	if hasGatewayRef {
+		r.GatewayID = data.GatewayID
+		r.GatewayGroupID = data.GatewayGroupID
+		r.Gateway = ""
+		r.Dev = ""
+	} else if hasManual {
 		r.Gateway = data.Gateway
 		r.Dev = data.Dev
+		r.GatewayID = ""
+		r.GatewayGroupID = ""
 	}
 	r.Metric = data.Metric
 	if data.Table != "" {
@@ -506,12 +835,21 @@ func (m *Manager) UpdateRoute(id string, data Route) (*Route, error) {
 	if r.Enabled {
 		// Remove old route from kernel, add new one.
 		m.kernelDel(&old) //nolint:errcheck
-		if err := m.kernelAdd(r); err != nil {
+		if err := m.kernelAddResolved(r); err != nil {
 			// Rollback: restore old route.
-			m.kernelAdd(&old) //nolint:errcheck
+			m.kernelAddResolved(&old) //nolint:errcheck
 			return nil, err
 		}
 	}
+
+	// Clear failover state — user updated the route explicitly.
+	m.mu.Lock()
+	delete(m.fallbackActive, r.ID)
+	if t, ok := m.restoreTimers[r.ID]; ok {
+		t.Stop()
+		delete(m.restoreTimers, r.ID)
+	}
+	m.mu.Unlock()
 
 	if err := updateRoute(r); err != nil {
 		return nil, err
@@ -553,6 +891,19 @@ func validateRouteFields(r Route) error {
 }
 
 // ── Kernel helpers ────────────────────────────────────────────────────────────
+
+// kernelAddResolved resolves gateway reference (if any) then runs "ip route add".
+// This is the preferred call site — use kernelAdd only when via/dev are already known.
+func (m *Manager) kernelAddResolved(r *Route) error {
+	via, dev, err := m.resolveGatewayVia(r)
+	if err != nil {
+		return fmt.Errorf("ip route: cannot resolve gateway: %w", err)
+	}
+	resolved := *r
+	resolved.Gateway = via
+	resolved.Dev = dev
+	return m.kernelAdd(&resolved)
+}
 
 // kernelAdd runs "ip route add ..." and wraps stderr as "ip route: <detail>" (FIX-15).
 func (m *Manager) kernelAdd(r *Route) error {
@@ -679,7 +1030,8 @@ func parseTextRoutes(text string) []KernelRoute {
 
 func queryRoute(where string, args ...any) (*Route, error) {
 	row := db.DB().QueryRow(`
-		SELECT id, description, destination, via, dev, metric, table_name, enabled, created_at
+		SELECT id, description, destination, via, dev, metric, table_name, enabled,
+		       gateway_id, gateway_group_id, created_at
 		FROM routes `+where, args...)
 	return scanRoute(row)
 }
@@ -696,7 +1048,9 @@ func scanRoute(s scannable) (*Route, error) {
 	var r Route
 	err := s.Scan(
 		&r.ID, &r.Description, &r.Destination, &r.Gateway, &r.Dev,
-		&metric, &r.Table, &enabled, &r.CreatedAt,
+		&metric, &r.Table, &enabled,
+		&r.GatewayID, &r.GatewayGroupID,
+		&r.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -714,10 +1068,13 @@ func scanRoute(s scannable) (*Route, error) {
 
 func insertRoute(r *Route) error {
 	_, err := db.DB().Exec(`
-		INSERT INTO routes (id, description, destination, via, dev, metric, table_name, enabled, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?)`,
+		INSERT INTO routes
+		    (id, description, destination, via, dev, metric, table_name, enabled,
+		     gateway_id, gateway_group_id, created_at)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 		r.ID, r.Description, r.Destination, r.Gateway, r.Dev,
-		metricVal(r.Metric), r.Table, boolInt(r.Enabled), r.CreatedAt,
+		metricVal(r.Metric), r.Table, boolInt(r.Enabled),
+		r.GatewayID, r.GatewayGroupID, r.CreatedAt,
 	)
 	return err
 }
@@ -725,10 +1082,13 @@ func insertRoute(r *Route) error {
 func updateRoute(r *Route) error {
 	_, err := db.DB().Exec(`
 		UPDATE routes SET
-		    description=?, destination=?, via=?, dev=?, metric=?, table_name=?
+		    description=?, destination=?, via=?, dev=?, metric=?, table_name=?,
+		    gateway_id=?, gateway_group_id=?
 		WHERE id=?`,
 		r.Description, r.Destination, r.Gateway, r.Dev,
-		metricVal(r.Metric), r.Table, r.ID,
+		metricVal(r.Metric), r.Table,
+		r.GatewayID, r.GatewayGroupID,
+		r.ID,
 	)
 	return err
 }

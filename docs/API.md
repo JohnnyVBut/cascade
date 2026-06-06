@@ -190,9 +190,31 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `GET` | `/api/routing/tables` | Таблицы маршрутизации из `ip rule show`. Возвращает `{ tables: [...] }` |
 | `GET` | `/api/routing/test` | Тест маршрута. Query: `?ip=<dst>[&src=<src>][&mark=<fwmark>]`. С `src`: SimulateTrace (PBR) → `ip route get <dst> mark <fwmark>`. Возвращает `{ result, matchedRule, steps }` |
 | `GET` | `/api/routing/routes` | Статические маршруты (из БД). Возвращает `{ routes: [...] }` |
-| `POST` | `/api/routing/routes` | Создать маршрут. Body: `{ destination, via?, dev?, metric?, table?, comment? }` |
+| `POST` | `/api/routing/routes` | Создать маршрут. Body: см. ниже |
 | `PATCH` | `/api/routing/routes/:id` | Обновить или переключить: `{ enabled: bool }` |
 | `DELETE` | `/api/routing/routes/:id` | Удалить маршрут |
+
+**Структура Route (POST/PATCH body):**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `destination` | string | CIDR или `"default"` (обязательно) |
+| `gateway` | string | Ручной IP шлюза (next-hop). Только для ручного режима |
+| `dev` | string | Интерфейс (опционально для ручного режима) |
+| `gatewayId` | string | ID шлюза из раздела Gateways — `via`/`dev` берутся из шлюза автоматически |
+| `gatewayGroupId` | string | ID группы шлюзов — **автоматический failover** между тирами при падении шлюза |
+| `metric` | int | Метрика маршрута (опционально) |
+| `table` | string | Таблица маршрутизации (по умолчанию `"main"`) |
+| `description` | string | Описание (опционально) |
+
+> `gateway`/`dev` и `gatewayId`/`gatewayGroupId` взаимоисключающие — задайте одно из трёх.
+> `gatewayId` и `gatewayGroupId` взаимоисключающие.
+
+**Failover с GatewayGroup:**
+Когда маршрут привязан к группе шлюзов (`gatewayGroupId`):
+- Нормальная работа: маршрут идёт через шлюз тира 1 (наивысший приоритет)
+- При падении тира 1 (статус `"down"` от GatewayMonitor): немедленное переключение на тир 2
+- При восстановлении тира 1: возврат к тиру 1 через 30 с (anti-flap)
 
 ---
 

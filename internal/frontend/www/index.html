@@ -3508,15 +3508,36 @@
                   <div v-if="route.description" class="text-xs text-gray-400 dark:text-neutral-500 truncate">{{ route.description }}</div>
                 </div>
 
-                <!-- Gateway -->
-                <span class="font-mono text-sm text-gray-600 dark:text-neutral-400 shrink-0" style="min-width:100px;">
-                  {{ route.gateway || '—' }}
+                <!-- Next-hop (gateway IP, gateway name, or group name) -->
+                <span class="shrink-0" style="min-width:130px;">
+                  <!-- Gateway Group badge -->
+                  <span v-if="route.gatewayGroupId"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;background:#fde68a;color:#92400e;font-size:12px;">
+                    <svg style="width:10px;height:10px;" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z"/>
+                    </svg>
+                    {{ _routeNextHopLabel(route) }}
+                  </span>
+                  <!-- Gateway badge -->
+                  <span v-else-if="route.gatewayId"
+                    style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:9999px;background:#bbf7d0;color:#065f46;font-size:12px;">
+                    <svg style="width:10px;height:10px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+                    </svg>
+                    {{ _routeNextHopLabel(route) }}
+                  </span>
+                  <!-- Manual IP -->
+                  <span v-else class="font-mono text-sm text-gray-600 dark:text-neutral-400">
+                    {{ route.gateway || '—' }}
+                  </span>
                 </span>
 
                 <!-- Dev -->
-                <span class="font-mono text-sm text-gray-500 dark:text-neutral-500 shrink-0" style="min-width:60px;">
+                <span v-if="!route.gatewayId && !route.gatewayGroupId"
+                  class="font-mono text-sm text-gray-500 dark:text-neutral-500 shrink-0" style="min-width:60px;">
                   {{ route.dev || '—' }}
                 </span>
+                <span v-else class="shrink-0" style="min-width:60px;"></span>
 
                 <!-- Table -->
                 <span class="text-xs rounded-full shrink-0"
@@ -3570,18 +3591,76 @@
                   class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
               </div>
 
-              <!-- Gateway -->
+              <!-- Next-hop mode selector -->
               <div>
-                <label class="text-sm font-medium dark:text-neutral-300">Gateway (via)</label>
-                <input v-model="routeCreate.gateway" type="text" placeholder="e.g. 10.255.255.1"
-                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                <label class="text-sm font-medium dark:text-neutral-300">Next-hop</label>
+                <div class="flex gap-1 mt-1">
+                  <button @click="routeCreate.viaMode = 'manual'"
+                    :style="routeCreate.viaMode === 'manual'
+                      ? 'background:#2563eb;color:#fff;border:1px solid #2563eb;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    Manual IP
+                  </button>
+                  <button @click="routeCreate.viaMode = 'gateway'"
+                    :style="routeCreate.viaMode === 'gateway'
+                      ? 'background:#059669;color:#fff;border:1px solid #059669;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    Gateway
+                  </button>
+                  <button @click="routeCreate.viaMode = 'group'"
+                    :style="routeCreate.viaMode === 'group'
+                      ? 'background:#d97706;color:#fff;border:1px solid #d97706;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    GW Group
+                  </button>
+                </div>
               </div>
 
-              <!-- Interface -->
-              <div>
-                <label class="text-sm font-medium dark:text-neutral-300">Interface (dev)</label>
-                <input v-model="routeCreate.dev" type="text" placeholder="e.g. wg10 (optional)"
-                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+              <!-- Manual IP + dev -->
+              <template v-if="routeCreate.viaMode === 'manual'">
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Gateway IP (via)</label>
+                  <input v-model="routeCreate.gateway" type="text" placeholder="e.g. 10.255.255.1"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Interface (dev, optional)</label>
+                  <input v-model="routeCreate.dev" type="text" placeholder="e.g. wg10"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+              </template>
+
+              <!-- Gateway selector -->
+              <div v-if="routeCreate.viaMode === 'gateway'">
+                <label class="text-sm font-medium dark:text-neutral-300">Gateway *</label>
+                <select v-model="routeCreate.gatewayId"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <option value="">— select gateway —</option>
+                  <option v-for="gw in gateways" :key="gw.id" :value="gw.id">
+                    {{ gw.name }} ({{ gw.interface }} → {{ gw.gatewayIP }})
+                  </option>
+                </select>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Route via is resolved from the gateway's IP. No automatic failover — use Gateway Group for failover.
+                </p>
+              </div>
+
+              <!-- Gateway Group selector -->
+              <div v-if="routeCreate.viaMode === 'group'">
+                <label class="text-sm font-medium dark:text-neutral-300">Gateway Group * <span class="text-yellow-600 dark:text-yellow-400">(failover)</span></label>
+                <select v-model="routeCreate.gatewayGroupId"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <option value="">— select group —</option>
+                  <option v-for="grp in gatewayGroups" :key="grp.id" :value="grp.id">
+                    {{ grp.name }}
+                  </option>
+                </select>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Tier 1 gateway is used by default. When tier 1 goes down, route automatically switches to tier 2 (after 30 s on recovery).
+                </p>
               </div>
 
               <!-- Metric + Table -->

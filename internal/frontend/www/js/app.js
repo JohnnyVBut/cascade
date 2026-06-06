@@ -348,8 +348,11 @@ new Vue({
     routeCreate: {
       description: '',
       destination: '',
-      gateway: '',
-      dev: '',
+      viaMode: 'manual',    // 'manual' | 'gateway' | 'group'
+      gateway: '',          // manual next-hop IP
+      dev: '',              // manual interface
+      gatewayId: '',        // linked Gateway ID (viaMode=gateway)
+      gatewayGroupId: '',   // linked GatewayGroup ID (viaMode=group)
       metric: '',
       table: 'main',
     },
@@ -1819,18 +1822,49 @@ new Vue({
         const data = {
           description: this.routeCreate.description,
           destination: this.routeCreate.destination,
-          gateway: this.routeCreate.gateway,
-          dev: this.routeCreate.dev,
           metric: this.routeCreate.metric !== '' ? Number(this.routeCreate.metric) : null,
           table: this.routeCreate.table || 'main',
         };
+        if (this.routeCreate.viaMode === 'gateway') {
+          data.gatewayId = this.routeCreate.gatewayId;
+        } else if (this.routeCreate.viaMode === 'group') {
+          data.gatewayGroupId = this.routeCreate.gatewayGroupId;
+        } else {
+          data.gateway = this.routeCreate.gateway;
+          data.dev = this.routeCreate.dev;
+        }
         await this.api.createStaticRoute(data);
         this.showRouteCreate = false;
-        this.routeCreate = { description: '', destination: '', gateway: '', dev: '', metric: '', table: 'main' };
+        this.routeCreate = {
+          description: '', destination: '',
+          viaMode: 'manual', gateway: '', dev: '',
+          gatewayId: '', gatewayGroupId: '',
+          metric: '', table: 'main',
+        };
         await this.loadStaticRoutes();
       } catch (err) {
         this.showToast(err.message || 'Failed to create route', 'error');
       }
+    },
+
+    // Helper: display label for next-hop column in static routes table
+    _routeNextHopLabel(route) {
+      if (route.gatewayGroupId) {
+        const grp = (this.gatewayGroups || []).find(g => g.id === route.gatewayGroupId);
+        return grp ? grp.name : route.gatewayGroupId;
+      }
+      if (route.gatewayId) {
+        const gw = (this.gateways || []).find(g => g.id === route.gatewayId);
+        return gw ? gw.name : route.gatewayId;
+      }
+      return route.gateway || '—';
+    },
+
+    // Helper: badge type for next-hop column
+    _routeNextHopType(route) {
+      if (route.gatewayGroupId) return 'group';
+      if (route.gatewayId) return 'gateway';
+      return 'manual';
     },
 
     async toggleRoute(id, enabled) {

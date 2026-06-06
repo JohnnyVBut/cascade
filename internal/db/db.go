@@ -475,6 +475,17 @@ ALTER TABLE peers ADD COLUMN rate_up   INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE interfaces ADD COLUMN uplink INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 20,
+		sql: `
+-- Gateway-aware static routes: reference a Gateway or GatewayGroup as next-hop.
+-- When set, the route via/dev are resolved dynamically from the gateway at runtime.
+-- On gateway status changes the route is updated automatically (failover support).
+-- Only one of gateway_id / gateway_group_id may be set (enforced at app layer).
+ALTER TABLE routes ADD COLUMN gateway_id       TEXT NOT NULL DEFAULT '';
+ALTER TABLE routes ADD COLUMN gateway_group_id TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
