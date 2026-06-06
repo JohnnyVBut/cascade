@@ -660,20 +660,36 @@ Click **Backup** on the interface card — a JSON file downloads containing:
 
 **Settings → System Backup → Download Backup**
 
-Downloads a `cascade-backup-YYYYMMDD-HHMMSS.tar.gz` archive containing:
-- `awg.db` — all configuration: interfaces, peers, NAT/Firewall rules, aliases, users, gateways
-- `ipsets/` — kernel ipset alias contents (save files)
+A dialog opens with an optional password field:
 
-> **Not included in the backup:** `.env` (ADMIN_PATH, environment variables), `docker-compose.yml`, TLS certificates — transfer these separately.
+| Password | Result |
+|----------|--------|
+| Not set | `cascade-backup-YYYYMMDD.tar.gz` — plain archive |
+| Set | `cascade-backup-YYYYMMDD.tar.gz.enc` — AES-256-GCM encrypted |
+
+Archive contents:
+- `awg.db` — all configuration: interfaces, peers, NAT/Firewall rules, aliases, users, gateways
+- `*.save` — kernel ipset alias contents
+
+> ⚠️ **If the password is lost, the backup cannot be decrypted.** AES-256-GCM uses authenticated encryption — brute-forcing the password is not feasible without knowing the original.
+
+> **Not included in the backup:** `.env`, `docker-compose.yml`, TLS certificates — transfer these separately.
 
 #### Full System Restore
 
 **Settings → System Backup → Restore Backup**
 
-Select a `.tar.gz` backup file. The system will:
-1. Replace `awg.db` and `ipsets/` with the archive contents
-2. Restart the container (requires `restart: always` in `docker-compose.yml`)
-3. Reload the page after ~4 seconds
+Select a `.tar.gz` or `.tar.gz.enc` file.
+
+- **Unencrypted file** — restore begins immediately
+- **Encrypted file** — a password field appears before restore starts
+
+**Security:** if the wrong password is entered, AES-256-GCM authentication fails **before** any file is written to disk. Your data is not affected.
+
+After a successful restore, the system:
+1. Replaces `awg.db` and `*.save` files with the archive contents
+2. Restarts the container (requires `restart: always` in `docker-compose.yml`)
+3. Reloads the page after ~4 seconds
 
 > **Warning:** Restore replaces ALL current data. After restart, all active WireGuard sessions will be dropped — clients will need to reconnect.
 
