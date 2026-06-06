@@ -323,6 +323,19 @@ func (m *Manager) Delete(id string) error {
 
 // ── Ipset: Upload & Generate ──────────────────────────────────────────────────
 
+// GetIPSetEntries returns the current CIDR entries in the kernel ipset for this alias.
+// Only valid for type=ipset. Returns nil if the alias is not ipset type or set is empty.
+func (m *Manager) GetIPSetEntries(id string) ([]string, error) {
+	a, err := m.getOrNotFound(id)
+	if err != nil {
+		return nil, err
+	}
+	if a.Type != "ipset" {
+		return nil, fmt.Errorf("alias %s is not of type ipset", id)
+	}
+	return m.ipsetMgr.ListEntries(a.IPSetName), nil
+}
+
 // UploadFromFile loads CIDRs from a plain-text file into an ipset alias.
 // Only valid for type=ipset.
 func (m *Manager) UploadFromFile(id, filePath string) (*Alias, error) {

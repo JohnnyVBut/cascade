@@ -783,6 +783,10 @@ class API {
     return this.call({ method: 'post', path: `/aliases/${id}/upload`, body: { text } });
   }
 
+  async getAliasEntries({ id }) {
+    return this.call({ method: 'get', path: `/aliases/${id}/entries` });
+  }
+
   /**
    * Запустить генерацию ipset через PrefixFetcher (async job).
    * @param {{ id: string, country?, asn?, asnList? }}

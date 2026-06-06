@@ -176,6 +176,29 @@ func (m *Manager) SaveSet(name string) error {
 }
 
 // GetEntryCount returns the number of entries in the named ipset (0 on error).
+// ListEntries returns all CIDR entries currently in the named ipset.
+// Parses `ipset list <name>` output — lines after "Members:" are the entries.
+// Returns nil if the set doesn't exist or is empty.
+func (m *Manager) ListEntries(name string) []string {
+	out, err := util.ExecFast(fmt.Sprintf("ipset list %s 2>/dev/null", name))
+	if err != nil || out == "" {
+		return nil
+	}
+	var entries []string
+	inMembers := false
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "Members:" {
+			inMembers = true
+			continue
+		}
+		if inMembers && line != "" {
+			entries = append(entries, line)
+		}
+	}
+	return entries
+}
+
 func (m *Manager) GetEntryCount(name string) int {
 	out, err := util.ExecFast(fmt.Sprintf("ipset list %s -t 2>/dev/null", name))
 	if err != nil {

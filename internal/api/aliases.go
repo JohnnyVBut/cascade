@@ -37,6 +37,7 @@ func RegisterAliases(api fiber.Router) {
 	g.Delete("/:id", deleteAlias)
 
 	g.Post("/:id/upload", uploadAlias)
+	g.Get("/:id/entries", getAliasEntries)
 	g.Post("/:id/generate", generateAlias)
 	g.Get("/:id/generate/:jobId", getAliasJobStatus)
 }
@@ -118,6 +119,20 @@ func deleteAlias(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GET /api/aliases/:id/entries
+// Returns current CIDR entries from the kernel ipset.
+// Only valid for type=ipset. Used to pre-populate the edit textarea for small sets.
+func getAliasEntries(c *fiber.Ctx) error {
+	entries, err := aliases.Get().GetIPSetEntries(c.Params("id"))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if entries == nil {
+		entries = []string{}
+	}
+	return c.JSON(fiber.Map{"entries": entries})
 }
 
 // POST /api/aliases/:id/upload

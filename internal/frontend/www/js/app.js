@@ -399,6 +399,7 @@ new Vue({
       description: '',
       type: 'network',          // 'host' | 'network' | 'ipset' | 'group' | 'port' | 'port-group'
       entries: '',              // textarea: one entry per line (host/network/port)
+      ipsetEntries: '',         // textarea: manual CIDRs for ipset type
       memberIds: [],            // для group/port-group: выбранные UUID members
       genSource: 'country',     // 'country' | 'asn' | 'asn-list'
       genCountry: '',
@@ -412,6 +413,9 @@ new Vue({
       description: '',
       type: 'network',
       entries: '',
+      ipsetEntries: '',         // manual CIDRs for ipset type (pre-populated for small sets)
+      ipsetEntriesLoading: false,
+      ipsetEntriesLoaded: false,
       memberIds: [],            // для group/port-group: выбранные UUID members
       genSource: 'country',
       genCountry: '',
@@ -2135,7 +2139,7 @@ new Vue({
 
     _resetAliasCreate() {
       this.aliasCreate = {
-        name: '', description: '', type: 'network', entries: '', memberIds: [],
+        name: '', description: '', type: 'network', entries: '', ipsetEntries: '', memberIds: [],
         genSource: 'country', genCountry: '', genAsn: '', genAsnList: '',
         file: null,
       };
@@ -2168,7 +2172,8 @@ new Vue({
         if (data.type === 'group' || data.type === 'port-group') {
           data.memberIds = this.aliasCreate.memberIds;
         }
-        // Сохраняем file и genOpts ДО сброса формы
+        // Сохраняем ipsetEntries, file и genOpts ДО сброса формы
+        const ipsetText = this.aliasCreate.ipsetEntries.trim();
         const uploadFile = this.aliasCreate.file;
         const genOpts = this.aliasCreate.type === 'ipset' ? {
           source:  this.aliasCreate.genSource,
@@ -2183,8 +2188,17 @@ new Vue({
         this._resetAliasCreate();
         await this.loadAliases();
 
-        // Если выбран файл — сразу загружаем в созданный алиас
-        if (created.type === 'ipset' && uploadFile) {
+        // ipset: загружаем содержимое (приоритет: ручной ввод > файл)
+        if (created.type === 'ipset' && ipsetText) {
+          try {
+            const result = await this.api.uploadAliasFile({ id: created.id, text: ipsetText });
+            await this.loadAliases();
+            const count = result && result.entryCount ? result.entryCount : '?';
+            this.showToast(`Alias created — ${count} entries loaded`, 'success');
+          } catch (err) {
+            this.showToast(`Alias created, but entries upload failed: ${err.message}`, 'error');
+          }
+        } else if (created.type === 'ipset' && uploadFile) {
           try {
             const text = await uploadFile.text();
             const result = await this.api.uploadAliasFile({ id: created.id, text });
@@ -2239,6 +2253,9 @@ new Vue({
         description: alias.description || '',
         type: alias.type,
         entries: hasEntries ? (alias.entries || []).join('\n') : '',
+        ipsetEntries: '',
+        ipsetEntriesLoading: false,
+        ipsetEntriesLoaded: false,
         memberIds: hasMembers ? [...(alias.memberIds || [])] : [],
         genSource: alias.generatorOpts?.asnList ? 'asn-list' : alias.generatorOpts?.asn ? 'asn' : 'country',
         genCountry: alias.generatorOpts?.country || '',
@@ -2250,6 +2267,21 @@ new Vue({
       const found = code ? this.countries.find(c => c.code === code.toUpperCase()) : null;
       this.countrySearch = found ? found.name + ' (' + found.code + ')' : '';
       this.showAliasEdit = true;
+
+      // For small manually-entered ipsets: pre-populate textarea from kernel.
+      // Criteria: no generatorOpts (not generated) AND entryCount <= 200.
+      if (alias.type === 'ipset' && !alias.generatorOpts && alias.entryCount <= 200) {
+        this.aliasEdit.ipsetEntriesLoading = true;
+        try {
+          const res = await this.api.getAliasEntries({ id: alias.id });
+          this.aliasEdit.ipsetEntries = (res.entries || []).join('\n');
+          this.aliasEdit.ipsetEntriesLoaded = true;
+        } catch (e) {
+          this.aliasEdit.ipsetEntries = '';
+        } finally {
+          this.aliasEdit.ipsetEntriesLoading = false;
+        }
+      }
     },
 
     async saveAliasEdit() {
@@ -2265,9 +2297,23 @@ new Vue({
           data.memberIds = this.aliasEdit.memberIds;
         }
         await this.api.updateAlias(data);
+
+        // For ipset: if user edited entries in textarea — upload new content
+        const ipsetText = this.aliasEdit.ipsetEntries.trim();
+        if (this.aliasEdit.type === 'ipset' && ipsetText) {
+          try {
+            const result = await this.api.uploadAliasFile({ id: this.aliasEdit.id, text: ipsetText });
+            const count = result && result.entryCount ? result.entryCount : '?';
+            this.showToast(`Alias updated — ${count} entries saved`, 'success');
+          } catch (err) {
+            this.showToast(`Alias saved, but entries upload failed: ${err.message}`, 'error');
+          }
+        } else {
+          this.showToast('Alias updated', 'success');
+        }
+
         this.showAliasEdit = false;
         await this.loadAliases();
-        this.showToast('Alias updated', 'success');
       } catch (err) {
         this.showToast(err.message || 'Failed to update alias', 'error');
       }

@@ -4306,7 +4306,20 @@
                   </label>
                 </div>
               </div>
-              <!-- ipset: generate section -->
+              <!-- ipset: manual CIDR entry (like network type) -->
+              <div v-if="aliasCreate.type === 'ipset'" class="bg-gray-50 dark:bg-neutral-600 rounded-lg" style="padding:12px; margin-bottom:8px;">
+                <p class="text-sm font-medium dark:text-neutral-300 mb-2">
+                  Enter CIDRs manually
+                  <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional — one per line)</span>
+                </p>
+                <textarea v-model="aliasCreate.ipsetEntries" rows="4"
+                  placeholder="10.0.0.0/8&#10;192.168.1.0/24&#10;172.16.0.0/12"
+                  class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm font-mono"></textarea>
+                <p class="text-xs text-gray-400 dark:text-neutral-500" style="margin-top:4px;">
+                  Takes priority over file upload. Leave empty to use file or generate instead.
+                </p>
+              </div>
+
               <!-- ipset: upload file -->
               <div v-if="aliasCreate.type === 'ipset'" class="bg-gray-50 dark:bg-neutral-600 rounded-lg" style="padding:12px; margin-bottom:8px;">
                 <p class="text-sm font-medium dark:text-neutral-300 mb-2">Upload from file <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional — one CIDR per line)</span></p>
@@ -4510,14 +4523,42 @@
                   Status: {{ aliasGenerateJobStatus.status }}
                   <span v-if="aliasGenerateJobStatus.entryCount"> — {{ aliasGenerateJobStatus.entryCount }} entries</span>
                 </div>
-                <!-- Upload from file -->
+                <!-- Manual CIDR entry or upload (depending on set size) -->
                 <div style="margin-top:12px; border-top:1px solid rgba(0,0,0,0.1); padding-top:12px;">
-                  <p class="text-xs text-gray-500 dark:text-neutral-400 mb-2">Upload a text file — one CIDR prefix per line (comments with # are ignored):</p>
-                  <label class="inline-block bg-gray-200 dark:bg-neutral-500 text-gray-700 dark:text-neutral-200 rounded px-3 py-2 text-sm font-medium cursor-pointer transition">
-                    📂 Upload CIDR file
-                    <input type="file" class="hidden" accept=".txt,.cidr,.lst,.csv"
-                      @change="e => { uploadAliasFile(aliasEdit.id, e.target.files[0]); e.target.value=''; }">
-                  </label>
+
+                  <!-- Small set (≤200, no generatorOpts): show editable textarea -->
+                  <div v-if="!aliasEdit.generatorOpts && aliasEdit.entryCount <= 200">
+                    <p class="text-sm font-medium dark:text-neutral-300 mb-1">
+                      CIDRs
+                      <span class="text-gray-400 dark:text-neutral-500 font-normal">(edit and Save to apply)</span>
+                    </p>
+                    <div v-if="aliasEdit.ipsetEntriesLoading" class="text-xs text-gray-400 dark:text-neutral-500 py-2">Loading…</div>
+                    <textarea v-else v-model="aliasEdit.ipsetEntries" rows="6"
+                      placeholder="10.0.0.0/8&#10;192.168.1.0/24"
+                      class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm font-mono"></textarea>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500" style="margin-top:4px;">
+                      One CIDR per line. Saving replaces the entire set.
+                    </p>
+                  </div>
+
+                  <!-- Large set or generated: show count + download + upload -->
+                  <div v-else>
+                    <p class="text-sm font-medium dark:text-neutral-300 mb-2">
+                      Contains <strong>{{ aliasEdit.entryCount }}</strong> entries
+                      <span v-if="aliasEdit.generatorOpts" class="text-gray-400 dark:text-neutral-500 font-normal">(generated)</span>
+                    </p>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                      <label class="inline-block bg-gray-200 dark:bg-neutral-500 text-gray-700 dark:text-neutral-200 rounded px-3 py-2 text-sm font-medium cursor-pointer transition">
+                        📂 Replace from file
+                        <input type="file" class="hidden" accept=".txt,.cidr,.lst,.csv"
+                          @change="e => { uploadAliasFile(aliasEdit.id, e.target.files[0]); e.target.value=''; }">
+                      </label>
+                    </div>
+                    <p class="text-xs text-gray-400 dark:text-neutral-500" style="margin-top:4px;">
+                      Upload a new file to replace all entries. One CIDR per line.
+                    </p>
+                  </div>
+
                 </div>
               </div>
             </div>
