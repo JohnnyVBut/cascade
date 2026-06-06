@@ -2244,7 +2244,7 @@ new Vue({
       setTimeout(() => { this.showCountryDrop = false; }, 150);
     },
 
-    openAliasEdit(alias) {
+    async openAliasEdit(alias) {
       const hasEntries = alias.type === 'host' || alias.type === 'network' || alias.type === 'port';
       const hasMembers = alias.type === 'group' || alias.type === 'port-group';
       this.aliasEdit = {
