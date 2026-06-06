@@ -2486,7 +2486,7 @@ new Vue({
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         this.showBackupModal = false;
-        this.showToast('Backup downloaded' + (this.backupPassword ? ' (encrypted)' : ''), 'success');
+        this.showToast('Backup created' + (this.backupPassword ? ' (encrypted)' : ''), 'success');
       } catch (err) {
         this.showToast(err.message || 'Backup failed', 'error');
       } finally {

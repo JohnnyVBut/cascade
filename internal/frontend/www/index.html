@@ -2471,7 +2471,7 @@
               <!-- Download -->
               <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
                 <div style="flex:1; min-width:200px;">
-                  <p class="text-sm font-medium dark:text-neutral-300">Download Backup</p>
+                  <p class="text-sm font-medium dark:text-neutral-300">Create Backup</p>
                   <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
                     Plain <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code>
                     or password-protected <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz.enc</code>
@@ -2482,8 +2482,8 @@
                   :disabled="backupDownloading"
                   class="btn font-medium text-sm rounded-lg text-white"
                   style="background:#2563eb; padding:8px 20px; white-space:nowrap;">
-                  <span v-if="backupDownloading">Downloading…</span>
-                  <span v-else>⬇ Download Backup</span>
+                  <span v-if="backupDownloading">Creating…</span>
+                  <span v-else>⬇ Create Backup</span>
                 </button>
               </div>
               <!-- Restore -->
@@ -2515,7 +2515,7 @@
             style="padding:40px 24px;">
             <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
               <div class="modal-header dark:border-neutral-600">
-                <p class="text-lg font-semibold dark:text-neutral-100">Download Backup</p>
+                <p class="text-lg font-semibold dark:text-neutral-100">Create Backup</p>
               </div>
               <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
                 <p class="text-sm text-gray-600 dark:text-neutral-400">
@@ -2545,8 +2545,8 @@
                   :disabled="backupDownloading || (backupPassword && backupPassword !== backupPasswordConfirm)"
                   class="rounded-lg font-medium text-sm btn text-white"
                   style="background:#2563eb;">
-                  <span v-if="backupDownloading">Downloading…</span>
-                  <span v-else-if="backupPassword">⬇ Download Encrypted</span>
+                  <span v-if="backupDownloading">Creating…</span>
+                  <span v-else-if="backupPassword">⬇ Create Encrypted</span>
                   <span v-else>⬇ Download</span>
                 </button>
               </div>
