@@ -4307,6 +4307,27 @@
                 </div>
               </div>
               <!-- ipset: generate section -->
+              <!-- ipset: upload file -->
+              <div v-if="aliasCreate.type === 'ipset'" class="bg-gray-50 dark:bg-neutral-600 rounded-lg" style="padding:12px; margin-bottom:8px;">
+                <p class="text-sm font-medium dark:text-neutral-300 mb-2">Upload from file <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional — one CIDR per line)</span></p>
+                <label class="inline-flex items-center gap-2 bg-white dark:bg-neutral-500 border border-gray-300 dark:border-neutral-400 text-gray-700 dark:text-neutral-200 rounded px-3 py-2 text-sm cursor-pointer transition"
+                  style="width:100%;">
+                  <svg class="w-4 h-4 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                  </svg>
+                  <span v-if="!aliasCreate.file" class="text-gray-400 dark:text-neutral-400">Choose CIDR file (.txt, .lst…)</span>
+                  <span v-else class="truncate">{{ aliasCreate.file.name }}</span>
+                  <input type="file" class="hidden" accept=".txt,.cidr,.lst,.csv"
+                    @change="e => { aliasCreate.file = e.target.files[0] || null; }">
+                </label>
+                <button v-if="aliasCreate.file" @click="aliasCreate.file = null"
+                  class="text-xs text-gray-400 dark:text-neutral-500 mt-1"
+                  style="background:none;border:none;cursor:pointer;padding:0;">
+                  ✕ Remove
+                </button>
+              </div>
+
+              <!-- ipset: generate from internet -->
               <div v-if="aliasCreate.type === 'ipset'" class="bg-gray-50 dark:bg-neutral-600 rounded-lg" style="padding:12px;">
                 <p class="text-sm font-medium dark:text-neutral-300 mb-2">Generate after creation (optional)</p>
                 <select v-model="aliasCreate.genSource"

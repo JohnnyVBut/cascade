@@ -404,6 +404,7 @@ new Vue({
       genCountry: '',
       genAsn: '',
       genAsnList: '',
+      file: null,               // optional CIDR file for ipset (uploaded immediately after create)
     },
     aliasEdit: {
       id: null,
@@ -2136,6 +2137,7 @@ new Vue({
       this.aliasCreate = {
         name: '', description: '', type: 'network', entries: '', memberIds: [],
         genSource: 'country', genCountry: '', genAsn: '', genAsnList: '',
+        file: null,
       };
     },
 
@@ -2166,7 +2168,8 @@ new Vue({
         if (data.type === 'group' || data.type === 'port-group') {
           data.memberIds = this.aliasCreate.memberIds;
         }
-        // Сохраняем опции генерации ДО сброса формы
+        // Сохраняем file и genOpts ДО сброса формы
+        const uploadFile = this.aliasCreate.file;
         const genOpts = this.aliasCreate.type === 'ipset' ? {
           source:  this.aliasCreate.genSource,
           country: this.aliasCreate.genCountry,
@@ -2179,7 +2182,21 @@ new Vue({
         this.showAliasCreate = false;
         this._resetAliasCreate();
         await this.loadAliases();
-        this.showToast('Alias created', 'success');
+
+        // Если выбран файл — сразу загружаем в созданный алиас
+        if (created.type === 'ipset' && uploadFile) {
+          try {
+            const text = await uploadFile.text();
+            const result = await this.api.uploadAliasFile({ id: created.id, text });
+            await this.loadAliases();
+            const count = result && result.entryCount ? result.entryCount : '?';
+            this.showToast(`Alias created — ${count} entries uploaded from ${uploadFile.name}`, 'success');
+          } catch (err) {
+            this.showToast(`Alias created, but file upload failed: ${err.message}`, 'error');
+          }
+        } else {
+          this.showToast('Alias created', 'success');
+        }
 
         // Auto-generate если тип ipset и указан источник
         if (created.type === 'ipset' && genOpts &&
