@@ -904,6 +904,7 @@ new Vue({
       if (pageId === 'nat') {
         this.loadNatInterfaces();
         this.loadNatRules();
+        if (!this.aliases.length) this.loadAliases();
       }
       if (pageId === 'firewall-aliases') {
         this.loadAliases();
