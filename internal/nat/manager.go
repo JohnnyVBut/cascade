@@ -508,7 +508,8 @@ func (m *Manager) resolveAliasSrcParts(aliasID string) ([]string, error) {
 
 	switch alias.Type {
 	case "ipset":
-		return []string{fmt.Sprintf("-m set --match-set %s src", alias.Name)}, nil
+		// Use IPSetName (lowercase kernel name), not Name (user-facing, may have uppercase/spaces)
+		return []string{fmt.Sprintf("-m set --match-set %s src", alias.IPSetName)}, nil
 
 	case "host", "network":
 		if len(alias.Entries) == 0 {
