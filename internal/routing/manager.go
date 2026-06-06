@@ -372,8 +372,11 @@ func (m *Manager) RestoreAll() {
 			continue
 		}
 		enabled++
-		if err := m.kernelAddResolved(&r); err != nil {
-			// "File exists" = route already in kernel — normal after hot restart
+		// Use replace (not add) so that AllowedIPs routes added by wg-quick with
+		// proto=kernel do not cause EEXIST when the user has a static route for
+		// the same destination. "ip route replace" atomically overwrites the
+		// existing route (if any) with proto=static, or adds it if absent.
+		if err := m.kernelReplaceResolved(&r); err != nil {
 			log.Printf("routing: restore %s: %v", r.Destination, err)
 		} else {
 			log.Printf("routing: restored %s", r.Destination)
@@ -415,7 +418,9 @@ func (m *Manager) ReapplyForDevice(devName string) {
 		if r.Dev != devName {
 			continue
 		}
-		if err := m.kernelAdd(&r); err != nil {
+		// Use replace for the same reason as RestoreAll — wg-quick up may have
+		// added an AllowedIPs route (proto kernel) that conflicts with our route.
+		if err := m.kernelReplace(&r, r.Gateway, r.Dev); err != nil {
 			log.Printf("routing: reapply %s via %s: %v", r.Destination, devName, err)
 		} else {
 			log.Printf("routing: reapplied %s via %s", r.Destination, devName)
@@ -903,6 +908,23 @@ func (m *Manager) kernelAddResolved(r *Route) error {
 	resolved.Gateway = via
 	resolved.Dev = dev
 	return m.kernelAdd(&resolved)
+}
+
+// kernelReplaceResolved resolves gateway reference (if any) then runs "ip route replace".
+// Unlike kernelAddResolved (which uses "ip route add" and fails if a route to the
+// same destination already exists), replace is idempotent:
+//   - Route absent → added.
+//   - Route present (any proto) → replaced with proto static.
+//
+// This is the correct call site for RestoreAll and ReapplyForDevice, where
+// wg-quick may have already added AllowedIPs routes (proto kernel) to the same
+// destination — "ip route add" would fail with EEXIST in that case.
+func (m *Manager) kernelReplaceResolved(r *Route) error {
+	via, dev, err := m.resolveGatewayVia(r)
+	if err != nil {
+		return fmt.Errorf("ip route: cannot resolve gateway: %w", err)
+	}
+	return m.kernelReplace(r, via, dev)
 }
 
 // kernelAdd runs "ip route add ..." and wraps stderr as "ip route: <detail>" (FIX-15).
