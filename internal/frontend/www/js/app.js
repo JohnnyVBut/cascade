@@ -431,6 +431,13 @@ new Vue({
     aliasGenerateJobStatus: null,
     aliasTooltip: null,         // { id, alias, x, y } — hover tooltip state
     systemRestoring: false,     // true while restore request is in flight
+    showBackupModal: false,     // password prompt for backup download
+    backupPassword: '',
+    backupPasswordConfirm: '',
+    backupDownloading: false,
+    showRestorePasswordModal: false, // password prompt for encrypted restore
+    restorePassword: '',
+    restoreFile: null,          // File object pending restore after password entry
 
     // Firewall Rules (поглощает PBR)
     firewallRules: [],
@@ -2456,23 +2463,63 @@ new Vue({
     // ========================================================================
     // System Backup / Restore
 
-    downloadSystemBackup() {
-      const a = document.createElement('a');
-      a.href = this.api.getSystemBackupUrl();
-      a.download = '';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    openBackupModal() {
+      this.backupPassword = '';
+      this.backupPasswordConfirm = '';
+      this.showBackupModal = true;
     },
 
-    async restoreSystemBackup(file) {
+    async confirmDownloadBackup() {
+      if (this.backupPassword && this.backupPassword !== this.backupPasswordConfirm) {
+        this.showToast('Passwords do not match', 'error');
+        return;
+      }
+      try {
+        this.backupDownloading = true;
+        const { blob, filename } = await this.api.downloadSystemBackup({ password: this.backupPassword });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        this.showBackupModal = false;
+        this.showToast('Backup downloaded' + (this.backupPassword ? ' (encrypted)' : ''), 'success');
+      } catch (err) {
+        this.showToast(err.message || 'Backup failed', 'error');
+      } finally {
+        this.backupDownloading = false;
+      }
+    },
+
+    pickRestoreFile(file) {
       if (!file) return;
+      const isEnc = file.name.endsWith('.enc');
+      if (isEnc) {
+        // Ask for password before restoring.
+        this.restoreFile = file;
+        this.restorePassword = '';
+        this.showRestorePasswordModal = true;
+      } else {
+        this._doRestore(file, '');
+      }
+    },
+
+    async confirmRestoreWithPassword() {
+      this.showRestorePasswordModal = false;
+      await this._doRestore(this.restoreFile, this.restorePassword);
+      this.restoreFile = null;
+      this.restorePassword = '';
+    },
+
+    async _doRestore(file, password) {
       if (!confirm(`Restore backup from "${file.name}"?\n\nThis will replace ALL data and restart the server.`)) return;
       try {
         this.systemRestoring = true;
-        await this.api.restoreSystemBackup(file);
+        await this.api.restoreSystemBackup({ file, password });
         this.showToast('Backup restored. Server is restarting…', 'success');
-        // Page will become unreachable briefly; reload after delay
         setTimeout(() => window.location.reload(), 4000);
       } catch (err) {
         this.showToast(err.message || 'Restore failed', 'error');

@@ -953,21 +953,45 @@ class API {
     return this.call({ method: 'delete', path: `/tokens/${id}` });
   }
 
-  /** Trigger full system backup download (awg.db + ipsets). */
-  getSystemBackupUrl() {
+  _systemApiBase() {
     const segs = window.location.pathname.split('/').filter(Boolean);
-    const apiBase = segs.length > 0
-      ? `${window.location.origin}/${segs[0]}/api`
-      : `${window.location.origin}/api`;
-    return `${apiBase}/system/backup`;
+    return segs.length > 0
+      ? `${window.location.origin}/${segs[0]}/api/system`
+      : `${window.location.origin}/api/system`;
   }
 
-  /** Restore from a tar.gz backup file. */
-  async restoreSystemBackup(file) {
+  /**
+   * Download full system backup. If password provided, file is AES-256-GCM encrypted.
+   * Returns a Blob so the caller can trigger a file download.
+   * @param {{ password?: string }}
+   */
+  async downloadSystemBackup({ password = '' } = {}) {
+    const res = await fetch(`${this._systemApiBase()}/backup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || res.statusText);
+    }
+    // Extract filename from Content-Disposition header.
+    const cd = res.headers.get('Content-Disposition') || '';
+    const match = cd.match(/filename[^;=\n]*=(['"]?)([^'"\n]+)\1/);
+    const filename = match ? match[2] : (password ? 'cascade-backup.tar.gz.enc' : 'cascade-backup.tar.gz');
+    const blob = await res.blob();
+    return { blob, filename };
+  }
+
+  /**
+   * Restore from a backup file (plain .tar.gz or encrypted .tar.gz.enc).
+   * @param {{ file: File, password?: string }}
+   */
+  async restoreSystemBackup({ file, password = '' }) {
     const form = new FormData();
     form.append('backup', file);
-    const url = this.getSystemBackupUrl().replace('/backup', '/restore');
-    const res = await fetch(url, { method: 'POST', body: form });
+    if (password) form.append('password', password);
+    const res = await fetch(`${this._systemApiBase()}/restore`, { method: 'POST', body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
       throw new Error(err.message || res.statusText);

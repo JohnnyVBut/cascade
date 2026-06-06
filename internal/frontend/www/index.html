@@ -2473,13 +2473,17 @@
                 <div style="flex:1; min-width:200px;">
                   <p class="text-sm font-medium dark:text-neutral-300">Download Backup</p>
                   <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
-                    Saves <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">cascade-backup-YYYYMMDD.tar.gz</code>
+                    Plain <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code>
+                    or password-protected <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz.enc</code>
+                    (AES-256).
                   </p>
                 </div>
-                <button @click="downloadSystemBackup()"
+                <button @click="openBackupModal()"
+                  :disabled="backupDownloading"
                   class="btn font-medium text-sm rounded-lg text-white"
                   style="background:#2563eb; padding:8px 20px; white-space:nowrap;">
-                  ⬇ Download Backup
+                  <span v-if="backupDownloading">Downloading…</span>
+                  <span v-else>⬇ Download Backup</span>
                 </button>
               </div>
               <!-- Restore -->
@@ -2487,7 +2491,8 @@
                 <div style="flex:1; min-width:200px;">
                   <p class="text-sm font-medium dark:text-neutral-300">Restore from Backup</p>
                   <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
-                    Upload a <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code> backup file.
+                    Supports plain <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code>
+                    and encrypted <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz.enc</code>.
                     <span style="color:#dc2626; font-weight:500;">All current data will be replaced.</span>
                   </p>
                 </div>
@@ -2496,10 +2501,89 @@
                   :style="systemRestoring ? 'opacity:0.6; pointer-events:none;' : ''">
                   <span v-if="systemRestoring">Restoring…</span>
                   <span v-else>⬆ Restore Backup</span>
-                  <input type="file" class="hidden" accept=".tar.gz,.gz"
+                  <input type="file" class="hidden" accept=".tar.gz,.gz,.enc"
                     :disabled="systemRestoring"
-                    @change="e => { restoreSystemBackup(e.target.files[0]); e.target.value=''; }">
+                    @change="e => { pickRestoreFile(e.target.files[0]); e.target.value=''; }">
                 </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Backup Password Modal -->
+          <div v-if="showBackupModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+            style="padding:40px 24px;">
+            <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
+              <div class="modal-header dark:border-neutral-600">
+                <p class="text-lg font-semibold dark:text-neutral-100">Download Backup</p>
+              </div>
+              <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
+                <p class="text-sm text-gray-600 dark:text-neutral-400">
+                  Optionally protect the backup with a password (AES-256 encryption).
+                  Leave empty to download an unencrypted <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code>.
+                </p>
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Password <span class="text-gray-400 font-normal">(optional)</span></label>
+                  <input v-model="backupPassword" type="password" placeholder="Leave empty for no encryption"
+                    class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+                <div v-if="backupPassword">
+                  <label class="text-sm font-medium dark:text-neutral-300">Confirm Password</label>
+                  <input v-model="backupPasswordConfirm" type="password" placeholder="Repeat password"
+                    class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <p class="text-xs mt-1" style="color:#dc2626;">
+                    ⚠ If you lose the password, the backup cannot be decrypted.
+                  </p>
+                </div>
+              </div>
+              <div class="modal-footer dark:border-neutral-600">
+                <button @click="showBackupModal = false"
+                  class="bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded-lg font-medium text-sm btn">
+                  Cancel
+                </button>
+                <button @click="confirmDownloadBackup()"
+                  :disabled="backupDownloading || (backupPassword && backupPassword !== backupPasswordConfirm)"
+                  class="rounded-lg font-medium text-sm btn text-white"
+                  style="background:#2563eb;">
+                  <span v-if="backupDownloading">Downloading…</span>
+                  <span v-else-if="backupPassword">⬇ Download Encrypted</span>
+                  <span v-else>⬇ Download</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Restore Password Modal (for .enc files) -->
+          <div v-if="showRestorePasswordModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+            style="padding:40px 24px;">
+            <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
+              <div class="modal-header dark:border-neutral-600">
+                <p class="text-lg font-semibold dark:text-neutral-100">Encrypted Backup</p>
+              </div>
+              <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;">
+                <p class="text-sm text-gray-600 dark:text-neutral-400">
+                  <strong>{{ restoreFile && restoreFile.name }}</strong> is encrypted.
+                  Enter the password that was used when creating this backup.
+                </p>
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Password</label>
+                  <input v-model="restorePassword" type="password" placeholder="Backup password"
+                    class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1"
+                    @keydown.enter="confirmRestoreWithPassword()">
+                </div>
+              </div>
+              <div class="modal-footer dark:border-neutral-600">
+                <button @click="showRestorePasswordModal = false; restoreFile = null;"
+                  class="bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded-lg font-medium text-sm btn">
+                  Cancel
+                </button>
+                <button @click="confirmRestoreWithPassword()"
+                  :disabled="!restorePassword"
+                  class="rounded-lg font-medium text-sm btn text-white"
+                  style="background:#dc2626;">
+                  ⬆ Restore
+                </button>
               </div>
             </div>
           </div>
