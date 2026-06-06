@@ -3590,7 +3590,9 @@
                 <div style="flex:2; min-width:0;">
                   <template v-if="rule.sourceAliasId">
                     <span class="text-xs font-semibold rounded"
-                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6;">
+                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6; cursor:pointer;"
+                      title="Click to edit alias"
+                      @click.stop="openAliasFromBadge(rule.sourceAliasId)">
                       {{ (aliases.find(a => a.id === rule.sourceAliasId) || {}).name || rule.sourceAliasId }}
                     </span>
                   </template>
@@ -4646,7 +4648,9 @@
                     <span v-if="rule.source && rule.source.invert" style="color:#ef4444; font-weight:600;">! </span>
                     <span v-if="rule.source && rule.source.type === 'alias'"
                       class="font-semibold rounded"
-                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6;">
+                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6; cursor:pointer;"
+                      title="Click to edit alias"
+                      @click.stop="openAliasFromBadge(rule.source.aliasId)">
                       {{ _aliasLabel(rule.source.aliasId) }}
                     </span>
                     <span v-else class="font-mono text-gray-600 dark:text-neutral-400">{{ _firewallEndpointLabel(rule.source) }}</span>
@@ -4662,7 +4666,9 @@
                     <span v-if="rule.destination && rule.destination.invert" style="color:#ef4444; font-weight:600;">! </span>
                     <span v-if="rule.destination && rule.destination.type === 'alias'"
                       class="font-semibold rounded"
-                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6;">
+                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6; cursor:pointer;"
+                      title="Click to edit alias"
+                      @click.stop="openAliasFromBadge(rule.destination.aliasId)">
                       {{ _aliasLabel(rule.destination.aliasId) }}
                     </span>
                     <span v-else class="font-mono text-gray-600 dark:text-neutral-400">{{ _firewallEndpointLabel(rule.destination) }}</span>

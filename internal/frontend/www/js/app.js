@@ -2415,6 +2415,14 @@ new Vue({
       return a ? a.name : aliasId;
     },
 
+    async openAliasFromBadge(aliasId) {
+      if (!aliasId) return;
+      this.activePage = 'firewall-aliases';
+      if (!this.aliases.length) await this.loadAliases();
+      const alias = this.aliases.find(a => a.id === aliasId);
+      if (alias) await this.openAliasEdit(alias);
+    },
+
     // ========================================================================
     // Firewall Rules Methods  (поглощает PBR / Policy)
     // ========================================================================
