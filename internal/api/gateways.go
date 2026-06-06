@@ -16,9 +16,13 @@
 package api
 
 import (
+	"log"
+
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/gateway"
+	"github.com/JohnnyVBut/cascade/internal/routing"
 )
 
 // RegisterGateways registers all /api/gateways/* and /api/gateway-groups/* routes.
@@ -152,10 +156,20 @@ func updateGatewayGroup(c *fiber.Ctx) error {
 	if err := c.BodyParser(&inp); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
 	}
-	group, err := gateway.Get().UpdateGroup(c.Params("id"), inp)
+	groupID := c.Params("id")
+	group, err := gateway.Get().UpdateGroup(groupID, inp)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+
+	// Tier configuration may have changed — update PBR routing tables and
+	// static routes that reference this group so the kernel reflects the new
+	// priority ordering immediately (without waiting for a gateway status event).
+	if err := firewall.Get().RebuildChains(); err != nil {
+		log.Printf("updateGatewayGroup: RebuildChains after group %s update: %v", groupID, err)
+	}
+	routing.Get().ReapplyGatewayGroup(groupID)
+
 	return c.JSON(group)
 }
 

@@ -387,6 +387,27 @@ func (m *Manager) RestoreAll() {
 	}
 }
 
+// ReapplyGatewayGroup re-resolves and re-applies all enabled static routes
+// that reference groupID. Called after gateway group tier configuration changes
+// so the kernel routes reflect the new priority ordering immediately.
+func (m *Manager) ReapplyGatewayGroup(groupID string) {
+	routes, err := m.GetRoutes()
+	if err != nil {
+		log.Printf("routing: reapplyGatewayGroup %s: %v", groupID, err)
+		return
+	}
+	for _, r := range routes {
+		if !r.Enabled || r.GatewayGroupID != groupID {
+			continue
+		}
+		if err := m.kernelReplaceResolved(&r); err != nil {
+			log.Printf("routing: reapplyGatewayGroup %s route %s: %v", groupID, r.Destination, err)
+		} else {
+			log.Printf("routing: reapplied route %s for group %s", r.Destination, groupID)
+		}
+	}
+}
+
 // ReapplyForDevice re-adds all enabled routes that use the given interface.
 //
 // Called after TunnelInterface start/restart because wg-quick down→up removes
