@@ -4642,12 +4642,36 @@
                     {{ rule.protocol === 'any' ? '*' : rule.protocol }}
                   </td>
                   <!-- Source -->
-                  <td class="font-mono text-xs text-gray-600 dark:text-neutral-400 tc" style=" max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    <span v-if="rule.source && rule.source.invert" style="color:#ef4444;">!</span>{{ _firewallEndpointLabel(rule.source) }}<span v-if="rule.source && rule.source.port" class="text-gray-400">:{{ rule.source.port }}</span><span v-if="rule.source && rule.source.portAliasId" style="color:#a78bfa;">:[alias]</span>
+                  <td class="text-xs tc" style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <span v-if="rule.source && rule.source.invert" style="color:#ef4444; font-weight:600;">! </span>
+                    <span v-if="rule.source && rule.source.type === 'alias'"
+                      class="font-semibold rounded"
+                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6;">
+                      {{ _aliasLabel(rule.source.aliasId) }}
+                    </span>
+                    <span v-else class="font-mono text-gray-600 dark:text-neutral-400">{{ _firewallEndpointLabel(rule.source) }}</span>
+                    <span v-if="rule.source && rule.source.portAliasId"
+                      class="font-semibold rounded ml-1"
+                      style="padding:1px 6px; display:inline-block; background:#ede9fe; color:#5b21b6; font-size:0.65rem;">
+                      :{{ _aliasLabel(rule.source.portAliasId) }}
+                    </span>
+                    <span v-else-if="rule.source && rule.source.port" class="text-gray-400 font-mono">:{{ rule.source.port }}</span>
                   </td>
                   <!-- Destination -->
-                  <td class="font-mono text-xs text-gray-600 dark:text-neutral-400 tc" style=" max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-                    <span v-if="rule.destination && rule.destination.invert" style="color:#ef4444;">!</span>{{ _firewallEndpointLabel(rule.destination) }}<span v-if="rule.destination && rule.destination.port" class="text-gray-400">:{{ rule.destination.port }}</span><span v-if="rule.destination && rule.destination.portAliasId" style="color:#a78bfa;">:[alias]</span>
+                  <td class="text-xs tc" style="max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                    <span v-if="rule.destination && rule.destination.invert" style="color:#ef4444; font-weight:600;">! </span>
+                    <span v-if="rule.destination && rule.destination.type === 'alias'"
+                      class="font-semibold rounded"
+                      style="padding:2px 8px; display:inline-block; background:#ede9fe; color:#5b21b6;">
+                      {{ _aliasLabel(rule.destination.aliasId) }}
+                    </span>
+                    <span v-else class="font-mono text-gray-600 dark:text-neutral-400">{{ _firewallEndpointLabel(rule.destination) }}</span>
+                    <span v-if="rule.destination && rule.destination.portAliasId"
+                      class="font-semibold rounded ml-1"
+                      style="padding:1px 6px; display:inline-block; background:#ede9fe; color:#5b21b6; font-size:0.65rem;">
+                      :{{ _aliasLabel(rule.destination.portAliasId) }}
+                    </span>
+                    <span v-else-if="rule.destination && rule.destination.port" class="text-gray-400 font-mono">:{{ rule.destination.port }}</span>
                   </td>
                   <!-- Action badge -->
                   <td class="text-center tc">
