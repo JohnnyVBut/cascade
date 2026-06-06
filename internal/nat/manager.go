@@ -570,6 +570,44 @@ func (m *Manager) applyRule(rule *NatRule) error {
 	return nil
 }
 
+// RemoveForAlias removes kernel iptables rules for all enabled NAT rules that
+// reference aliasID as their source. Must be called BEFORE the alias is updated
+// in the DB so that buildCmds still uses the OLD alias content.
+func (m *Manager) RemoveForAlias(aliasID string) {
+	rules, err := m.GetRules()
+	if err != nil {
+		log.Printf("nat: RemoveForAlias %s: load rules: %v", aliasID, err)
+		return
+	}
+	for i := range rules {
+		if !rules[i].Enabled || rules[i].SourceAliasID != aliasID {
+			continue
+		}
+		if err := m.removeRule(&rules[i]); err != nil {
+			log.Printf("nat: RemoveForAlias %s: remove %q: %v", aliasID, rules[i].Name, err)
+		}
+	}
+}
+
+// RestoreForAlias re-applies kernel iptables rules for all enabled NAT rules that
+// reference aliasID. Must be called AFTER the alias is updated in the DB so that
+// buildCmds uses the NEW alias content.
+func (m *Manager) RestoreForAlias(aliasID string) {
+	rules, err := m.GetRules()
+	if err != nil {
+		log.Printf("nat: RestoreForAlias %s: load rules: %v", aliasID, err)
+		return
+	}
+	for i := range rules {
+		if !rules[i].Enabled || rules[i].SourceAliasID != aliasID {
+			continue
+		}
+		if err := m.applyRule(&rules[i]); err != nil {
+			log.Printf("nat: RestoreForAlias %s: apply %q: %v", aliasID, rules[i].Name, err)
+		}
+	}
+}
+
 // ReapplyAll removes all enabled NAT rules from the kernel and re-adds them.
 // Called when a non-ipset alias changes so that the expanded CIDR-based rules
 // pick up the new alias content (added or removed entries).

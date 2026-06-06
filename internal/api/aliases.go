@@ -78,34 +78,38 @@ func createAlias(c *fiber.Ctx) error {
 
 // PATCH /api/aliases/:id
 func updateAlias(c *fiber.Ctx) error {
+	aliasID := c.Params("id")
+
 	var upd aliases.Alias
 	if err := c.BodyParser(&upd); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
 	}
-	a, err := aliases.Get().Update(c.Params("id"), upd)
+
+	// For non-ipset aliases: remove kernel rules BEFORE updating the DB so that
+	// buildCmds still resolves the OLD alias content (the entries being removed
+	// need to be deleted from the kernel before they disappear from the DB).
+	oldAlias, _ := aliases.Get().GetByID(aliasID)
+	if oldAlias != nil && oldAlias.Type != "ipset" {
+		nat.Get().RemoveForAlias(aliasID)
+	}
+
+	a, err := aliases.Get().Update(aliasID, upd)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	// Re-apply NAT and Firewall rules when non-ipset alias changes.
-	// ipset aliases update atomically via `ipset swap` — no re-apply needed.
-	// For host/network/group/port/port-group: iptables rules are expanded per-entry
-	// and must be replaced to pick up added or removed entries.
-	if a.Type != "ipset" {
-		reapplyAliasRules()
-	}
-	return c.JSON(a)
-}
 
-// reapplyAliasRules flushes and re-applies all NAT and Firewall rules.
-// Called after a non-ipset alias is modified so that CIDR-expanded iptables
-// rules are replaced with the current alias content.
-func reapplyAliasRules() {
-	go func() {
-		nat.Get().ReapplyAll()
-		if err := firewall.Get().RebuildChains(); err != nil {
-			log.Printf("aliases: reapplyAliasRules: firewall rebuild: %v", err)
-		}
-	}()
+	// After the DB is updated: re-apply rules using the NEW alias content,
+	// then rebuild firewall chains (handles group/port aliases too).
+	if a.Type != "ipset" {
+		go func() {
+			nat.Get().RestoreForAlias(aliasID)
+			if err := firewall.Get().RebuildChains(); err != nil {
+				log.Printf("aliases: updateAlias: firewall rebuild: %v", err)
+			}
+		}()
+	}
+
+	return c.JSON(a)
 }
 
 // DELETE /api/aliases/:id
