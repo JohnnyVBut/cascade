@@ -681,11 +681,15 @@ Select a `.tar.gz` backup file. The system will:
 
 1. On the old server: **Settings → System Backup → Download Backup**
 2. Transfer manually: `.env`, `docker-compose.yml` (and TLS certificates if applicable)
-3. On the new server: install Docker, clone the repo, build (`./build.sh`)
-4. Start: `docker compose up -d`
-5. Restore: **Settings → System Backup → Restore Backup**
-6. Update DNS / firewall rules to the new IP
-7. Notify users of the new endpoint (server IP has changed)
+3. On the new server: install Cascade (installation script)
+4. Log in with any temporary password (Welcome screen)
+5. **Settings → System Backup → Restore Backup** → select the `.tar.gz` file
+6. Server restarts (~5 seconds)
+7. **Log in with the old server's username and password** — the database was replaced, the temporary account is gone
+8. Update DNS / firewall rules to the new IP
+9. Notify users of the new endpoint (server IP has changed)
+
+> **What is restored:** all interfaces (start automatically), peers, NAT/Firewall/Aliases/Gateways, ipset alias contents, users, API tokens, TOTP.
 
 #### Migrating from AWG-Easy (Import Backup)
 

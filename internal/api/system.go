@@ -49,16 +49,14 @@ func systemBackup(c *fiber.Ctx) error {
 		}
 	}
 
-	// ipsets/ directory
-	ipsetDir := filepath.Join(systemDataDir, "ipsets")
-	if info, err := os.Stat(ipsetDir); err == nil && info.IsDir() {
-		_ = filepath.Walk(ipsetDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return nil
-			}
-			rel, _ := filepath.Rel(systemDataDir, path)
-			return addFileToTar(tw, path, rel)
-		})
+	// ipset *.save files — stored directly in systemDataDir (not a subdirectory).
+	// ipset.Manager saves them as <dataDir>/<setname>.save and restores on startup.
+	entries, _ := os.ReadDir(systemDataDir)
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".save") {
+			continue
+		}
+		_ = addFileToTar(tw, filepath.Join(systemDataDir, e.Name()), e.Name())
 	}
 
 	if err := tw.Close(); err != nil {
