@@ -953,4 +953,26 @@ class API {
     return this.call({ method: 'delete', path: `/tokens/${id}` });
   }
 
+  /** Trigger full system backup download (awg.db + ipsets). */
+  getSystemBackupUrl() {
+    const segs = window.location.pathname.split('/').filter(Boolean);
+    const apiBase = segs.length > 0
+      ? `${window.location.origin}/${segs[0]}/api`
+      : `${window.location.origin}/api`;
+    return `${apiBase}/system/backup`;
+  }
+
+  /** Restore from a tar.gz backup file. */
+  async restoreSystemBackup(file) {
+    const form = new FormData();
+    form.append('backup', file);
+    const url = this.getSystemBackupUrl().replace('/backup', '/restore');
+    const res = await fetch(url, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || res.statusText);
+    }
+    return res.json();
+  }
+
 }

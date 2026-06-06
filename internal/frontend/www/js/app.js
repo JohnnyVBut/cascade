@@ -430,6 +430,7 @@ new Vue({
     aliasGenerateJobId: null,
     aliasGenerateJobStatus: null,
     aliasTooltip: null,         // { id, alias, x, y } — hover tooltip state
+    systemRestoring: false,     // true while restore request is in flight
 
     // Firewall Rules (поглощает PBR)
     firewallRules: [],
@@ -2450,6 +2451,34 @@ new Vue({
     },
     hideAliasTooltip() {
       this.aliasTooltip = null;
+    },
+
+    // ========================================================================
+    // System Backup / Restore
+
+    downloadSystemBackup() {
+      const a = document.createElement('a');
+      a.href = this.api.getSystemBackupUrl();
+      a.download = '';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    },
+
+    async restoreSystemBackup(file) {
+      if (!file) return;
+      if (!confirm(`Restore backup from "${file.name}"?\n\nThis will replace ALL data and restart the server.`)) return;
+      try {
+        this.systemRestoring = true;
+        await this.api.restoreSystemBackup(file);
+        this.showToast('Backup restored. Server is restarting…', 'success');
+        // Page will become unreachable briefly; reload after delay
+        setTimeout(() => window.location.reload(), 4000);
+      } catch (err) {
+        this.showToast(err.message || 'Restore failed', 'error');
+      } finally {
+        this.systemRestoring = false;
+      }
     },
 
     // ========================================================================

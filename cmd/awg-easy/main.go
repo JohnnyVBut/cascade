@@ -141,6 +141,8 @@ func main() {
 
 	// Remaining handlers are registered here; they call package-level Get()
 	// which is safe after SetInstance calls below.
+	api.SetSystemDataDir(cfg.DataDir)
+	api.RegisterSystem(apiGroup)
 	api.RegisterInterfaces(apiGroup)
 	api.RegisterPeers(apiGroup)
 	api.RegisterRouting(apiGroup)

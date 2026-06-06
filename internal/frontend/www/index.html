@@ -2458,6 +2458,52 @@
             </table>
           </div>
 
+          <!-- System Backup -->
+          <div class="shadow-md rounded-lg bg-white dark:bg-neutral-700 overflow-hidden">
+            <div class="p-5 border-b dark:border-neutral-600">
+              <p class="text-xl font-medium dark:text-neutral-200">System Backup</p>
+              <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">
+                Full backup includes database (all config, peers, rules) and ipset files.
+                Restore replaces all data and restarts the server.
+              </p>
+            </div>
+            <div class="p-5" style="display:flex; flex-direction:column; gap:16px;">
+              <!-- Download -->
+              <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                  <p class="text-sm font-medium dark:text-neutral-300">Download Backup</p>
+                  <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
+                    Saves <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">cascade-backup-YYYYMMDD.tar.gz</code>
+                  </p>
+                </div>
+                <button @click="downloadSystemBackup()"
+                  class="btn font-medium text-sm rounded-lg text-white"
+                  style="background:#2563eb; padding:8px 20px; white-space:nowrap;">
+                  ⬇ Download Backup
+                </button>
+              </div>
+              <!-- Restore -->
+              <div style="border-top:1px solid rgba(0,0,0,0.08); padding-top:16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                  <p class="text-sm font-medium dark:text-neutral-300">Restore from Backup</p>
+                  <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
+                    Upload a <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code> backup file.
+                    <span style="color:#dc2626; font-weight:500;">All current data will be replaced.</span>
+                  </p>
+                </div>
+                <label class="btn font-medium text-sm rounded-lg cursor-pointer"
+                  style="background:#f3f4f6; color:#374151; padding:8px 20px; white-space:nowrap;"
+                  :style="systemRestoring ? 'opacity:0.6; pointer-events:none;' : ''">
+                  <span v-if="systemRestoring">Restoring…</span>
+                  <span v-else>⬆ Restore Backup</span>
+                  <input type="file" class="hidden" accept=".tar.gz,.gz"
+                    :disabled="systemRestoring"
+                    @change="e => { restoreSystemBackup(e.target.files[0]); e.target.value=''; }">
+                </label>
+              </div>
+            </div>
+          </div>
+
           <!-- API Tokens -->
           <div class="shadow-md rounded-lg bg-white dark:bg-neutral-700 overflow-hidden">
             <div class="p-5 border-b dark:border-neutral-600 flex items-center justify-between">
