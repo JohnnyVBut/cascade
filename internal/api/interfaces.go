@@ -281,6 +281,10 @@ func updateInterface(c *fiber.Ctx) error {
 		n := int(v)
 		upd.MTU = &n
 	}
+	if v, ok := raw["mss"].(float64); ok {
+		n := int(v)
+		upd.MSS = &n
+	}
 	if v, ok := raw["settings"]; ok && v != nil {
 		// Re-marshal → unmarshal into AWG2Settings.
 		a, err := mapToAWG2(v)

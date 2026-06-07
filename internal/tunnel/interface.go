@@ -66,6 +66,7 @@ type TunnelInterface struct {
 	NatDisabled   bool               `json:"natDisabled"`    // when true, PostUp omits MASQUERADE
 	PublicHost    string             `json:"publicHost"`     // per-interface endpoint override (e.g. transit server IP)
 	MTU           int                `json:"mtu"`            // 0 = use global setting; >0 = per-interface override
+	MSS           int                `json:"mss"`            // -1 = clamp-mss-to-pmtu; 0 = disabled; >0 = set-mss value
 	Uplink        bool               `json:"uplink"`         // true when created via Import .conf (connects OUT to remote server)
 	PrivateKey    string             `json:"-"`              // never exposed in API responses
 	PublicKey     string             `json:"publicKey"`
@@ -100,6 +101,7 @@ type InterfaceUpdate struct {
 	NatDisabled   *bool
 	PublicHost    *string            // per-interface endpoint override; empty string = clear (use global)
 	MTU           *int               // 0 = use global; >0 = per-interface override
+	MSS           *int               // -1=auto (clamp-mss-to-pmtu); 0=off; >0=manual set-mss value
 	AWG2          *peer.AWG2Settings // non-nil = replace all AWG2 params
 }
 
@@ -185,7 +187,8 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	addressChanged     := upd.Address      != nil && strings.TrimSpace(*upd.Address) != t.Address
 	listenPortChanged  := upd.ListenPort   != nil && *upd.ListenPort != t.ListenPort
 	natDisabledChanged := upd.NatDisabled  != nil && *upd.NatDisabled != t.NatDisabled
-	mtuChanged         := upd.MTU          != nil && *upd.MTU != t.MTU
+	mtuChanged           := upd.MTU          != nil && *upd.MTU != t.MTU
+	mssChanged           := upd.MSS          != nil && *upd.MSS != t.MSS
 	disableRoutesChanged := upd.DisableRoutes != nil && *upd.DisableRoutes != t.DisableRoutes
 
 	if upd.Name != nil {
@@ -209,6 +212,9 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.MTU != nil {
 		t.MTU = *upd.MTU
 	}
+	if upd.MSS != nil {
+		t.MSS = *upd.MSS
+	}
 	if upd.AWG2 != nil {
 		t.AWG2 = upd.AWG2
 	}
@@ -220,7 +226,7 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	}
 	if t.Enabled {
 		needsRestart := addressChanged || listenPortChanged || natDisabledChanged ||
-			mtuChanged || disableRoutesChanged
+			mtuChanged || mssChanged || disableRoutesChanged
 		if needsRestart {
 			// Full wg-quick down → up required to apply kernel-level changes.
 			// reloadMu must be held: concurrent awg syncconf + awg-quick up = deadlock (FIX-8/9).
@@ -289,16 +295,16 @@ func (t *TunnelInterface) save() error {
 	_, err := db.DB().Exec(`
 		INSERT INTO interfaces
 			(id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-			 public_host, mtu, uplink, private_key, public_key,
+			 public_host, mtu, mss, uplink, private_key, public_key,
 			 jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 			 i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, address=excluded.address,
 			listen_port=excluded.listen_port, protocol=excluded.protocol,
 			enabled=excluded.enabled, disable_routes=excluded.disable_routes,
 			nat_disabled=excluded.nat_disabled, public_host=excluded.public_host,
-			mtu=excluded.mtu, uplink=excluded.uplink,
+			mtu=excluded.mtu, mss=excluded.mss, uplink=excluded.uplink,
 			private_key=excluded.private_key, public_key=excluded.public_key,
 			jc=excluded.jc, jmin=excluded.jmin, jmax=excluded.jmax,
 			s1=excluded.s1, s2=excluded.s2, s3=excluded.s3, s4=excluded.s4,
@@ -306,7 +312,7 @@ func (t *TunnelInterface) save() error {
 			i1=excluded.i1, i2=excluded.i2, i3=excluded.i3, i4=excluded.i4, i5=excluded.i5`,
 		t.ID, t.Name, t.Address, t.ListenPort, t.Protocol,
 		boolInt(t.Enabled), boolInt(t.DisableRoutes), boolInt(t.NatDisabled),
-		t.PublicHost, t.MTU, boolInt(t.Uplink), t.PrivateKey, t.PublicKey,
+		t.PublicHost, t.MTU, t.MSS, boolInt(t.Uplink), t.PrivateKey, t.PublicKey,
 		jc, jmin, jmax, s1, s2, s3, s4,
 		h1, h2, h3, h4,
 		i1, i2, i3, i4, i5,
@@ -937,13 +943,33 @@ func (t *TunnelInterface) generateWgConfig() string {
 			postUpNAT = fmt.Sprintf("; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE", subnet)
 			postDownNAT = fmt.Sprintf("; iptables-nft -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true", subnet)
 		}
+		// MSS clamping — only for client interfaces (DisableRoutes=false).
+		// Applied in both directions (-i and -o) to clamp MSS in SYN/RST packets.
+		var postUpMSS, postDownMSS string
+		if !t.DisableRoutes && t.MSS != 0 {
+			var mssArg string
+			if t.MSS == -1 {
+				mssArg = "--clamp-mss-to-pmtu"
+			} else {
+				mssArg = fmt.Sprintf("--set-mss %d", t.MSS)
+			}
+			tcpFlags := "-p tcp --tcp-flags SYN,RST SYN -j TCPMSS"
+			postUpMSS = fmt.Sprintf(
+				"; iptables-nft -t mangle -A FORWARD -i %s %s %s; iptables-nft -t mangle -A FORWARD -o %s %s %s",
+				t.ID, tcpFlags, mssArg, t.ID, tcpFlags, mssArg,
+			)
+			postDownMSS = fmt.Sprintf(
+				"; iptables-nft -t mangle -D FORWARD -i %s %s %s 2>/dev/null || true; iptables-nft -t mangle -D FORWARD -o %s %s %s 2>/dev/null || true",
+				t.ID, tcpFlags, mssArg, t.ID, tcpFlags, mssArg,
+			)
+		}
 		postUp := fmt.Sprintf(
-			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT%s\n",
-			getISP, t.ID, t.ID, t.ID, postUpNAT,
+			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT%s%s\n",
+			getISP, t.ID, t.ID, t.ID, postUpNAT, postUpMSS,
 		)
 		postDown := fmt.Sprintf(
-			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true%s\n",
-			getISP, t.ID, t.ID, postDownNAT,
+			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true%s%s\n",
+			getISP, t.ID, t.ID, postDownNAT, postDownMSS,
 		)
 		sb.WriteString(postUp)
 		sb.WriteString(postDown)
@@ -1313,7 +1339,7 @@ func boolInt(b bool) int {
 func scanInterface(id string) (*TunnelInterface, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-		       public_host, mtu, uplink, private_key, public_key,
+		       public_host, mtu, mss, uplink, private_key, public_key,
 		       jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 		       i1, i2, i3, i4, i5, created_at
 		FROM interfaces WHERE id = ?`, id)
@@ -1330,7 +1356,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 	err := row.Scan(
 		&t.ID, &t.Name, &t.Address, &t.ListenPort, &t.Protocol,
 		&enabled, &disableRoutes, &natDisabled,
-		&t.PublicHost, &t.MTU, &uplink, &t.PrivateKey, &t.PublicKey,
+		&t.PublicHost, &t.MTU, &t.MSS, &uplink, &t.PrivateKey, &t.PublicKey,
 		&jc, &jmin, &jmax,
 		&s1, &s2, &s3, &s4,
 		&h1, &h2, &h3, &h4,

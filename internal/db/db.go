@@ -486,6 +486,15 @@ ALTER TABLE routes ADD COLUMN gateway_id       TEXT NOT NULL DEFAULT '';
 ALTER TABLE routes ADD COLUMN gateway_group_id TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 21,
+		sql: `
+-- MSS clamping for client tunnel interfaces (disableRoutes=false).
+-- -1 = auto (--clamp-mss-to-pmtu), 0 = disabled, >0 = manual --set-mss value.
+-- Applied in PostUp/PostDown iptables-nft TCPMSS rules on both -i and -o directions.
+ALTER TABLE interfaces ADD COLUMN mss INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

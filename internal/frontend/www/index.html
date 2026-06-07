@@ -1957,6 +1957,29 @@
                 </p>
               </div>
 
+              <!-- MSS Clamping (client interfaces only) -->
+              <div v-if="!interfaceEdit.disableRoutes" class="mb-4">
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                  MSS Clamping
+                  <span class="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <select :value="mssMode" @change="onMssSelectChange"
+                    class="px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                    <option value="disabled">Disabled</option>
+                    <option value="auto">Auto (PMTU)</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                  <input v-if="mssMode === 'manual'" v-model.number="interfaceEdit.mss"
+                    type="number" min="500" max="9000" placeholder="1380"
+                    class="w-24 px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                </div>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Clamps TCP MSS in SYN packets (both directions) to prevent fragmentation through the tunnel.
+                  Auto uses <code class="font-mono">--clamp-mss-to-pmtu</code>; Manual sets a fixed value (e.g. 1380 for MTU 1420).
+                </p>
+              </div>
+
               <!-- AWG2 Settings (only for AWG 2.0 interfaces) -->
               <div v-if="interfaceEdit.protocol === 'amneziawg-2.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
                 <p class="font-medium dark:text-neutral-200 mb-3">Obfuscation Settings (AWG 2.0)</p>

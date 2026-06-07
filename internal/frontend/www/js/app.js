@@ -177,6 +177,7 @@ new Vue({
       natDisabled: false,
       publicHost: '',
       mtu: 0,
+      mss: 0,
       kernelMtu: 0,
       protocol: 'wireguard-1.0',
       selectedTemplateId: '',
@@ -1242,6 +1243,7 @@ new Vue({
         natDisabled: !!iface.natDisabled,
         publicHost: iface.publicHost || '',
         mtu: iface.mtu || 0,
+        mss: iface.mss || 0,
         kernelMtu: iface.kernelMtu || 0,
         protocol: iface.protocol || 'wireguard-1.0',
         selectedTemplateId: '',
@@ -1253,6 +1255,13 @@ new Vue({
         },
       };
       this.showInterfaceEdit = true;
+    },
+
+    onMssSelectChange(e) {
+      const mode = e.target.value;
+      if (mode === 'disabled') this.interfaceEdit.mss = 0;
+      else if (mode === 'auto') this.interfaceEdit.mss = -1;
+      else if (mode === 'manual') this.interfaceEdit.mss = this.interfaceEdit.mss > 0 ? this.interfaceEdit.mss : 1380;
     },
 
     onEditInterfaceTemplateSelect(templateId) {
@@ -1269,7 +1278,7 @@ new Vue({
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, natDisabled, publicHost, mtu, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
@@ -1291,6 +1300,7 @@ new Vue({
         natDisabled,
         publicHost: publicHost || '',
         mtu: mtu || 0,
+        mss: mss || 0,
       };
       if (protocol === 'amneziawg-2.0') {
         payload.settings = { ...settings };
@@ -3840,6 +3850,13 @@ new Vue({
     // Browser tab title: routerName if set, otherwise hostname, otherwise 'Cascade'.
     pageTitle() {
       return this.globalSettings.routerName || this.globalSettings.hostname || 'Cascade';
+    },
+    // MSS clamping mode derived from the sentinel int value in interfaceEdit.mss.
+    // Used to drive the select dropdown in Edit Interface modal.
+    mssMode() {
+      if (this.interfaceEdit.mss === -1) return 'auto';
+      if (this.interfaceEdit.mss > 0)   return 'manual';
+      return 'disabled';
     },
     filteredCountries() {
       const q = (this.countrySearch || '').trim().toLowerCase();
