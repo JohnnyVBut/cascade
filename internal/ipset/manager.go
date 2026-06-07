@@ -165,6 +165,55 @@ func (m *Manager) LoadFromFile(name, filePath string) (int, error) {
 	return len(lines), nil
 }
 
+// LoadEntries atomically replaces the contents of the named ipset with the given entries.
+// Each entry should be a bare IP address (e.g. "10.8.0.2") for hash:net/hash:ip sets.
+// Uses the same tmp-swap approach as LoadFromFile for atomicity.
+func (m *Manager) LoadEntries(name string, entries []string) (int, error) {
+	if err := m.validateName(name); err != nil {
+		return 0, err
+	}
+	tmpName := name + "_tmp"
+	cleanup := func() {
+		util.ExecSilent(fmt.Sprintf("ipset destroy %s 2>/dev/null || true", tmpName)) //nolint:errcheck
+	}
+	util.ExecSilent(fmt.Sprintf("ipset destroy %s 2>/dev/null || true", tmpName)) //nolint:errcheck
+	if _, err := util.ExecDefault(fmt.Sprintf("ipset create %s hash:net family inet -exist", tmpName)); err != nil {
+		return 0, fmt.Errorf("create tmp set: %w", err)
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "create %s hash:net family inet -exist\n", tmpName)
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "add %s %s -exist\n", tmpName, e)
+	}
+
+	tmpScript := filepath.Join(m.dataDir, name+"_cg_restore.tmp")
+	if err := os.WriteFile(tmpScript, []byte(sb.String()), 0644); err != nil {
+		cleanup()
+		return 0, fmt.Errorf("write restore script: %w", err)
+	}
+	defer os.Remove(tmpScript) //nolint:errcheck
+
+	if _, err := util.ExecDefault(fmt.Sprintf("ipset restore -! < %s", tmpScript)); err != nil {
+		cleanup()
+		return 0, fmt.Errorf("ipset restore: %w", err)
+	}
+	if _, err := util.ExecDefault(fmt.Sprintf("ipset create %s hash:net family inet -exist", name)); err != nil {
+		cleanup()
+		return 0, err
+	}
+	if _, err := util.ExecDefault(fmt.Sprintf("ipset swap %s %s", tmpName, name)); err != nil {
+		cleanup()
+		return 0, fmt.Errorf("ipset swap: %w", err)
+	}
+	util.ExecSilent(fmt.Sprintf("ipset destroy %s 2>/dev/null || true", tmpName)) //nolint:errcheck
+	return len(entries), nil
+}
+
 // SaveSet persists the named ipset to disk so it survives container restarts.
 func (m *Manager) SaveSet(name string) error {
 	if err := m.validateName(name); err != nil {

@@ -214,6 +214,7 @@ new Vue({
       allowedIPs: '',
       clientAllowedIPs: '',
       persistentKeepalive: 25,
+      groupId: '',          // client-group alias ID
     },
 
     // Quick peer create (one-click)
@@ -241,6 +242,7 @@ new Vue({
       clientAllowedIPs: '', // client only
       rateDown: 0,          // kbps, 0 = unlimited
       rateUp: 0,            // kbps, 0 = unlimited
+      groupId: '',          // client-group alias ID
     },
     // Settings
     globalSettings: {
@@ -396,6 +398,9 @@ new Vue({
     // Firewall Aliases page
     aliases: [],
     aliasesLoading: false,
+    clientGroups: [],            // aliases of type client-group
+    showClientGroupCreate: false,
+    clientGroupForm: { name: '', description: '' },
     showAliasCreate: false,
     showAliasEdit: false,
     aliasCreate: {
@@ -791,6 +796,7 @@ new Vue({
       // Re-load data that may have got 401 before login.
       this.loadTunnelInterfaces();
       this.loadSettings();
+      this.loadClientGroups();
       this.loadUsers();
       this.loadCurrentUser();
       if (this.activePage === 'gateways') {
@@ -921,6 +927,7 @@ new Vue({
       }
       if (pageId === 'firewall-aliases') {
         this.loadAliases();
+        this.loadClientGroups();
       }
       if (pageId === 'firewall') {
         this.loadFirewallRules();
@@ -1411,7 +1418,7 @@ new Vue({
         return;
       }
 
-      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive } = this.peerCreate;
+      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, groupId } = this.peerCreate;
 
       // Validation
       if (!name || name.trim() === '') {
@@ -1439,6 +1446,7 @@ new Vue({
         clientAllowedIPs: clientAllowedIPs || undefined,
         endpoint: endpoint || undefined,
         persistentKeepalive: persistentKeepalive || 25,
+        ...(peerType === 'client' && groupId ? { groupId } : {}),
       };
 
       try {
@@ -1451,7 +1459,7 @@ new Vue({
         const peerId = res.peer && res.peer.id;
 
         this.showPeerCreate = false;
-        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25 };
+        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId() };
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
@@ -2191,6 +2199,52 @@ new Vue({
       }
     },
 
+    async loadClientGroups() {
+      try {
+        const res = await this.api.getClientGroups();
+        this.clientGroups = res.groups || [];
+      } catch (err) {
+        console.error('loadClientGroups error:', err);
+        this.clientGroups = [];
+      }
+    },
+
+    async createClientGroup() {
+      const name = (this.clientGroupForm.name || '').trim();
+      if (!name) { this.showToast('Group name is required', 'error'); return; }
+      try {
+        await this.api.createClientGroup({ name, description: this.clientGroupForm.description });
+        this.clientGroupForm = { name: '', description: '' };
+        this.showClientGroupCreate = false;
+        await this.loadClientGroups();
+        await this.loadAliases();
+        this.showToast(`Client group "${name}" created`, 'success');
+      } catch (err) {
+        this.showToast(err.message || 'Failed to create group', 'error');
+      }
+    },
+
+    async deleteClientGroup(group) {
+      if (!confirm(`Delete group "${group.name}"? All peers will be moved to the default group.`)) return;
+      try {
+        const res = await this.api.deleteClientGroup({ id: group.id });
+        const moved = res && res.movedCount ? res.movedCount : 0;
+        await this.loadClientGroups();
+        await this.loadAliases();
+        const msg = moved > 0
+          ? `Group "${group.name}" deleted. ${moved} peer${moved > 1 ? 's' : ''} moved to default.`
+          : `Group "${group.name}" deleted.`;
+        this.showToast(msg, 'success', 8000);
+      } catch (err) {
+        this.showToast(err.message || 'Failed to delete group', 'error');
+      }
+    },
+
+    defaultGroupId() {
+      const g = this.clientGroups.find(g => g.name === 'default');
+      return g ? g.id : '';
+    },
+
     _resetAliasCreate() {
       this.aliasCreate = {
         name: '', description: '', type: 'network', entries: '', ipsetEntries: '', memberIds: [],
@@ -2921,6 +2975,7 @@ new Vue({
         clientAllowedIPs: peer.clientAllowedIPs || '',
         rateDown: peer.rateDown ? peer.rateDown / 1000 : 0,
         rateUp:   peer.rateUp   ? peer.rateUp   / 1000 : 0,
+        groupId: peer.groupId || '',
       };
       this.showPeerEditModal = true;
     },
@@ -2930,6 +2985,13 @@ new Vue({
       if (!kbps || kbps <= 0) return '';
       if (kbps >= 1000) return (kbps / 1000).toFixed(kbps % 1000 === 0 ? 0 : 1) + 'M';
       return kbps + 'K';
+    },
+
+    // Return the client group name for a given groupId. Returns '' if not found.
+    peerGroupName(groupId) {
+      if (!groupId) return '';
+      const g = this.clientGroups.find(g => g.id === groupId);
+      return g ? g.name : '';
     },
 
     async savePeerEdit() {
@@ -2947,6 +3009,7 @@ new Vue({
         updates.clientAllowedIPs = this.peerEditForm.clientAllowedIPs;
         updates.rateDown = Math.round((Number(this.peerEditForm.rateDown) || 0) * 1000);
         updates.rateUp   = Math.round((Number(this.peerEditForm.rateUp)   || 0) * 1000);
+        updates.groupId  = this.peerEditForm.groupId || '';
       }
       try {
         await this.api.updateTunnelInterfacePeer({
@@ -3714,6 +3777,8 @@ new Vue({
         // Load settings + templates at startup so they are available
         // on any page (e.g. "Obfuscation Profile" dropdown in Create Interface modal).
         this.loadSettings();
+        // Load client groups at startup — needed for peer create/edit dropdowns.
+        this.loadClientGroups();
         // Load users and current user for the Users section in Settings.
         this.loadUsers();
         this.loadCurrentUser();

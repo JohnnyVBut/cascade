@@ -31,6 +31,7 @@ func RegisterAliases(api fiber.Router) {
 
 	g.Get("", listAliases)
 	g.Post("", createAlias)
+	g.Get("/client-groups", listClientGroups) // must be before /:id
 
 	g.Get("/:id", getAlias)
 	g.Patch("/:id", updateAlias)
@@ -113,8 +114,28 @@ func updateAlias(c *fiber.Ctx) error {
 	return c.JSON(a)
 }
 
+// GET /api/aliases/client-groups
+// Returns all aliases of type client-group (used by peer create/edit dropdowns).
+func listClientGroups(c *fiber.Ctx) error {
+	groups, err := aliases.Get().GetClientGroups()
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(fiber.Map{"groups": groups})
+}
+
 // DELETE /api/aliases/:id
 func deleteAlias(c *fiber.Ctx) error {
+	// For client-group: returns movedCount for the toast message.
+	a, _ := aliases.Get().GetByID(c.Params("id"))
+	if a != nil && a.Type == "client-group" {
+		moved, err := aliases.Get().DeleteClientGroup(c.Params("id"))
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		return c.JSON(fiber.Map{"movedCount": moved})
+	}
+
 	if err := aliases.Get().Delete(c.Params("id")); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
 	}

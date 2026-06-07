@@ -212,6 +212,18 @@ func main() {
 		log.Printf("firewall post-tunnel rebuildChains warning: %v", err)
 	}
 
+	// 5c. Client Groups — ensure default group exists, migrate existing peers,
+	//     and rebuild all group ipsets from the peers table.
+	if _, err := aliasMgr.EnsureDefaultGroup(); err != nil {
+		log.Printf("client groups: ensure default: %v", err)
+	}
+	if err := aliasMgr.AssignPeerToDefaultGroup(); err != nil {
+		log.Printf("client groups: assign existing peers: %v", err)
+	}
+	if err := aliasMgr.RestoreAllGroupIPSets(); err != nil {
+		log.Printf("client groups: restore ipsets: %v", err)
+	}
+
 	// 6. RouteManager — RestoreAll() adds kernel routes AFTER interfaces exist.
 	//    SubscribeToMonitor registers gateway status callbacks for gateway-aware routes.
 	//    Must be called before RestoreAll() so that failover state is set up correctly.
