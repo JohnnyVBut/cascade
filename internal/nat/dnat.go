@@ -42,17 +42,19 @@ import (
 
 // DnatRule is a Port Forwarding (DNAT) rule stored in SQLite.
 type DnatRule struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Protocol    string `json:"protocol"`    // "tcp" | "udp" | "both"
-	InInterface string `json:"inInterface"` // "" = any interface
-	InPort      int    `json:"inPort"`
-	DestIP      string `json:"destIP"`
-	DestPort    int    `json:"destPort"` // 0 = same as InPort
-	Masquerade  bool   `json:"masquerade"` // add POSTROUTING MASQUERADE for forwarded traffic
-	Comment     string `json:"comment"`
-	Enabled     bool   `json:"enabled"`
-	CreatedAt   string `json:"createdAt"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Protocol       string `json:"protocol"`       // "tcp" | "udp" | "both"
+	InInterface    string `json:"inInterface"`    // "" = any interface
+	InPort         int    `json:"inPort"`
+	Dest           string `json:"dest"`           // user input: IP or FQDN
+	DestIP         string `json:"destIP"`         // resolved IP used in iptables
+	DestPort       int    `json:"destPort"`       // 0 = same as InPort
+	DestResolvedAt string `json:"destResolvedAt"` // RFC3339 of last DNS resolution; "" for plain IP
+	Masquerade     bool   `json:"masquerade"`     // add POSTROUTING MASQUERADE for forwarded traffic
+	Comment        string `json:"comment"`
+	Enabled        bool   `json:"enabled"`
+	CreatedAt      string `json:"createdAt"`
 }
 
 // DnatRuleInput is the create/update request payload.
@@ -61,7 +63,7 @@ type DnatRuleInput struct {
 	Protocol    string `json:"protocol"`
 	InInterface string `json:"inInterface"` // "" = any
 	InPort      int    `json:"inPort"`
-	DestIP      string `json:"destIP"`
+	Dest        string `json:"dest"` // IP or FQDN
 	DestPort    int    `json:"destPort"`
 	Masquerade  bool   `json:"masquerade"`
 	Comment     string `json:"comment"`
@@ -81,6 +83,25 @@ func (m *Manager) RestoreAllDnat() {
 		if !rule.Enabled {
 			continue
 		}
+		// For FQDN rules: re-resolve on startup — IP may have changed since last run.
+		if rule.Dest != rule.DestIP {
+			newIP, resolvedAt, err := resolveDestIP(rule.Dest)
+			if err != nil {
+				log.Printf("nat: RestoreAllDnat: cannot resolve %q for rule %q: %v — skipping", rule.Dest, rule.Name, err)
+				continue
+			}
+			if newIP != rule.DestIP {
+				log.Printf("nat: RestoreAllDnat: %q IP updated %s → %s", rule.Dest, rule.DestIP, newIP)
+			}
+			rule.DestIP = newIP
+			rule.DestResolvedAt = resolvedAt
+			if _, err := db.DB().Exec(
+				`UPDATE nat_dnat_rules SET dest_ip = ?, dest_resolved_at = ? WHERE id = ?`,
+				newIP, resolvedAt, rule.ID,
+			); err != nil {
+				log.Printf("nat: RestoreAllDnat: DB update for %q: %v", rule.Name, err)
+			}
+		}
 		if err := m.applyDnatRule(&rule); err != nil {
 			log.Printf("nat: RestoreAllDnat: failed to restore rule %q: %v", rule.Name, err)
 		} else {
@@ -95,7 +116,7 @@ func (m *Manager) RestoreAllDnat() {
 // GetDnatRules returns all DNAT rules ordered by created_at.
 func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 	rows, err := db.DB().Query(`
-		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, masquerade, comment, enabled, created_at
+		SELECT id, name, protocol, in_interface, in_port, dest, dest_ip, dest_port, dest_resolved_at, masquerade, comment, enabled, created_at
 		FROM nat_dnat_rules
 		ORDER BY created_at
 	`)
@@ -109,8 +130,8 @@ func (m *Manager) GetDnatRules() ([]DnatRule, error) {
 		var r DnatRule
 		var enabled, masq int
 		if err := rows.Scan(
-			&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.DestIP,
-			&r.DestPort, &masq, &r.Comment, &enabled, &r.CreatedAt,
+			&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.Dest, &r.DestIP,
+			&r.DestPort, &r.DestResolvedAt, &masq, &r.Comment, &enabled, &r.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -126,11 +147,11 @@ func (m *Manager) GetDnatRule(id string) (*DnatRule, error) {
 	var r DnatRule
 	var enabled, masq int
 	err := db.DB().QueryRow(`
-		SELECT id, name, protocol, in_interface, in_port, dest_ip, dest_port, masquerade, comment, enabled, created_at
+		SELECT id, name, protocol, in_interface, in_port, dest, dest_ip, dest_port, dest_resolved_at, masquerade, comment, enabled, created_at
 		FROM nat_dnat_rules WHERE id = ?
 	`, id).Scan(
-		&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.DestIP,
-		&r.DestPort, &masq, &r.Comment, &enabled, &r.CreatedAt,
+		&r.ID, &r.Name, &r.Protocol, &r.InInterface, &r.InPort, &r.Dest, &r.DestIP,
+		&r.DestPort, &r.DestResolvedAt, &masq, &r.Comment, &enabled, &r.CreatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -148,31 +169,39 @@ func (m *Manager) AddDnatRule(inp DnatRuleInput) (*DnatRule, error) {
 	if err := validateDnat(inp); err != nil {
 		return nil, err
 	}
+	dest := strings.TrimSpace(inp.Dest)
+	resolvedIP, resolvedAt, err := resolveDestIP(dest)
+	if err != nil {
+		return nil, err
+	}
 
 	rule := DnatRule{
-		ID:          uuid.New().String(),
-		Name:        strings.TrimSpace(inp.Name),
-		Protocol:    inp.Protocol,
-		InInterface: strings.TrimSpace(inp.InInterface),
-		InPort:      inp.InPort,
-		DestIP:      strings.TrimSpace(inp.DestIP),
-		DestPort:    inp.DestPort,
-		Masquerade:  inp.Masquerade,
-		Comment:     strings.TrimSpace(inp.Comment),
-		Enabled:     true,
-		CreatedAt:   time.Now().UTC().Format(time.RFC3339),
+		ID:             uuid.New().String(),
+		Name:           strings.TrimSpace(inp.Name),
+		Protocol:       inp.Protocol,
+		InInterface:    strings.TrimSpace(inp.InInterface),
+		InPort:         inp.InPort,
+		Dest:           dest,
+		DestIP:         resolvedIP,
+		DestPort:       inp.DestPort,
+		DestResolvedAt: resolvedAt,
+		Masquerade:     inp.Masquerade,
+		Comment:        strings.TrimSpace(inp.Comment),
+		Enabled:        true,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 
 	if err := m.applyDnatRule(&rule); err != nil {
 		return nil, err
 	}
 
-	_, err := db.DB().Exec(`
-		INSERT INTO nat_dnat_rules (id, name, protocol, in_interface, in_port, dest_ip, dest_port, masquerade, comment, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	_, err = db.DB().Exec(`
+		INSERT INTO nat_dnat_rules (id, name, protocol, in_interface, in_port, dest, dest_ip, dest_port, dest_resolved_at, masquerade, comment, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		rule.ID, rule.Name, rule.Protocol, rule.InInterface, rule.InPort, rule.DestIP,
-		rule.DestPort, boolInt(rule.Masquerade), rule.Comment, boolInt(rule.Enabled), rule.CreatedAt,
+		rule.ID, rule.Name, rule.Protocol, rule.InInterface, rule.InPort,
+		rule.Dest, rule.DestIP, rule.DestPort, rule.DestResolvedAt,
+		boolInt(rule.Masquerade), rule.Comment, boolInt(rule.Enabled), rule.CreatedAt,
 	)
 	if err != nil {
 		_ = m.removeDnatRule(&rule)
@@ -196,19 +225,26 @@ func (m *Manager) UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error
 	if err := validateDnat(inp); err != nil {
 		return nil, err
 	}
+	dest := strings.TrimSpace(inp.Dest)
+	resolvedIP, resolvedAt, err := resolveDestIP(dest)
+	if err != nil {
+		return nil, err
+	}
 
 	updated := DnatRule{
-		ID:          old.ID,
-		Name:        strings.TrimSpace(inp.Name),
-		Protocol:    inp.Protocol,
-		InInterface: strings.TrimSpace(inp.InInterface),
-		InPort:      inp.InPort,
-		DestIP:      strings.TrimSpace(inp.DestIP),
-		DestPort:    inp.DestPort,
-		Masquerade:  inp.Masquerade,
-		Comment:     strings.TrimSpace(inp.Comment),
-		Enabled:     old.Enabled,
-		CreatedAt:   old.CreatedAt,
+		ID:             old.ID,
+		Name:           strings.TrimSpace(inp.Name),
+		Protocol:       inp.Protocol,
+		InInterface:    strings.TrimSpace(inp.InInterface),
+		InPort:         inp.InPort,
+		Dest:           dest,
+		DestIP:         resolvedIP,
+		DestPort:       inp.DestPort,
+		DestResolvedAt: resolvedAt,
+		Masquerade:     inp.Masquerade,
+		Comment:        strings.TrimSpace(inp.Comment),
+		Enabled:        old.Enabled,
+		CreatedAt:      old.CreatedAt,
 	}
 
 	if old.Enabled {
@@ -224,9 +260,11 @@ func (m *Manager) UpdateDnatRule(id string, inp DnatRuleInput) (*DnatRule, error
 
 	_, err = db.DB().Exec(`
 		UPDATE nat_dnat_rules
-		SET name = ?, protocol = ?, in_interface = ?, in_port = ?, dest_ip = ?, dest_port = ?, masquerade = ?, comment = ?
+		SET name = ?, protocol = ?, in_interface = ?, in_port = ?, dest = ?, dest_ip = ?, dest_port = ?, dest_resolved_at = ?, masquerade = ?, comment = ?
 		WHERE id = ?
-	`, updated.Name, updated.Protocol, updated.InInterface, updated.InPort, updated.DestIP, updated.DestPort, boolInt(updated.Masquerade), updated.Comment, id)
+	`, updated.Name, updated.Protocol, updated.InInterface, updated.InPort,
+		updated.Dest, updated.DestIP, updated.DestPort, updated.DestResolvedAt,
+		boolInt(updated.Masquerade), updated.Comment, id)
 	if err != nil {
 		return nil, err
 	}
@@ -270,6 +308,21 @@ func (m *Manager) ToggleDnatRule(id string, enabled bool) (*DnatRule, error) {
 	}
 
 	if enabled && !rule.Enabled {
+		// For FQDN rules: re-resolve before applying so we use the latest IP.
+		if rule.Dest != rule.DestIP {
+			newIP, resolvedAt, err := resolveDestIP(rule.Dest)
+			if err != nil {
+				return nil, err
+			}
+			rule.DestIP = newIP
+			rule.DestResolvedAt = resolvedAt
+			if _, err := db.DB().Exec(
+				`UPDATE nat_dnat_rules SET dest_ip = ?, dest_resolved_at = ? WHERE id = ?`,
+				newIP, resolvedAt, rule.ID,
+			); err != nil {
+				log.Printf("nat: ToggleDnatRule: DB update resolved IP for %q: %v", rule.Name, err)
+			}
+		}
 		if err := m.applyDnatRule(rule); err != nil {
 			return nil, err
 		}
@@ -414,12 +467,47 @@ func validateDnat(inp DnatRuleInput) error {
 	if inp.DestPort < 0 || inp.DestPort > 65535 {
 		return fmt.Errorf("destPort must be between 0 and 65535")
 	}
-	destIP := strings.TrimSpace(inp.DestIP)
-	if destIP == "" {
-		return fmt.Errorf("destination IP is required")
+	dest := strings.TrimSpace(inp.Dest)
+	if dest == "" {
+		return fmt.Errorf("destination is required (IP or FQDN)")
 	}
-	if net.ParseIP(destIP) == nil {
-		return fmt.Errorf("invalid destination IP address")
+	// Accept plain IP or a valid FQDN (resolved later in AddDnatRule/UpdateDnatRule).
+	if net.ParseIP(dest) == nil {
+		// Validate as FQDN: labels separated by dots, each label is alphanumeric + hyphens.
+		for _, label := range strings.Split(dest, ".") {
+			if label == "" {
+				return fmt.Errorf("invalid destination: %q", dest)
+			}
+			for _, c := range label {
+				if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+					(c >= '0' && c <= '9') || c == '-') {
+					return fmt.Errorf("invalid destination: %q (invalid character %q)", dest, string(c))
+				}
+			}
+		}
 	}
 	return nil
+}
+
+// resolveDestIP resolves dest (IP or FQDN) to an IP string and a resolution timestamp.
+// For plain IPs: returns the IP as-is with an empty timestamp (no DNS involved).
+// For FQDNs: performs a DNS lookup; prefers the first IPv4 address.
+// Returns an error if the FQDN cannot be resolved — caller must not apply the rule.
+func resolveDestIP(dest string) (ip, resolvedAt string, err error) {
+	if net.ParseIP(dest) != nil {
+		return dest, "", nil // plain IP — no resolution needed
+	}
+	addrs, err := net.LookupHost(dest)
+	if err != nil || len(addrs) == 0 {
+		return "", "", fmt.Errorf("cannot resolve %q: %w", dest, err)
+	}
+	// Prefer IPv4.
+	resolved := addrs[0]
+	for _, a := range addrs {
+		if net.ParseIP(a) != nil && net.ParseIP(a).To4() != nil {
+			resolved = a
+			break
+		}
+	}
+	return resolved, time.Now().UTC().Format(time.RFC3339), nil
 }

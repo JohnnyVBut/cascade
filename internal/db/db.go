@@ -495,6 +495,19 @@ ALTER TABLE routes ADD COLUMN gateway_group_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE interfaces ADD COLUMN mss INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 22,
+		sql: `
+-- DNAT rules: store user-entered dest (IP or FQDN) separately from the resolved IP.
+-- dest           = what the user typed ("1.2.3.4" or "server.example.com")
+-- dest_ip        = last successfully resolved IP used in iptables (unchanged for plain IPs)
+-- dest_resolved_at = RFC3339 timestamp of last DNS resolution; empty for plain IP rules
+-- Existing rules: dest = dest_ip (they were always plain IPs before this migration).
+ALTER TABLE nat_dnat_rules ADD COLUMN dest             TEXT NOT NULL DEFAULT '';
+ALTER TABLE nat_dnat_rules ADD COLUMN dest_resolved_at TEXT NOT NULL DEFAULT '';
+UPDATE nat_dnat_rules SET dest = dest_ip WHERE dest = '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
