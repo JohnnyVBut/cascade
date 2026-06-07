@@ -2525,11 +2525,13 @@
                 <div>
                   <label class="text-sm font-medium dark:text-neutral-300">Password <span class="text-gray-400 font-normal">(optional)</span></label>
                   <input v-model="backupPassword" type="password" placeholder="Leave empty for no encryption"
+                    autocomplete="new-password"
                     class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                 </div>
                 <div v-if="backupPassword">
                   <label class="text-sm font-medium dark:text-neutral-300">Confirm Password</label>
                   <input v-model="backupPasswordConfirm" type="password" placeholder="Repeat password"
+                    autocomplete="new-password"
                     class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                   <p class="text-xs mt-1" style="color:#dc2626;">
                     ⚠ If you lose the password, the backup cannot be decrypted.
