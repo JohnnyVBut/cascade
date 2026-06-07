@@ -130,6 +130,7 @@ func (m *Manager) RestoreAll() {
 		}
 	}
 	m.RestoreAllDnat()
+	m.StartDnatResolver()
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

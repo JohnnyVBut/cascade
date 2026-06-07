@@ -3963,7 +3963,10 @@
                     </td>
                     <td class="px-4 py-3 dark:text-neutral-200 font-mono">{{ rule.inPort }}</td>
                     <td class="px-4 py-3 dark:text-neutral-200 font-mono">
-                      {{ rule.destIP }}:{{ rule.destPort || rule.inPort }}
+                      <span v-if="rule.dest && rule.dest !== rule.destIP" :title="'Resolved: ' + rule.destIP">{{ rule.dest }}</span>
+                      <span v-else>{{ rule.destIP }}</span>
+                      :{{ rule.destPort || rule.inPort }}
+                      <span v-if="rule.dest && rule.dest !== rule.destIP" class="text-xs text-gray-400 dark:text-neutral-500 font-sans">({{ rule.destIP }})</span>
                     </td>
                     <td class="px-4 py-3 text-gray-500 dark:text-neutral-400 text-xs">{{ rule.comment }}</td>
                     <td class="px-4 py-3">
@@ -4072,12 +4075,13 @@
                   </div>
                 </div>
 
-                <!-- Dest IP -->
+                <!-- Dest IP / FQDN -->
                 <div>
-                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Destination IP (target server)</label>
-                  <input v-model="dnatForm.destIP" type="text" placeholder="185.x.x.x"
+                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Destination (IP or FQDN)</label>
+                  <input v-model="dnatForm.dest" type="text" placeholder="185.x.x.x or server.example.com"
                     class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
                     style="padding:8px 12px;">
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">FQDN is resolved on save and re-checked every 5 minutes.</p>
                 </div>
 
                 <!-- Dest Port -->
