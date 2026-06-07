@@ -2544,7 +2544,7 @@
                   Cancel
                 </button>
                 <button @click="confirmDownloadBackup()"
-                  :disabled="backupDownloading || (backupPassword && backupPassword !== backupPasswordConfirm)"
+                  :disabled="backupDownloading || !!(backupPassword && backupPassword !== backupPasswordConfirm)"
                   class="rounded-lg font-medium text-sm btn text-white"
                   style="background:#2563eb;">
                   <span v-if="backupDownloading">Creating…</span>
