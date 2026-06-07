@@ -22,6 +22,11 @@ const (
 
 var httpClient = &http.Client{Timeout: 60 * time.Second}
 
+const (
+	fetchMaxRetries = 3
+	fetchRetryDelay = 5 * time.Second
+)
+
 // fetchCountry returns aggregated IPv4 prefixes for a 2-letter country code (e.g. "RU").
 func fetchCountry(country string) ([]string, error) {
 	cc := strings.ToUpper(strings.TrimSpace(country))
@@ -358,7 +363,23 @@ func numToIP(num uint32) string {
 }
 
 // fetchJSON performs an HTTPS GET request and decodes the JSON response body into v.
+// Retries up to fetchMaxRetries times with fetchRetryDelay between attempts.
 func fetchJSON(url string, v any) error {
+	var lastErr error
+	for attempt := 1; attempt <= fetchMaxRetries; attempt++ {
+		if err := fetchJSONOnce(url, v); err == nil {
+			return nil
+		} else {
+			lastErr = err
+			if attempt < fetchMaxRetries {
+				time.Sleep(fetchRetryDelay)
+			}
+		}
+	}
+	return lastErr
+}
+
+func fetchJSONOnce(url string, v any) error {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
