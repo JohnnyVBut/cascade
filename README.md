@@ -31,12 +31,12 @@
 
 | Module | Description |
 |--------|-------------|
-| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click, import `.conf` as uplink |
-| 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes, lifetime traffic stats and per-client bandwidth limiting |
+| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click, import `.conf` as uplink, per-interface MSS clamping |
+| 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes, lifetime traffic stats, per-client bandwidth limiting and group membership |
 | 🌐 **Routing** | Static routes, policy-based routing (PBR), kernel route inspection |
 | 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support + Port Forwarding (DNAT) with per-interface scoping |
 | 🛡️ **Firewall** | Filter rules (ACCEPT / DROP / REJECT) + PBR via gateway |
-| 📋 **Aliases** | Host, network, ipset, group, port and port-group alias types |
+| 📋 **Aliases** | 7 types: host, network, ipset, client-group, group, port, port-group. Client groups are ipset-backed and auto-updated on peer changes |
 | 📡 **Gateways** | Live ping + HTTP monitoring, gateway groups, automatic failover |
 | 🎛️ **AWG2 Templates** | AmneziaWG 2.0 obfuscation parameter templates with built-in generator |
 | 🔐 **Auth** | Multi-user accounts, TOTP 2FA (Google Authenticator), long-lived API tokens |

@@ -79,6 +79,7 @@ Click **"+ New Interface"** on the Interfaces page.
 | **Listen Port** | UDP port (auto-selected from portPool, or set manually) |
 | **Disable Routes** | Disable automatic kernel route injection. Enable for S2S interconnect interfaces — you manage routes manually |
 | **Disable NAT** | Do not create an automatic MASQUERADE rule in PostUp. Use when managing NAT manually via the NAT section |
+| **MSS Clamping** | Clamp TCP MSS on this interface. Only available for client interfaces (Disable Routes = off). `Disabled` — off; `Auto (PMTU)` — clamp to path MTU automatically; `Manual` — set a fixed value (e.g. 1280 for tunnel-over-tunnel scenarios). Applied in both directions via iptables mangle |
 
 When **AmneziaWG 2.0** is selected, an **Obfuscation Parameters** section appears — see [section 3](#3-awg-20--obfuscation-templates).
 
@@ -173,6 +174,7 @@ On the interface tab, click **"+ New Peer"** (quick create with just a name) or 
 | **Client Allowed IPs** | Routes pushed to the client in its config. Default `0.0.0.0/0, ::/0` routes all traffic through the VPN |
 | **Endpoint** | Client's IP:port (optional, usually not needed for clients) |
 | **Persistent Keepalive** | Keepalive interval in seconds (25 is recommended for clients behind NAT) |
+| **Group** | Client Group for this peer. Determines which ipset alias the peer's IP is added to — used in firewall rules. Defaults to the `default` group |
 
 ### Distributing Configuration to Clients
 
@@ -454,9 +456,21 @@ Aliases are named sets of addresses or ports. They are used in firewall rules an
 | **host** | Individual IP addresses | `192.168.1.1`, `10.0.0.5` |
 | **network** | CIDR subnets | `10.0.0.0/8`, `192.168.0.0/16` |
 | **ipset** | Large IP sets (kernel ipset) | — loaded from file or generated |
+| **client-group** | Peer group — kernel ipset auto-managed by peer membership | — managed automatically |
 | **group** | Combination of host/network aliases | — select from existing aliases |
 | **port** | Ports and ranges | `80`, `443`, `8080-8090` |
 | **port-group** | Combination of port aliases | — select from existing port aliases |
+
+### Client Groups
+
+A Client Group is a special alias type that automatically tracks the IPs of client peers assigned to it. When a peer is added to a group its IP is immediately inserted into the kernel ipset; when removed it is cleaned up. Use client groups in firewall rules to apply policies to a whole set of clients at once.
+
+- The `default` group is created automatically on first start and cannot be deleted
+- Every new client peer is placed in `default` unless you choose another group at creation time
+- Create a new group: **+ Add Alias → type: Client Group**
+- Reassign a peer's group: **Edit Peer → Group**
+- Deleting a group moves all its peers to `default`
+- Hovering the group badge in a firewall rule shows the actual IPs from the ipset
 
 ### Creating an Alias
 
@@ -465,6 +479,7 @@ Aliases are named sets of addresses or ports. They are used in firewall rules an
 1. Select the type
 2. Enter entries (one per line)
 3. For group/port-group — select members from the list
+4. For client-group — just set a name; contents are managed automatically
 
 ### Populating an ipset Alias
 
