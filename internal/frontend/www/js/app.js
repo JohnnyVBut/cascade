@@ -166,8 +166,10 @@ new Vue({
       { type: 'interfaces',     label: 'Interfaces',      icon: '🔌' },
       { type: 'gateways',       label: 'Gateways',        icon: '📡' },
       { type: 'peers-summary',  label: 'Peers Summary',   icon: '👥' },
+      { type: 'peers',          label: 'Peers',           icon: '🔗' },
       { type: 'traffic',        label: 'Traffic',         icon: '📊' },
     ],
+    dashPeersState: {},   // per-widget: { [widgetId]: { iface: '', sort: 'name' } }
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -2389,6 +2391,35 @@ new Vue({
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
       const i = Math.floor(Math.log(bytes) / Math.log(1024));
       return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[Math.min(i, units.length - 1)];
+    },
+
+    // Returns (or lazily creates) reactive per-widget peers filter state
+    dashPeersGetState(widgetId) {
+      if (!this.dashPeersState[widgetId]) {
+        this.$set(this.dashPeersState, widgetId, { iface: '', sort: 'name' });
+      }
+      return this.dashPeersState[widgetId];
+    },
+
+    // Returns filtered + sorted peers for a given widget
+    dashFilteredPeers(widgetId) {
+      const s = this.dashPeersGetState(widgetId);
+      let peers = s.iface
+        ? this.allPeers.filter(p => p.interfaceId === s.iface)
+        : this.allPeers;
+      if (s.sort === 'traffic') {
+        peers = [...peers].sort((a, b) =>
+          ((b.totalTx || 0) + (b.totalRx || 0)) - ((a.totalTx || 0) + (a.totalRx || 0)));
+      } else if (s.sort === 'seen') {
+        peers = [...peers].sort((a, b) => {
+          const ta = a.latestHandshakeAt ? new Date(a.latestHandshakeAt).getTime() : 0;
+          const tb = b.latestHandshakeAt ? new Date(b.latestHandshakeAt).getTime() : 0;
+          return tb - ta;
+        });
+      } else {
+        peers = [...peers].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      }
+      return peers;
     },
 
     // ── End Dashboard ──────────────────────────────────────────────────────────

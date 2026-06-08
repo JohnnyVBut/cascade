@@ -542,6 +542,115 @@
                       </div>
                     </template>
 
+                    <!-- ── peers (full list with filter + controls) ── -->
+                    <template v-else-if="w.type === 'peers'">
+                      <!-- expand out of body padding to fill card edge-to-edge -->
+                      <div style="display:flex; flex-direction:column; height:100%; margin:-12px -16px;">
+
+                        <!-- sticky filter bar -->
+                        <div style="padding:6px 12px; border-bottom:1px solid #f3f4f6; flex-shrink:0; display:flex; gap:6px; align-items:center;"
+                          :style="{ 'border-bottom-color': theme==='dark' ? '#525252' : '#f3f4f6' }">
+                          <select v-model="dashPeersGetState(w.id).iface"
+                            style="flex:1; font-size:0.72rem; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; background:transparent; cursor:pointer;"
+                            :style="{ 'border-color': theme==='dark' ? '#525252':'#e5e7eb', color: theme==='dark'?'#d4d4d4':'#374151', background: theme==='dark'?'#404040':'#fff' }">
+                            <option value="">All interfaces</option>
+                            <option v-for="iface in tunnelInterfaces" :key="iface.id" :value="iface.id">{{ iface.name }}</option>
+                          </select>
+                          <select v-model="dashPeersGetState(w.id).sort"
+                            style="flex:1; font-size:0.72rem; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; background:transparent; cursor:pointer;"
+                            :style="{ 'border-color': theme==='dark' ? '#525252':'#e5e7eb', color: theme==='dark'?'#d4d4d4':'#374151', background: theme==='dark'?'#404040':'#fff' }">
+                            <option value="name">Sort: Name</option>
+                            <option value="traffic">Sort: Traffic</option>
+                            <option value="seen">Sort: Last seen</option>
+                          </select>
+                        </div>
+
+                        <!-- scrollable peer list -->
+                        <div style="flex:1; overflow-y:auto; padding:0 12px;">
+                          <div v-if="dashFilteredPeers(w.id).length === 0"
+                            class="text-sm text-gray-400 dark:text-neutral-500"
+                            style="padding:16px 0; text-align:center;">
+                            No peers
+                          </div>
+                          <div v-for="peer in dashFilteredPeers(w.id)" :key="peer.id"
+                            style="display:flex; align-items:center; gap:6px; padding:5px 0; border-bottom:1px solid #f3f4f6;"
+                            :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#f3f4f6', opacity: peer.enabled ? 1 : 0.55 }">
+
+                            <!-- online status dot -->
+                            <span style="width:6px; height:6px; border-radius:50%; flex-shrink:0;"
+                              :style="{ background: peer.latestHandshakeAt && (new Date() - new Date(peer.latestHandshakeAt) < 600000) ? '#22c55e' : '#9ca3af' }"></span>
+
+                            <!-- name + address -->
+                            <div style="flex:1; min-width:0; overflow:hidden;">
+                              <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:500; font-size:0.75rem;"
+                                :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">
+                                {{ peer.name }}
+                                <span style="font-size:0.6rem; padding:1px 4px; background:rgba(107,114,128,0.12); color:#6b7280; border-radius:3px; margin-left:3px; font-weight:600;">{{ peer.interfaceName }}</span>
+                                <span v-if="peer.peerType === 'interconnect'" style="font-size:0.6rem; padding:1px 4px; background:rgba(59,130,246,0.12); color:#2563eb; border-radius:3px; margin-left:2px; font-weight:600;">S2S</span>
+                              </div>
+                              <div style="font-size:0.65rem; color:#9ca3af; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                {{ peer.address || peer.allowedIPs }}
+                                <span v-if="peer.latestHandshakeAt" style="margin-left:4px;">· {{ peer.latestHandshakeAt | timeago }}</span>
+                              </div>
+                            </div>
+
+                            <!-- traffic -->
+                            <div v-if="peer.totalTx || peer.totalRx"
+                              style="flex-shrink:0; font-size:0.65rem; font-family:monospace; text-align:right; line-height:1.5;">
+                              <div style="color:#6366f1;">↓ {{ dashFmtBytes(peer.totalTx || 0) }}</div>
+                              <div style="color:#8b5cf6;">↑ {{ dashFmtBytes(peer.totalRx || 0) }}</div>
+                            </div>
+
+                            <!-- controls -->
+                            <div style="display:flex; gap:2px; flex-shrink:0; align-items:center;">
+                              <!-- enable/disable toggle -->
+                              <div @click="peer.enabled ? disablePeer(peer) : enablePeer(peer)"
+                                :title="peer.enabled ? 'Disable' : 'Enable'"
+                                style="width:26px; height:14px; border-radius:7px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0;"
+                                :style="{ background: peer.enabled ? '#16a34a' : '#d1d5db' }">
+                                <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
+                                  :style="{ left: peer.enabled ? '14px' : '2px' }"></div>
+                              </div>
+                              <!-- QR -->
+                              <button v-if="peer.downloadableConfig"
+                                @click="qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg'"
+                                title="Show QR"
+                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                                <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                                </svg>
+                              </button>
+                              <!-- Download config -->
+                              <button v-if="peer.downloadableConfig"
+                                @click="downloadPeerConfig(peer)"
+                                title="Download config"
+                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                                <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                              </button>
+                              <!-- Edit -->
+                              <button @click="openPeerEdit(peer)"
+                                title="Edit"
+                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                                <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                                </svg>
+                              </button>
+                              <!-- Delete -->
+                              <button @click="peerDelete = peer"
+                                title="Delete"
+                                style="padding:3px; background:rgba(239,68,68,0.08); border:none; border-radius:4px; cursor:pointer; color:#ef4444; display:flex; align-items:center; line-height:0;">
+                                <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
                     <template v-else>
                       <div class="text-sm text-gray-400 dark:text-neutral-500">Unknown widget type: {{ w.type }}</div>
                     </template>
