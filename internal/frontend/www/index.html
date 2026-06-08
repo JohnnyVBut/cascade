@@ -519,9 +519,9 @@
                           <span class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ iface.address }}</span>
                         </div>
                         <div class="flex gap-4 text-xs text-gray-400 dark:text-neutral-500 font-mono" style="margin-top:2px; padding-left:16px;">
-                          <span>↓ {{ dashFmtBytes(iface.totalRx || 0) }}</span>
-                          <span>↑ {{ dashFmtBytes(iface.totalTx || 0) }}</span>
-                          <span>{{ iface.peersCount || 0 }} peers</span>
+                          <span style="color:#6366f1;">↓ {{ dashFmtBytes(allPeers.filter(p => p.interfaceId === iface.id).reduce((s,p) => s + (p.totalRx||0), 0)) }}</span>
+                          <span style="color:#8b5cf6;">↑ {{ dashFmtBytes(allPeers.filter(p => p.interfaceId === iface.id).reduce((s,p) => s + (p.totalTx||0), 0)) }}</span>
+                          <span>{{ iface.peerCount || 0 }} peers</span>
                         </div>
                       </div>
                     </template>
@@ -531,12 +531,12 @@
                       <div style="display:flex; gap:16px; flex-wrap:wrap;">
                         <div style="flex:1; min-width:100px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
                           :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
-                          <div class="text-xl font-bold" style="color:#6366f1;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.transferRx||0), 0)) }}</div>
+                          <div class="text-xl font-bold" style="color:#6366f1;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.totalRx||0), 0)) }}</div>
                           <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Received</div>
                         </div>
                         <div style="flex:1; min-width:100px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
                           :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
-                          <div class="text-xl font-bold" style="color:#8b5cf6;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.transferTx||0), 0)) }}</div>
+                          <div class="text-xl font-bold" style="color:#8b5cf6;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.totalTx||0), 0)) }}</div>
                           <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Sent</div>
                         </div>
                       </div>
