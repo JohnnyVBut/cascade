@@ -576,11 +576,13 @@
                                 :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">
                                 {{ rule.name || rule.outInterface }}
                               </span>
-                              <!-- source -->
+                              <!-- source → outInterface -->
                               <span style="font-size:0.65rem; font-family:monospace; color:#9ca3af; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">
-                                <template v-if="rule.sourceAliasId">{{ (aliases.find(a => a.id === rule.sourceAliasId) || {}).name || rule.sourceAliasId }}</template>
-                                <template v-else-if="rule.source">{{ rule.source }}</template>
-                                <template v-else>any → </template>{{ rule.outInterface }}
+                                <span v-if="rule.sourceAliasId">{{ (aliases.find(a => a.id === rule.sourceAliasId) || {}).name || rule.sourceAliasId }}</span>
+                                <span v-else-if="rule.source">{{ rule.source }}</span>
+                                <span v-else style="font-style:italic;">any</span>
+                                <span style="margin:0 4px; opacity:0.5;">→</span>
+                                <span>{{ rule.outInterface }}</span>
                               </span>
                             </div>
                             <!-- type badge -->
