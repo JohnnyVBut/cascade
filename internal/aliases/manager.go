@@ -343,7 +343,7 @@ func (m *Manager) GetIPSetEntries(id string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if a.Type != "ipset" {
+	if a.Type != "ipset" && a.Type != "client-group" {
 		return nil, fmt.Errorf("alias %s is not of type ipset", id)
 	}
 	return m.ipsetMgr.ListEntries(a.IPSetName), nil

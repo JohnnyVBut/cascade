@@ -6448,14 +6448,8 @@
           <div v-for="e in aliasTooltip.alias.entries" :key="e"
             class="font-mono text-xs" style="padding:1px 0; color:#374151;">{{ e }}</div>
         </template>
-        <!-- client-group -->
-        <template v-else-if="aliasTooltip.alias.type === 'client-group'">
-          <div class="text-xs" style="color:#374151;">
-            {{ aliasTooltip.alias.entryCount || 0 }} peer IP{{ aliasTooltip.alias.entryCount !== 1 ? 's' : '' }} — managed by ipset
-          </div>
-        </template>
-        <!-- ipset -->
-        <template v-else-if="aliasTooltip.alias.type === 'ipset'">
+        <!-- ipset / client-group -->
+        <template v-else-if="aliasTooltip.alias.type === 'ipset' || aliasTooltip.alias.type === 'client-group'">
           <div v-if="aliasTooltip.ipsetLoading" class="text-xs text-gray-400 dark:text-neutral-500 italic">Loading…</div>
           <template v-else-if="aliasTooltip.ipsetEntries && aliasTooltip.ipsetEntries.length">
             <div v-for="e in aliasTooltip.ipsetEntries.slice(0, 20)" :key="e"
