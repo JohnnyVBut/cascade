@@ -143,6 +143,7 @@ func main() {
 	// which is safe after SetInstance calls below.
 	api.SetSystemDataDir(cfg.DataDir)
 	api.RegisterSystem(apiGroup)
+	api.RegisterDashboard(apiGroup)
 	api.RegisterInterfaces(apiGroup)
 	api.RegisterPeers(apiGroup)
 	api.RegisterRouting(apiGroup)

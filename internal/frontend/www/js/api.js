@@ -218,6 +218,22 @@ class API {
   }
 
   // ============================================================
+  // Dashboard API
+  // ============================================================
+
+  async getDashboardWidgets() {
+    return this.call({ method: 'get', path: '/dashboard/widgets' });
+  }
+
+  async putDashboardWidgets(widgets) {
+    return this.call({ method: 'put', path: '/dashboard/widgets', body: { widgets } });
+  }
+
+  async getSystemInfo() {
+    return this.call({ method: 'get', path: '/dashboard/system-info' });
+  }
+
+  // ============================================================
   // Settings API
   // ============================================================
 

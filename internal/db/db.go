@@ -525,6 +525,17 @@ ALTER TABLE peers ADD COLUMN group_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE gateways ADD COLUMN admin_down INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 25,
+		sql: `
+-- Dashboard: per-user widget layout.
+-- widgets stores a JSON array of {id, type, x, y, w, h} objects.
+CREATE TABLE IF NOT EXISTS dashboard_widgets (
+    user_id TEXT PRIMARY KEY,
+    widgets TEXT NOT NULL DEFAULT '[]'
+);
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

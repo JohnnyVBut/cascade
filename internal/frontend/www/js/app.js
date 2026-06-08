@@ -140,10 +140,11 @@ new Vue({
     enableExpireTime: false,
 
     // Sidebar navigation
-    activePage: 'interfaces', // 'interfaces' | 'gateways' | 'routing' | 'firewall' | 'settings' | 'administration'
+    activePage: 'dashboard', // 'dashboard' | 'interfaces' | 'gateways' | 'routing' | 'firewall' | 'settings' | 'administration'
     activeInterfaceId: null,  // ID выбранного интерфейса (вкладка)
     hoverPage: null,          // для hover-эффекта в sidebar
     sidebarMenu: [
+      { id: 'dashboard',        label: 'Dashboard' },
       { id: 'interfaces',       label: 'Interfaces' },
       { id: 'gateways',         label: 'Gateways' },
       { id: 'routing',          label: 'Routing' },
@@ -153,6 +154,19 @@ new Vue({
       { id: 'firewall',         label: 'Rules' },
       { id: 'settings',         label: 'Settings' },
       { id: 'administration',   label: 'Administration' },
+    ],
+
+    // ── Dashboard ──────────────────────────────────────────────────────────────
+    dashWidgets: [],          // [{id, type, x, y, w, h}]
+    dashGrid: null,           // GridStack instance
+    dashShowAddMenu: false,
+    dashSystemInfo: null,
+    dashAvailableWidgetTypes: [
+      { type: 'server-info',    label: 'Server Info',     icon: '🖥️' },
+      { type: 'interfaces',     label: 'Interfaces',      icon: '🔌' },
+      { type: 'gateways',       label: 'Gateways',        icon: '📡' },
+      { type: 'peers-summary',  label: 'Peers Summary',   icon: '👥' },
+      { type: 'traffic',        label: 'Traffic',         icon: '📊' },
     ],
 
     // Tunnel Interfaces
@@ -909,6 +923,10 @@ new Vue({
     // Sidebar navigation
     switchPage(pageId) {
       this.activePage = pageId;
+      if (pageId === 'dashboard') {
+        this.$nextTick(() => this.dashInitGrid());
+        this.loadSystemInfo();
+      }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
       if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
       if (pageId === 'gateways') {
@@ -2251,6 +2269,135 @@ new Vue({
         this.aliasesLoading = false;
       }
     },
+
+    // ── Dashboard ──────────────────────────────────────────────────────────────
+
+    async loadDashboard() {
+      try {
+        const res = await this.api.getDashboardWidgets();
+        this.dashWidgets = res.widgets || [];
+      } catch (e) {
+        this.dashWidgets = [];
+      }
+      await this.$nextTick();
+      this.dashInitGrid();
+    },
+
+    dashInitGrid() {
+      if (this.dashGrid) {
+        this.dashGrid.destroy(false);
+        this.dashGrid = null;
+      }
+      const el = document.getElementById('dashboard-grid');
+      if (!el) return;
+
+      const grid = GridStack.init({
+        column: 12,
+        cellHeight: 60,
+        margin: 8,
+        animate: true,
+        resizable: { handles: 'se' },
+      }, el);
+
+      // Add saved widgets
+      const widgets = this.dashWidgets.length > 0
+        ? this.dashWidgets
+        : this.dashDefaultWidgets();
+
+      widgets.forEach(w => {
+        const content = document.getElementById('dash-tpl-' + w.id);
+        const html = content ? content.innerHTML : `<div class="dash-card"><div class="dash-card-body">${w.type}</div></div>`;
+        grid.addWidget({
+          id: w.id,
+          x: w.x, y: w.y, w: w.w, h: w.h,
+          minW: 2, minH: 2,
+          content: html,
+        });
+      });
+
+      // Save on change
+      grid.on('change', () => this.dashSaveLayout(grid));
+
+      this.dashGrid = grid;
+
+      // Load system info if server-info widget present
+      if (widgets.some(w => w.type === 'server-info')) {
+        this.loadSystemInfo();
+      }
+    },
+
+    dashDefaultWidgets() {
+      return [
+        { id: 'w-server-info',   type: 'server-info',   x: 0, y: 0, w: 4, h: 4 },
+        { id: 'w-peers-summary', type: 'peers-summary',  x: 4, y: 0, w: 4, h: 4 },
+        { id: 'w-gateways',      type: 'gateways',       x: 8, y: 0, w: 4, h: 4 },
+        { id: 'w-interfaces',    type: 'interfaces',     x: 0, y: 4, w: 6, h: 5 },
+        { id: 'w-traffic',       type: 'traffic',        x: 6, y: 4, w: 6, h: 4 },
+      ];
+    },
+
+    dashSaveLayout(grid) {
+      const items = grid.save(false);
+      const widgets = (items || []).map(item => {
+        const existing = this.dashWidgets.find(w => w.id === item.id);
+        return {
+          id: item.id,
+          type: existing ? existing.type : item.id.replace('w-', ''),
+          x: item.x, y: item.y, w: item.w, h: item.h,
+        };
+      });
+      this.dashWidgets = widgets;
+      this.api.putDashboardWidgets(widgets).catch(console.error);
+    },
+
+    dashWidgetLabel(type) {
+      const t = this.dashAvailableWidgetTypes.find(x => x.type === type);
+      return t ? t.label : type;
+    },
+
+    dashAddWidget(type) {
+      const id = 'w-' + type + '-' + Date.now();
+      const newW = { id, type, x: 0, y: 0, w: 4, h: 4 };
+      this.dashWidgets.push(newW);
+      this.$nextTick(() => {
+        if (!this.dashGrid) return;
+        const content = document.getElementById('dash-tpl-' + id);
+        const html = content ? content.innerHTML : `<div class="dash-card"><div class="dash-card-body">${type}</div></div>`;
+        this.dashGrid.addWidget({ id, x: 0, y: 0, w: 4, h: 4, minW: 2, minH: 2, content: html });
+        if (type === 'server-info') this.loadSystemInfo();
+      });
+    },
+
+    dashRemoveWidget(id) {
+      const el = this.dashGrid && this.dashGrid.el
+        ? this.dashGrid.el.querySelector(`[gs-id="${id}"]`)
+        : null;
+      if (el && this.dashGrid) this.dashGrid.removeWidget(el);
+      this.dashWidgets = this.dashWidgets.filter(w => w.id !== id);
+      this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
+    },
+
+    dashResetLayout() {
+      const defaults = this.dashDefaultWidgets();
+      this.dashWidgets = defaults;
+      this.api.putDashboardWidgets(defaults).catch(console.error);
+      this.$nextTick(() => this.dashInitGrid());
+    },
+
+    async loadSystemInfo() {
+      try {
+        this.dashSystemInfo = await this.api.getSystemInfo();
+      } catch (e) { /* non-fatal */ }
+    },
+
+    dashFmtBytes(bytes) {
+      if (!bytes || bytes === 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(1024));
+      return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[Math.min(i, units.length - 1)];
+    },
+
+    // ── End Dashboard ──────────────────────────────────────────────────────────
 
     async loadClientGroups() {
       try {
@@ -3880,6 +4027,8 @@ new Vue({
         // Load users and current user for the Users section in Settings.
         this.loadUsers();
         this.loadCurrentUser();
+        // Load dashboard layout.
+        this.loadDashboard();
       })
       .catch((err) => {
         this.showToast(err.message || err.toString(), 'error');
@@ -3914,7 +4063,18 @@ new Vue({
       if (this.activePage === 'gateways') {
         this.refreshGateways().catch(console.error);
       }
+      if (this.activePage === 'dashboard') {
+        this.refreshGateways().catch(console.error);
+        this.refreshAllPeers().catch(console.error);
+      }
     }, 1000);
+
+    // System info polling every 30s (dashboard only)
+    setInterval(() => {
+      if (this.activePage === 'dashboard' && this.dashWidgets.some(w => w.type === 'server-info')) {
+        this.loadSystemInfo();
+      }
+    }, 30000);
 
     this.api.getuiTrafficStats()
       .then((res) => {

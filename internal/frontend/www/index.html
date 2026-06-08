@@ -5,6 +5,8 @@
   <title>Cascade</title>
   <meta charset="utf-8"/>
   <link href="./css/app.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-extra.min.css"/>
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="./img/apple-touch-icon.png">
@@ -78,6 +80,55 @@
   /* Missing compiled Tailwind utilities */
   .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
   .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+
+  /* ── GridStack dashboard ── */
+  .grid-stack { background: transparent; }
+  .grid-stack-item-content {
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .dark .grid-stack-item-content {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .grid-stack-placeholder > .placeholder-content {
+    border: 2px dashed #9ca3af;
+    border-radius: 12px;
+    background: rgba(156,163,175,0.08);
+  }
+  /* Widget card base */
+  .dash-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 12px;
+  }
+  .dark .dash-card {
+    background: #404040;
+  }
+  .dash-card-header {
+    padding: 12px 16px 8px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #f3f4f6;
+    flex-shrink: 0;
+  }
+  .dark .dash-card-header {
+    color: #9ca3af;
+    border-bottom-color: #525252;
+  }
+  .dash-card-body {
+    padding: 12px 16px;
+    flex: 1;
+    overflow: auto;
+  }
 </style>
 </head>
 
@@ -337,6 +388,168 @@
             View release →
           </a>
         </div>
+
+        <!-- ============================================================== -->
+        <!-- Dashboard Page                                                 -->
+        <!-- ============================================================== -->
+        <div v-if="activePage === 'dashboard'">
+          <!-- Toolbar -->
+          <div class="flex items-center justify-between mb-4">
+            <h1 class="text-xl font-semibold dark:text-neutral-100">Dashboard</h1>
+            <div class="flex gap-2">
+              <!-- Add Widget dropdown -->
+              <div style="position:relative;">
+                <button @click="dashShowAddMenu = !dashShowAddMenu"
+                  class="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                  Add Widget
+                </button>
+                <div v-if="dashShowAddMenu"
+                  @click.self="dashShowAddMenu = false"
+                  class="bg-white dark:bg-neutral-700 rounded-lg shadow-lg"
+                  style="position:absolute; right:0; top:calc(100% + 6px); width:220px; z-index:100; border:1px solid #e5e7eb;">
+                  <div v-for="wt in dashAvailableWidgetTypes" :key="wt.type"
+                    @click="dashAddWidget(wt.type); dashShowAddMenu = false"
+                    class="flex items-center gap-3 text-sm dark:text-neutral-200 cursor-pointer"
+                    style="padding:10px 14px; border-bottom:1px solid #f3f4f6;"
+                    :style="{ 'border-bottom-color': theme === 'dark' ? '#525252' : '#f3f4f6' }"
+                    @mouseenter="$event.currentTarget.style.background = theme==='dark'?'#525252':'#f9fafb'"
+                    @mouseleave="$event.currentTarget.style.background = 'transparent'">
+                    <span style="font-size:1.1rem;">{{ wt.icon }}</span>
+                    <span>{{ wt.label }}</span>
+                  </div>
+                </div>
+              </div>
+              <button @click="dashResetLayout"
+                class="px-3 py-2 border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:text-neutral-200 transition"
+                title="Reset to default layout">
+                Reset
+              </button>
+            </div>
+          </div>
+
+          <!-- GridStack container -->
+          <div class="grid-stack" id="dashboard-grid"></div>
+
+          <!-- Widget templates (rendered outside grid, teleported in by GridStack) -->
+          <div style="display:none;">
+            <div v-for="w in dashWidgets" :key="w.id" :id="'dash-tpl-' + w.id">
+              <div class="dash-card">
+                <div class="dash-card-header">
+                  <span>{{ dashWidgetLabel(w.type) }}</span>
+                  <button @click="dashRemoveWidget(w.id)" title="Remove widget"
+                    style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit;">✕</button>
+                </div>
+                <div class="dash-card-body">
+
+                  <!-- ── server-info ── -->
+                  <template v-if="w.type === 'server-info'">
+                    <div v-if="dashSystemInfo" style="display:flex; flex-direction:column; gap:8px;">
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-500 dark:text-neutral-400">Hostname</span>
+                        <span class="font-mono font-medium dark:text-neutral-200">{{ dashSystemInfo.hostname }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-500 dark:text-neutral-400">Uptime</span>
+                        <span class="font-medium dark:text-neutral-200">{{ dashSystemInfo.uptime }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-500 dark:text-neutral-400">Load avg</span>
+                        <span class="font-mono dark:text-neutral-200">{{ dashSystemInfo.load1 }} / {{ dashSystemInfo.load5 }} / {{ dashSystemInfo.load15 }}</span>
+                      </div>
+                      <div style="margin-top:4px;">
+                        <div class="flex items-center justify-between text-sm mb-1">
+                          <span class="text-gray-500 dark:text-neutral-400">Memory</span>
+                          <span class="dark:text-neutral-200">{{ dashFmtBytes(dashSystemInfo.memUsed * 1024) }} / {{ dashFmtBytes(dashSystemInfo.memTotal * 1024) }} ({{ dashSystemInfo.memPct }}%)</span>
+                        </div>
+                        <div style="height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden;">
+                          <div :style="{ width: dashSystemInfo.memPct + '%', background: dashSystemInfo.memPct > 85 ? '#ef4444' : dashSystemInfo.memPct > 65 ? '#eab308' : '#22c55e', height: '100%', borderRadius: '3px', transition: 'width 0.4s' }"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div v-else class="text-sm text-gray-400 dark:text-neutral-500">Loading…</div>
+                  </template>
+
+                  <!-- ── gateways ── -->
+                  <template v-else-if="w.type === 'gateways'">
+                    <div v-if="gateways.length === 0" class="text-sm text-gray-400 dark:text-neutral-500">No gateways</div>
+                    <div v-for="gw in gateways" :key="gw.id"
+                      class="flex items-center gap-2 text-sm"
+                      style="padding:4px 0; border-bottom:1px solid #f3f4f6;"
+                      :style="{ 'border-bottom-color': theme === 'dark' ? '#525252' : '#f3f4f6' }">
+                      <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: gatewayStatusColor(gw.status) }"></span>
+                      <span class="font-medium dark:text-neutral-200 truncate" style="flex:1;">{{ gw.name }}</span>
+                      <span class="text-xs font-mono" :style="{ color: gatewayStatusColor(gw.status) }">{{ gatewayStatusLabel(gw.status) }}</span>
+                      <span v-if="gw.latency !== null" class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ gw.latency }}ms</span>
+                    </div>
+                  </template>
+
+                  <!-- ── peers-summary ── -->
+                  <template v-else-if="w.type === 'peers-summary'">
+                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                      <div style="flex:1; min-width:80px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
+                        :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
+                        <div class="text-2xl font-bold dark:text-neutral-100">{{ allPeers.length }}</div>
+                        <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Peers</div>
+                      </div>
+                      <div style="flex:1; min-width:80px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
+                        :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
+                        <div class="text-2xl font-bold" style="color:#22c55e;">{{ allPeers.filter(p => p.endpoint).length }}</div>
+                        <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Connected</div>
+                      </div>
+                      <div style="flex:1; min-width:80px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
+                        :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
+                        <div class="text-2xl font-bold dark:text-neutral-100">{{ tunnelInterfaces.length }}</div>
+                        <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Interfaces</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- ── interfaces ── -->
+                  <template v-else-if="w.type === 'interfaces'">
+                    <div v-if="tunnelInterfaces.length === 0" class="text-sm text-gray-400 dark:text-neutral-500">No interfaces</div>
+                    <div v-for="iface in tunnelInterfaces" :key="iface.id"
+                      class="text-sm"
+                      style="padding:6px 0; border-bottom:1px solid #f3f4f6;"
+                      :style="{ 'border-bottom-color': theme === 'dark' ? '#525252' : '#f3f4f6' }">
+                      <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: iface.status === 'up' ? '#22c55e' : '#9ca3af' }"></span>
+                        <span class="font-medium dark:text-neutral-200">{{ iface.name }}</span>
+                        <span class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ iface.address }}</span>
+                      </div>
+                      <div class="flex gap-4 text-xs text-gray-400 dark:text-neutral-500 font-mono" style="margin-top:2px; padding-left:16px;">
+                        <span>↓ {{ dashFmtBytes(iface.totalRx || 0) }}</span>
+                        <span>↑ {{ dashFmtBytes(iface.totalTx || 0) }}</span>
+                        <span>{{ iface.peersCount || 0 }} peers</span>
+                      </div>
+                    </div>
+                  </template>
+
+                  <!-- ── traffic ── -->
+                  <template v-else-if="w.type === 'traffic'">
+                    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                      <div style="flex:1; min-width:100px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
+                        :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
+                        <div class="text-xl font-bold" style="color:#6366f1;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.transferRx||0), 0)) }}</div>
+                        <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Received</div>
+                      </div>
+                      <div style="flex:1; min-width:100px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
+                        :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
+                        <div class="text-xl font-bold" style="color:#8b5cf6;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.transferTx||0), 0)) }}</div>
+                        <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Sent</div>
+                      </div>
+                    </div>
+                  </template>
+
+                  <template v-else>
+                    <div class="text-sm text-gray-400 dark:text-neutral-500">Unknown widget type: {{ w.type }}</div>
+                  </template>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- /activePage === 'dashboard' -->
 
         <!-- ============================================================== -->
         <!-- Administration Page                                            -->
@@ -6575,6 +6788,7 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
   <script src="./js/vendor/vue.min.js"></script>
   <script src="./js/vendor/vue-i18n.min.js"></script>
   <script src="./js/vendor/apexcharts.min.js"></script>
