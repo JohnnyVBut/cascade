@@ -478,7 +478,14 @@
                         class="flex items-center gap-2 text-sm"
                         style="padding:4px 0; border-bottom:1px solid #f3f4f6;"
                         :style="{ 'border-bottom-color': theme === 'dark' ? '#525252' : '#f3f4f6' }">
-                        <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: gatewayStatusColor(gw.status) }"></span>
+                        <span @click="toggleGatewayAdminDown(gw)"
+                          :title="gw.adminDown ? 'Admin Down — click to bring up' : 'Healthy — click to set Admin Down'"
+                          style="width:10px; height:10px; border-radius:50%; cursor:pointer; flex-shrink:0; display:inline-block; transition:background 0.2s;"
+                          :style="{
+                            background: gatewayStatusColor(gw.status),
+                            outline: gw.adminDown && gw.realStatus ? '2px solid ' + gatewayStatusColor(gw.realStatus) : 'none',
+                            outlineOffset: '1px'
+                          }"></span>
                         <span class="font-medium dark:text-neutral-200 truncate" style="flex:1;">{{ gw.name }}</span>
                         <span class="text-xs font-mono" :style="{ color: gatewayStatusColor(gw.status) }">{{ gatewayStatusLabel(gw.status) }}</span>
                         <span v-if="gw.latency !== null" class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ gw.latency }}ms</span>
