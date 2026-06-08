@@ -819,6 +819,10 @@ new Vue({
       this.loadClientGroups();
       this.loadUsers();
       this.loadCurrentUser();
+      // Re-load dashboard after login: loadDashboard() in mounted() ran before
+      // the dashboard DOM existed (authenticated=false → v-if removed the div),
+      // so dashInitGrid() silently returned without initialising GridStack.
+      this.loadDashboard();
       if (this.activePage === 'gateways') {
         this.loadGateways();
         this.loadGatewayGroups();
