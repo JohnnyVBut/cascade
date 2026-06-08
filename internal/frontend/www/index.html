@@ -561,17 +561,23 @@
                               :style="{ background: iface.enabled ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.07)', color: iface.enabled ? '#ef4444' : '#9ca3af' }">
                               <svg style="width:13px;height:13px;" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
                             </button>
-                            <button @click="dashOpenAddPeer(iface)" title="Add peer"
-                              style="padding:3px; background:rgba(99,102,241,0.1); border:none; border-radius:4px; cursor:pointer; color:#6366f1; display:flex; align-items:center; line-height:0;">
+                            <button @click="dashOpenAddPeer(iface)"
+                              :title="iface.disableRoutes ? 'N/A for S2S' : 'Quick add client'"
+                              :style="iface.disableRoutes
+                                ? 'padding:3px; background:rgba(107,114,128,0.07); border:none; border-radius:4px; cursor:default; color:#9ca3af; display:flex; align-items:center; line-height:0; opacity:0.35; pointer-events:none;'
+                                : 'padding:3px; background:rgba(99,102,241,0.1); border:none; border-radius:4px; cursor:pointer; color:#6366f1; display:flex; align-items:center; line-height:0;'">
                               <svg style="width:13px;height:13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             </button>
                           </div>
                         </div>
 
-                        <!-- Row 2: address + port + traffic + peers -->
-                        <div style="display:flex; align-items:center; gap:8px; margin-top:2px; padding-left:16px; font-size:0.65rem; font-family:monospace; color:#9ca3af;">
+                        <!-- Row 2: address + port + mtu + mss + traffic + peers -->
+                        <div style="display:flex; align-items:center; gap:8px; margin-top:2px; padding-left:16px; font-size:0.65rem; font-family:monospace; color:#9ca3af; flex-wrap:wrap;">
                           <span>{{ iface.address }}</span>
                           <span>:{{ iface.listenPort }}</span>
+                          <span v-if="iface.mtu">MTU {{ iface.mtu }}</span>
+                          <span v-if="iface.mss === -1" title="MSS clamp-to-pmtu" style="color:#f59e0b;">MSS auto</span>
+                          <span v-else-if="iface.mss > 0" :title="'MSS set-mss ' + iface.mss" style="color:#f59e0b;">MSS {{ iface.mss }}</span>
                           <span style="color:#6366f1;">↓{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalRx||0),0)) }}</span>
                           <span style="color:#8b5cf6;">↑{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalTx||0),0)) }}</span>
                           <span>{{ iface.peerCount||0 }} peers</span>

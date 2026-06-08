@@ -2467,23 +2467,14 @@ new Vue({
       }
     },
 
-    // Open "Add peer" quick-create modal for a specific interface from dashboard
+    // Open Quick Create peer modal for a specific interface from dashboard
     dashOpenAddPeer(iface) {
-      this.selectedInterface = iface;
+      if (iface.disableRoutes) return; // S2S interfaces don't support quick-create clients
       this.activeInterfaceId = iface.id;
-      this.peerCreate = {
-        mode: 'generate',
-        peerType: 'client',
-        name: '',
-        publicKey: '',
-        endpoint: '',
-        allowedIPs: '',
-        clientAllowedIPs: '',
-        persistentKeepalive: 25,
-        groupId: this.defaultGroupId(),
-        showQR: false,
-      };
-      this.showPeerCreate = true;
+      this.peerCreateName = '';
+      this.peerCreateExpiredDate = '';
+      this.peerCreateGroupId = this.defaultGroupId();
+      this.showQuickPeerCreate = true;
     },
 
     // Human-readable protocol label for dashboard badges
