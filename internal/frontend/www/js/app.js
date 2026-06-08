@@ -2458,6 +2458,42 @@ new Vue({
       return peers;
     },
 
+    // Toggle interface up/down from dashboard widget
+    async dashToggleInterface(iface) {
+      if (iface.status === 'up') {
+        await this.stopTunnelInterface(iface);
+      } else {
+        await this.startTunnelInterface(iface);
+      }
+    },
+
+    // Open "Add peer" quick-create modal for a specific interface from dashboard
+    dashOpenAddPeer(iface) {
+      this.selectedInterface = iface;
+      this.activeInterfaceId = iface.id;
+      this.peerCreate = {
+        mode: 'generate',
+        peerType: 'client',
+        name: '',
+        publicKey: '',
+        endpoint: '',
+        allowedIPs: '',
+        clientAllowedIPs: '',
+        persistentKeepalive: 25,
+        groupId: this.defaultGroupId(),
+        showQR: false,
+      };
+      this.showPeerCreate = true;
+    },
+
+    // Human-readable protocol label for dashboard badges
+    dashProtoLabel(protocol) {
+      if (protocol === 'wireguard') return 'WG 1.0';
+      if (protocol === 'amneziawg-2.0') return 'AWG 2.0';
+      if (protocol === 'amneziawg') return 'AWG';
+      return protocol || 'WG';
+    },
+
     // ── End Dashboard ──────────────────────────────────────────────────────────
 
     async loadClientGroups() {

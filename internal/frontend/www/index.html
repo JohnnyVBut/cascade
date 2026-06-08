@@ -517,18 +517,78 @@
                     <template v-else-if="w.type === 'interfaces'">
                       <div v-if="tunnelInterfaces.length === 0" class="text-sm text-gray-400 dark:text-neutral-500">No interfaces</div>
                       <div v-for="iface in tunnelInterfaces" :key="iface.id"
-                        class="text-sm"
-                        style="padding:6px 0; border-bottom:1px solid #f3f4f6;"
-                        :style="{ 'border-bottom-color': theme === 'dark' ? '#525252' : '#f3f4f6' }">
-                        <div class="flex items-center gap-2">
-                          <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: iface.status === 'up' ? '#22c55e' : '#9ca3af' }"></span>
-                          <span class="font-medium dark:text-neutral-200">{{ iface.name }}</span>
-                          <span class="text-xs text-gray-400 dark:text-neutral-500 font-mono">{{ iface.address }}</span>
-                        </div>
-                        <div class="flex gap-4 text-xs text-gray-400 dark:text-neutral-500 font-mono" style="margin-top:2px; padding-left:16px;">
-                          <span style="color:#6366f1;">↓ {{ dashFmtBytes(allPeers.filter(p => p.interfaceId === iface.id).reduce((s,p) => s + (p.totalRx||0), 0)) }}</span>
-                          <span style="color:#8b5cf6;">↑ {{ dashFmtBytes(allPeers.filter(p => p.interfaceId === iface.id).reduce((s,p) => s + (p.totalTx||0), 0)) }}</span>
-                          <span>{{ iface.peerCount || 0 }} peers</span>
+                        style="display:flex; align-items:center; gap:6px; padding:5px 0; border-bottom:1px solid #f3f4f6; font-size:0.72rem;"
+                        :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#f3f4f6' }">
+
+                        <!-- status dot (clickable toggle) -->
+                        <span @click="dashToggleInterface(iface)"
+                          :title="iface.status === 'up' ? 'Up — click to stop' : 'Down — click to start'"
+                          style="width:10px; height:10px; border-radius:50%; cursor:pointer; flex-shrink:0; display:inline-block; transition:background 0.2s;"
+                          :style="{ background: iface.status === 'up' ? '#22c55e' : '#ef4444' }"></span>
+
+                        <!-- name -->
+                        <span style="font-weight:600; white-space:nowrap; flex-shrink:0;"
+                          :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">{{ iface.name }}</span>
+
+                        <!-- system id -->
+                        <span style="font-family:monospace; color:#9ca3af; white-space:nowrap; flex-shrink:0; font-size:0.65rem;">{{ iface.id }}</span>
+
+                        <!-- S2S badge -->
+                        <span v-if="iface.disableRoutes"
+                          style="font-size:0.6rem; font-weight:600; padding:1px 4px; background:rgba(59,130,246,0.12); color:#2563eb; border-radius:3px; flex-shrink:0;">S2S</span>
+
+                        <!-- protocol badge -->
+                        <span style="font-size:0.6rem; font-weight:600; padding:1px 4px; border-radius:3px; flex-shrink:0;"
+                          :style="iface.protocol === 'wireguard'
+                            ? 'background:rgba(107,114,128,0.1); color:#6b7280;'
+                            : 'background:rgba(99,102,241,0.12); color:#6366f1;'">
+                          {{ dashProtoLabel(iface.protocol) }}
+                        </span>
+
+                        <!-- address -->
+                        <span style="font-family:monospace; color:#9ca3af; white-space:nowrap; flex-shrink:0; font-size:0.65rem;">{{ iface.address }}</span>
+
+                        <!-- port -->
+                        <span style="font-family:monospace; color:#9ca3af; white-space:nowrap; flex-shrink:0; font-size:0.65rem;">:{{ iface.listenPort }}</span>
+
+                        <!-- traffic + peers (push to right) -->
+                        <div style="flex:1;"></div>
+                        <span style="font-family:monospace; font-size:0.65rem; color:#6366f1; white-space:nowrap; flex-shrink:0;">
+                          ↓{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalRx||0),0)) }}
+                        </span>
+                        <span style="font-family:monospace; font-size:0.65rem; color:#8b5cf6; white-space:nowrap; flex-shrink:0;">
+                          ↑{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalTx||0),0)) }}
+                        </span>
+                        <span style="font-size:0.65rem; color:#9ca3af; white-space:nowrap; flex-shrink:0;">{{ iface.peerCount||0 }}👥</span>
+
+                        <!-- controls: start / stop / add peer -->
+                        <div style="display:flex; gap:2px; flex-shrink:0; align-items:center;">
+                          <!-- start -->
+                          <button @click="startTunnelInterface(iface)"
+                            title="Start"
+                            style="padding:3px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; line-height:0;"
+                            :style="{ background: iface.status==='up' ? 'rgba(107,114,128,0.07)' : 'rgba(34,197,94,0.12)', color: iface.status==='up' ? '#9ca3af' : '#16a34a' }">
+                            <svg style="width:13px;height:13px;" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          </button>
+                          <!-- stop -->
+                          <button @click="stopTunnelInterface(iface)"
+                            title="Stop"
+                            style="padding:3px; border:none; border-radius:4px; cursor:pointer; display:flex; align-items:center; line-height:0;"
+                            :style="{ background: iface.status==='up' ? 'rgba(239,68,68,0.1)' : 'rgba(107,114,128,0.07)', color: iface.status==='up' ? '#ef4444' : '#9ca3af' }">
+                            <svg style="width:13px;height:13px;" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M6 6h12v12H6z"/>
+                            </svg>
+                          </button>
+                          <!-- add peer -->
+                          <button @click="dashOpenAddPeer(iface)"
+                            title="Add peer"
+                            style="padding:3px; background:rgba(99,102,241,0.1); border:none; border-radius:4px; cursor:pointer; color:#6366f1; display:flex; align-items:center; line-height:0;">
+                            <svg style="width:13px;height:13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                          </button>
                         </div>
                       </div>
                     </template>
