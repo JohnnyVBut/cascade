@@ -215,10 +215,12 @@ new Vue({
       clientAllowedIPs: '',
       persistentKeepalive: 25,
       groupId: '',          // client-group alias ID
+      showQR: false,
     },
 
     // Quick peer create (one-click)
     peerCreateName: '',
+    peerCreateShowQR: false,
     peerCreateExpiredDate: '',
     peerCreateGroupId: '',    // selected client-group for quick create
 
@@ -1457,8 +1459,9 @@ new Vue({
         const interfaceId = this.activeInterfaceId;
         const peerId = res.peer && res.peer.id;
 
+        const showQR = this.peerCreate.showQR;
         this.showPeerCreate = false;
-        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId() };
+        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), showQR: false };
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
@@ -1467,8 +1470,7 @@ new Vue({
           this.loadAliases();
         }
 
-        // Show QR immediately for client peers with server-generated keys
-        if (mode === 'generate' && peerType === 'client' && peerId) {
+        if (showQR && mode === 'generate' && peerType === 'client' && peerId) {
           this.qrcode = `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
         } else {
           this.showToast(peerType === 'client' ? 'Client created!' : 'Peer created!');
@@ -2834,18 +2836,21 @@ new Vue({
         });
 
         const peerId = res.peer && res.peer.id;
+        const showQR = this.peerCreateShowQR;
         this.showQuickPeerCreate = false;
         this.peerCreateName = '';
         this.peerCreateExpiredDate = '';
+        this.peerCreateShowQR = false;
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
         this.loadClientGroups();
         this.loadAliases();
 
-        // Show QR immediately
-        if (peerId) {
+        if (showQR && peerId) {
           this.qrcode = `./api/tunnel-interfaces/${this.activeInterfaceId}/peers/${peerId}/qrcode.svg`;
+        } else {
+          this.showToast('Client created!');
         }
       } catch (err) {
         console.error('Failed to create peer:', err);
