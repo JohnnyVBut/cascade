@@ -4537,6 +4537,7 @@
                     <span v-else-if="alias.type === 'port-group'">
                       {{ (alias.memberIds || []).length }} port aliases
                     </span>
+                    <span v-else-if="alias.type === 'client-group'">{{ alias.entryCount }} peers</span>
                     <span v-else>{{ (alias.entries || []).length }} entries</span>
                   </td>
                   <td class="text-gray-500 dark:text-neutral-400 text-xs tc">{{ alias.description || '—' }}</td>
@@ -6518,11 +6519,17 @@
       <!-- Entries -->
       <div style="padding:6px 12px 8px; max-height:200px; overflow-y:auto;">
         <!-- host / network / port -->
-        <template v-if="aliasTooltip.alias.type !== 'ipset' && aliasTooltip.alias.type !== 'group' && aliasTooltip.alias.type !== 'port-group'">
+        <template v-if="aliasTooltip.alias.type !== 'ipset' && aliasTooltip.alias.type !== 'group' && aliasTooltip.alias.type !== 'port-group' && aliasTooltip.alias.type !== 'client-group'">
           <div v-if="!aliasTooltip.alias.entries || !aliasTooltip.alias.entries.length"
             class="text-gray-400 dark:text-neutral-500 text-xs italic">empty</div>
           <div v-for="e in aliasTooltip.alias.entries" :key="e"
             class="font-mono text-xs" style="padding:1px 0; color:#374151;">{{ e }}</div>
+        </template>
+        <!-- client-group -->
+        <template v-else-if="aliasTooltip.alias.type === 'client-group'">
+          <div class="text-xs" style="color:#374151;">
+            {{ aliasTooltip.alias.entryCount || 0 }} peer IP{{ aliasTooltip.alias.entryCount !== 1 ? 's' : '' }} — managed by ipset
+          </div>
         </template>
         <!-- ipset -->
         <template v-else-if="aliasTooltip.alias.type === 'ipset'">
