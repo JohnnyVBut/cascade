@@ -1463,6 +1463,7 @@ new Vue({
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
+        if (peerType === 'client') this.loadClientGroups();
 
         // Show QR immediately for client peers with server-generated keys
         if (mode === 'generate' && peerType === 'client' && peerId) {
@@ -2959,6 +2960,7 @@ new Vue({
         this.peerDelete = null;
         await this._refreshPeersOrAll();
         await this.loadTunnelInterfaces();
+        if (label === 'Client') this.loadClientGroups();
         this.showToast(`${label} deleted!`);
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');
@@ -3020,6 +3022,7 @@ new Vue({
         this.showPeerEditModal = false;
         this.peerEditForm._peer = null;
         await this._refreshPeersOrAll();
+        if (!isInterconnect) this.loadClientGroups();
         this.showToast(isInterconnect ? 'Peer updated' : 'Client updated', 'success');
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');

@@ -100,6 +100,12 @@ func createPeer(c *fiber.Ctx) error {
 	if inp.PersistentKeepalive == 0 {
 		inp.PersistentKeepalive = d.PersistentKeepalive
 	}
+	// Auto-assign client peers to default group when no group specified.
+	if inp.PeerType == "client" && inp.GroupID == "" {
+		if defaultID, err := aliases.Get().GetDefaultGroupID(); err == nil {
+			inp.GroupID = defaultID
+		}
+	}
 
 	p, err := mgr().AddPeer(ifaceID, inp)
 	if err != nil {

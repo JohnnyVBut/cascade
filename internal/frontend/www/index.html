@@ -1208,7 +1208,7 @@
                     <input type="file" accept=".json" @change="restoreInterface" class="hidden"/>
                   </label>
                   <!-- Manual peer add (wrench) -->
-                  <button @click="showPeerCreate = true" :title="currentInterface && currentInterface.disableRoutes ? 'Add peer manually' : 'Add client manually'"
+                  <button @click="peerCreate.groupId = defaultGroupId(); showPeerCreate = true" :title="currentInterface && currentInterface.disableRoutes ? 'Add peer manually' : 'Add client manually'"
                     class="hover:bg-red-800 hover:border-red-800 hover:text-white text-gray-700 dark:text-neutral-200 max-md:border-x-0 border-2 border-gray-100 dark:border-neutral-600 py-2 px-4 md:rounded inline-flex items-center transition">
                     <svg class="w-4 md:mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.47-3.66a.5.5 0 010-.82l5.47-3.66a.5.5 0 01.77.41v7.32a.5.5 0 01-.77.41zM21.75 12a9.75 9.75 0 11-19.5 0 9.75 9.75 0 0119.5 0z"/>
