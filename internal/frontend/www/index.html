@@ -4407,88 +4407,6 @@
           </div>
           <p class="text-sm text-gray-500 dark:text-neutral-400">Named groups of IP addresses or CIDR networks. Can be referenced in Policy Rules and Firewall Rules.</p>
 
-          <!-- ── Client Groups section ──────────────────────────────────── -->
-          <div>
-            <div class="flex items-center justify-between mb-2">
-              <h2 class="font-semibold dark:text-neutral-200" style="font-size:1rem;">
-                Client Groups
-                <span class="text-xs font-normal text-gray-500 dark:text-neutral-400 ml-1">— ipsets auto-managed by peer membership</span>
-              </h2>
-              <button @click="showClientGroupCreate = true; clientGroupForm = { name: '', description: '' }"
-                class="text-xs rounded px-3 py-1 font-medium transition"
-                style="background:#ede9fe; color:#5b21b6;">
-                + New Group
-              </button>
-            </div>
-            <div class="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden" style="border:1px solid #e5e7eb;">
-              <table class="w-full text-sm">
-                <thead>
-                  <tr class="bg-gray-50 dark:bg-neutral-600 text-gray-500 dark:text-neutral-400 text-xs uppercase">
-                    <th class="text-left font-medium tc">Name</th>
-                    <th class="text-left font-medium tc">Peers</th>
-                    <th class="text-left font-medium tc">Description</th>
-                    <th class="tc"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="group in clientGroups" :key="group.id"
-                    class="dark:border-neutral-600" style="border-top-width:1px;">
-                    <td class="dark:text-neutral-200 font-medium tc" style="display:flex;align-items:center;gap:6px;">
-                      <span class="text-xs font-medium rounded-full px-2 py-1" style="background:#ede9fe;color:#5b21b6;">client-group</span>
-                      {{ group.name }}
-                      <span v-if="group.name === 'default'" class="text-xs text-gray-400 dark:text-neutral-500">(protected)</span>
-                    </td>
-                    <td class="text-gray-600 dark:text-neutral-400 font-mono text-xs tc">{{ group.entryCount }} peers</td>
-                    <td class="text-gray-500 dark:text-neutral-400 text-xs tc">{{ group.description || '—' }}</td>
-                    <td class="tc">
-                      <button v-if="group.name !== 'default'"
-                        @click="deleteClientGroup(group)"
-                        class="text-xs bg-red-100 text-red-600 rounded px-2 py-1 transition">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Create Client Group Modal -->
-          <div v-if="showClientGroupCreate"
-            class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
-            style="padding:40px 24px;"
-            @click.self="showClientGroupCreate = false">
-            <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
-              <div class="modal-header dark:border-neutral-600">
-                <h2 class="text-xl font-medium dark:text-neutral-200">New Client Group</h2>
-              </div>
-              <div class="modal-body">
-                <div class="mb-4">
-                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Name</label>
-                  <input v-model="clientGroupForm.name" type="text" placeholder="e.g. corporate"
-                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
-                    style="padding:8px 12px;">
-                </div>
-                <div>
-                  <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Description <span class="text-gray-400 font-normal">(optional)</span></label>
-                  <input v-model="clientGroupForm.description" type="text" placeholder="Optional description"
-                    class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
-                    style="padding:8px 12px;">
-                </div>
-              </div>
-              <div class="modal-footer dark:border-neutral-600 flex justify-end gap-2">
-                <button @click="showClientGroupCreate = false" class="text-sm dark:text-neutral-300 rounded px-3 py-1">Cancel</button>
-                <button @click="createClientGroup()"
-                  class="text-sm text-white rounded px-4 py-1 font-medium" style="background:#7c3aed;">
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Divider -->
-          <div style="border-top:1px solid #e5e7eb;"></div>
-
           <!-- Loading -->
           <div v-if="aliasesLoading" class="text-gray-500 dark:text-neutral-400 text-sm">Loading...</div>
 
@@ -4513,7 +4431,10 @@
               <tbody>
                 <tr v-for="alias in aliases" :key="alias.id"
                   class="dark:border-neutral-600" style="border-top-width:1px;">
-                  <td class="dark:text-neutral-200 font-medium tc">{{ alias.name }}</td>
+                  <td class="dark:text-neutral-200 font-medium tc">
+                    {{ alias.name }}
+                    <span v-if="alias.type === 'client-group' && alias.name === 'default'" class="text-xs text-gray-400 dark:text-neutral-500 font-normal">(protected)</span>
+                  </td>
                   <td class="tc">
                     <span class="text-xs font-medium rounded-full px-2 py-1"
                       :style="alias.type === 'ipset'      ? 'background:#f3e8ff;color:#7c3aed;' :
@@ -4550,7 +4471,8 @@
                         class="text-xs bg-gray-100 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded px-2 py-1 transition">
                         Edit
                       </button>
-                      <button @click="deleteAlias(alias)"
+                      <button v-if="!(alias.type === 'client-group' && alias.name === 'default')"
+                        @click="deleteAlias(alias)"
                         class="text-xs bg-red-100 text-red-600 rounded px-2 py-1 transition">
                         Delete
                       </button>
@@ -4591,6 +4513,7 @@
                   <option value="host">Host — list of single IP addresses</option>
                   <option value="network">Network — list of CIDR prefixes</option>
                   <option value="ipset">ipset — large kernel set (upload file or generate)</option>
+                  <option value="client-group">Client Group — ipset auto-managed by peer membership</option>
                   <option value="group">Group — combines multiple host/network aliases</option>
                   <option value="port">Port — list of protocol:port entries</option>
                   <option value="port-group">Port Group — combines multiple port aliases</option>

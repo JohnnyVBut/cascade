@@ -400,8 +400,6 @@ new Vue({
     aliases: [],
     aliasesLoading: false,
     clientGroups: [],            // aliases of type client-group
-    showClientGroupCreate: false,
-    clientGroupForm: { name: '', description: '' },
     showAliasCreate: false,
     showAliasEdit: false,
     aliasCreate: {
@@ -2214,37 +2212,6 @@ new Vue({
       }
     },
 
-    async createClientGroup() {
-      const name = (this.clientGroupForm.name || '').trim();
-      if (!name) { this.showToast('Group name is required', 'error'); return; }
-      try {
-        await this.api.createClientGroup({ name, description: this.clientGroupForm.description });
-        this.clientGroupForm = { name: '', description: '' };
-        this.showClientGroupCreate = false;
-        await this.loadClientGroups();
-        await this.loadAliases();
-        this.showToast(`Client group "${name}" created`, 'success');
-      } catch (err) {
-        this.showToast(err.message || 'Failed to create group', 'error');
-      }
-    },
-
-    async deleteClientGroup(group) {
-      if (!confirm(`Delete group "${group.name}"? All peers will be moved to the default group.`)) return;
-      try {
-        const res = await this.api.deleteClientGroup({ id: group.id });
-        const moved = res && res.movedCount ? res.movedCount : 0;
-        await this.loadClientGroups();
-        await this.loadAliases();
-        const msg = moved > 0
-          ? `Group "${group.name}" deleted. ${moved} peer${moved > 1 ? 's' : ''} moved to default.`
-          : `Group "${group.name}" deleted.`;
-        this.showToast(msg, 'success', 8000);
-      } catch (err) {
-        this.showToast(err.message || 'Failed to delete group', 'error');
-      }
-    },
-
     defaultGroupId() {
       const g = this.clientGroups.find(g => g.name === 'default');
       return g ? g.id : '';
@@ -2322,6 +2289,7 @@ new Vue({
             this.showToast(`Alias created, but file upload failed: ${err.message}`, 'error');
           }
         } else {
+          if (created.type === 'client-group') await this.loadClientGroups();
           this.showToast('Alias created', 'success');
         }
 
@@ -2435,11 +2403,23 @@ new Vue({
     },
 
     async deleteAlias(alias) {
-      if (!confirm(`Delete alias "${alias.name}"?`)) return;
+      const msg = alias.type === 'client-group'
+        ? `Delete group "${alias.name}"? All peers will be moved to the default group.`
+        : `Delete alias "${alias.name}"?`;
+      if (!confirm(msg)) return;
       try {
-        await this.api.deleteAlias({ id: alias.id });
+        const res = await this.api.deleteAlias({ id: alias.id });
         await this.loadAliases();
-        this.showToast('Alias deleted', 'success');
+        await this.loadClientGroups();
+        if (alias.type === 'client-group') {
+          const moved = res && res.movedCount ? res.movedCount : 0;
+          const toast = moved > 0
+            ? `Group "${alias.name}" deleted. ${moved} peer${moved > 1 ? 's' : ''} moved to default.`
+            : `Group "${alias.name}" deleted.`;
+          this.showToast(toast, 'success', 8000);
+        } else {
+          this.showToast('Alias deleted', 'success');
+        }
       } catch (err) {
         this.showToast(err.message || 'Failed to delete alias', 'error');
       }
