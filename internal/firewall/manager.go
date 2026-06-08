@@ -946,10 +946,11 @@ func (m *Manager) ipRuleExists(fwmark int) bool {
 
 // handleGatewayStatusChange is the GatewayMonitor callback (FIX-15b).
 func (m *Manager) handleGatewayStatusChange(gatewayID, newStatus, oldStatus string) error {
-	if newStatus == "down" && oldStatus != "down" {
+	isDown := func(s string) bool { return s == "down" || s == "admin_down" }
+	if isDown(newStatus) && !isDown(oldStatus) {
 		return m.onGatewayDown(gatewayID)
 	}
-	if newStatus != "down" && oldStatus == "down" {
+	if !isDown(newStatus) && isDown(oldStatus) {
 		return m.onGatewayUp(gatewayID)
 	}
 	return nil
@@ -1107,7 +1108,7 @@ func (m *Manager) getSystemDefaultGateway() (resolvedGW, error) {
 	return resolvedGW{}, fmt.Errorf("system default gateway not found in: %q", out)
 }
 
-// isGroupAllDown returns true when every member of a gateway group has status "down".
+// isGroupAllDown returns true when every member of a gateway group has status "down" or "admin_down".
 func (m *Manager) isGroupAllDown(groupID string) (bool, error) {
 	grp, err := m.gm.GetGroup(groupID)
 	if err != nil {
@@ -1118,7 +1119,7 @@ func (m *Manager) isGroupAllDown(groupID string) (bool, error) {
 	}
 	for _, member := range grp.Gateways {
 		st := m.gm.Monitor().GetStatus(member.GatewayID)
-		if st.Status != "down" {
+		if st.Status != "down" && st.Status != "admin_down" {
 			return false, nil
 		}
 	}

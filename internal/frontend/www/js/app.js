@@ -1624,6 +1624,7 @@ new Vue({
         monitorHttp:      gw.monitorHttp ? { ...httpDefaults, ...gw.monitorHttp } : { ...httpDefaults },
         monitorRule:      gw.monitorRule || 'icmp_only',
         description:      gw.description || '',
+        adminDown:        !!gw.adminDown,
       };
       this.showGatewayEdit = true;
     },
@@ -1653,6 +1654,7 @@ new Vue({
           },
           monitorRule:      f.monitorRule,
           description:      f.description.trim(),
+          adminDown:        f.adminDown,
         });
         this.showGatewayEdit = false;
         const res = await this.api.getGateways();
@@ -1747,12 +1749,12 @@ new Vue({
 
     // ── Status helpers ────────────────────────────────────────────────────────
     gatewayStatusColor(status) {
-      const map = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#9ca3af' };
+      const map = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#9ca3af', admin_down: '#6b7280' };
       return map[status] || map.unknown;
     },
 
     gatewayStatusLabel(status) {
-      const map = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown' };
+      const map = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown', admin_down: 'Admin Down' };
       return map[status] || 'Unknown';
     },
 

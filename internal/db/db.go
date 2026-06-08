@@ -516,6 +516,15 @@ UPDATE nat_dnat_rules SET dest = dest_ip WHERE dest = '';
 ALTER TABLE peers ADD COLUMN group_id TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 24,
+		sql: `
+-- Admin Down: administratively disable a gateway without deleting it.
+-- Monitoring continues but effective status is reported as "admin_down".
+-- Routing/firewall treat it as down (failover triggers).
+ALTER TABLE gateways ADD COLUMN admin_down INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

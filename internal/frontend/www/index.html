@@ -3159,6 +3159,16 @@
                 </div>
               </div>
 
+              <!-- Admin Down -->
+              <div class="mt-4 flex items-center gap-3 rounded-lg"
+                style="padding:10px 14px; background: rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25);">
+                <input type="checkbox" id="gatewayAdminDown" v-model="gatewayEdit.adminDown" class="w-4 h-4">
+                <label for="gatewayAdminDown" class="text-sm font-medium cursor-pointer select-none"
+                  style="color:#ef4444;">
+                  Admin Down — disable this gateway (monitoring continues, traffic stops)
+                </label>
+              </div>
+
               <!-- Footer -->
               <div class="modal-section dark:border-neutral-600">
                 <div class="flex gap-3 justify-end">
