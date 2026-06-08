@@ -5794,7 +5794,25 @@
               </div>
 
               <div v-if="peerCreate.peerType === 'client'" class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Client Group</label>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-sm font-medium dark:text-neutral-300">Client Group</label>
+                  <button @click="inlineGroupShow = !inlineGroupShow; inlineGroupInput = ''"
+                    title="Create new group"
+                    class="flex items-center justify-center w-5 h-5 rounded text-white text-sm font-bold leading-none"
+                    style="background:#16a34a; flex-shrink:0;">+</button>
+                </div>
+                <div v-if="inlineGroupShow" class="flex gap-2 mb-2">
+                  <input v-model="inlineGroupInput"
+                    type="text"
+                    placeholder="New group name"
+                    @keyup.enter="createInlineClientGroup('manual')"
+                    @keyup.esc="inlineGroupShow = false; inlineGroupInput = ''"
+                    class="flex-1 px-2 py-1 border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    ref="inlineGroupInputManual">
+                  <button @click="createInlineClientGroup('manual')"
+                    class="px-2 py-1 rounded text-white text-sm"
+                    style="background:#16a34a;">Add</button>
+                </div>
                 <select v-model="peerCreate.groupId"
                   class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
                   style="padding:8px 12px;">
@@ -5854,7 +5872,24 @@
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
               </div>
               <div class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Client Group</label>
+                <div class="flex items-center justify-between" style="margin-bottom:4px;">
+                  <label class="block text-sm font-medium dark:text-neutral-300">Client Group</label>
+                  <button @click="inlineGroupShowQuick = !inlineGroupShowQuick; inlineGroupInput = ''"
+                    title="Create new group"
+                    class="flex items-center justify-center w-5 h-5 rounded text-white text-sm font-bold leading-none"
+                    style="background:#16a34a; flex-shrink:0;">+</button>
+                </div>
+                <div v-if="inlineGroupShowQuick" class="flex gap-2 mb-2">
+                  <input v-model="inlineGroupInput"
+                    type="text"
+                    placeholder="New group name"
+                    @keyup.enter="createInlineClientGroup('quick')"
+                    @keyup.esc="inlineGroupShowQuick = false; inlineGroupInput = ''"
+                    class="flex-1 px-2 py-1 border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                  <button @click="createInlineClientGroup('quick')"
+                    class="px-2 py-1 rounded text-white text-sm"
+                    style="background:#16a34a;">Add</button>
+                </div>
                 <select v-model="peerCreateGroupId"
                   class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
                   style="padding:8px 12px;">

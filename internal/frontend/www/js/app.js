@@ -221,6 +221,9 @@ new Vue({
     // Quick peer create (one-click)
     peerCreateName: '',
     peerCreateShowQR: false,
+    inlineGroupInput: '',        // inline new-group name input value
+    inlineGroupShow: false,      // show inline input in Manual Create modal
+    inlineGroupShowQuick: false, // show inline input in Quick Create modal
     peerCreateExpiredDate: '',
     peerCreateGroupId: '',    // selected client-group for quick create
 
@@ -1461,6 +1464,8 @@ new Vue({
 
         const showQR = this.peerCreate.showQR;
         this.showPeerCreate = false;
+        this.inlineGroupShow = false;
+        this.inlineGroupInput = '';
         this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), showQR: false };
 
         await this.refreshPeers();
@@ -2219,6 +2224,53 @@ new Vue({
       return g ? g.id : '';
     },
 
+    // Creates a new client-group inline from the peer create modals.
+    // targetModel: 'manual' | 'quick'
+    async createInlineClientGroup(targetModal) {
+      const name = this.inlineGroupInput.trim();
+      if (!name) return;
+
+      // Basic validation: letters, digits, hyphens, underscores; must start with letter
+      if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,62}$/.test(name)) {
+        this.showToast('Invalid name: start with a letter, only letters/digits/-/_', 'error');
+        return;
+      }
+
+      // Check if already exists
+      const existing = this.clientGroups.find(g => g.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        this.showToast(`Group "${name}" already exists`, 'error');
+        if (targetModal === 'manual') {
+          this.peerCreate.groupId = existing.id;
+          this.inlineGroupShow = false;
+        } else {
+          this.peerCreateGroupId = existing.id;
+          this.inlineGroupShowQuick = false;
+        }
+        this.inlineGroupInput = '';
+        return;
+      }
+
+      try {
+        const res = await this.api.createClientGroup({ name });
+        await this.loadClientGroups();
+        const created = this.clientGroups.find(g => g.id === res.id || g.name === name);
+        if (created) {
+          if (targetModal === 'manual') {
+            this.peerCreate.groupId = created.id;
+            this.inlineGroupShow = false;
+          } else {
+            this.peerCreateGroupId = created.id;
+            this.inlineGroupShowQuick = false;
+          }
+        }
+        this.inlineGroupInput = '';
+        this.showToast(`Group "${name}" created`);
+      } catch (err) {
+        this.showToast(`Failed to create group: ${err.message}`, 'error');
+      }
+    },
+
     _resetAliasCreate() {
       this.aliasCreate = {
         name: '', description: '', type: 'network', entries: '', ipsetEntries: '', memberIds: [],
@@ -2841,6 +2893,8 @@ new Vue({
         this.peerCreateName = '';
         this.peerCreateExpiredDate = '';
         this.peerCreateShowQR = false;
+        this.inlineGroupShowQuick = false;
+        this.inlineGroupInput = '';
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
