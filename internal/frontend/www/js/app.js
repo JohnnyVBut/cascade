@@ -220,6 +220,7 @@ new Vue({
     // Quick peer create (one-click)
     peerCreateName: '',
     peerCreateExpiredDate: '',
+    peerCreateGroupId: '',    // selected client-group for quick create
 
     // Peer management (inline editing, admin-tunnel style)
     peersPersist: {},
@@ -2844,6 +2845,7 @@ new Vue({
           autoAllocateIP: true,
           generateKeys: true,
           expiredDate: this.peerCreateExpiredDate || undefined,
+          groupId: this.peerCreateGroupId || this.defaultGroupId() || undefined,
         };
 
         const res = await this.api.createTunnelInterfacePeer({
@@ -2858,6 +2860,8 @@ new Vue({
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
+        this.loadClientGroups();
+        this.loadAliases();
 
         // Show QR immediately
         if (peerId) {
