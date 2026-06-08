@@ -2300,9 +2300,10 @@ new Vue({
       } catch (e) {
         this.dashWidgets = this.dashDefaultWidgets();
       }
-      // Pre-load NAT data if the nat widget is present (or just always — it's cheap)
+      // Pre-load NAT + aliases data (aliases needed to resolve sourceAliasId names)
       if (this.natRules.length === 0) this.loadNatRules();
       if (this.dnatRules.length === 0) this.loadDnatRules();
+      if (this.aliases.length === 0) this.loadAliases();
       await this.$nextTick();
       this.dashInitGrid();
     },
