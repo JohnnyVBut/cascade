@@ -558,14 +558,11 @@
                           <div v-for="rule in natRules" :key="rule.id"
                             style="display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid #f3f4f6; font-size:0.72rem;"
                             :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#f3f4f6', opacity: rule.enabled ? 1 : 0.5 }">
-                            <!-- toggle -->
-                            <div @click="toggleNatRule(rule)"
+                            <!-- toggle circle -->
+                            <span @click="toggleNatRule(rule)"
                               :title="rule.enabled ? 'Disable' : 'Enable'"
-                              style="width:26px; height:14px; border-radius:7px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0;"
-                              :style="{ background: rule.enabled ? '#16a34a' : '#d1d5db' }">
-                              <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
-                                :style="{ left: rule.enabled ? '14px' : '2px' }"></div>
-                            </div>
+                              style="width:10px; height:10px; border-radius:50%; cursor:pointer; flex-shrink:0; display:inline-block; transition:background 0.2s;"
+                              :style="{ background: rule.enabled ? '#16a34a' : '#9ca3af' }"></span>
                             <!-- rule info -->
                             <div style="flex:1; min-width:0; overflow:hidden;">
                               <span style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;"
@@ -603,14 +600,11 @@
                           <div v-for="rule in dnatRules" :key="rule.id"
                             style="display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid #f3f4f6; font-size:0.72rem;"
                             :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#f3f4f6', opacity: rule.enabled ? 1 : 0.5 }">
-                            <!-- toggle -->
-                            <div @click="toggleDnat(rule)"
+                            <!-- toggle circle -->
+                            <span @click="toggleDnat(rule)"
                               :title="rule.enabled ? 'Disable' : 'Enable'"
-                              style="width:26px; height:14px; border-radius:7px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0;"
-                              :style="{ background: rule.enabled ? '#16a34a' : '#d1d5db' }">
-                              <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
-                                :style="{ left: rule.enabled ? '14px' : '2px' }"></div>
-                            </div>
+                              style="width:10px; height:10px; border-radius:50%; cursor:pointer; flex-shrink:0; display:inline-block; transition:background 0.2s;"
+                              :style="{ background: rule.enabled ? '#16a34a' : '#9ca3af' }"></span>
                             <!-- rule info -->
                             <div style="flex:1; min-width:0; overflow:hidden;">
                               <span style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;"
