@@ -2521,7 +2521,7 @@ new Vue({
       const rect = event.target.getBoundingClientRect();
       this.aliasTooltip = { id: aliasId, alias, x: rect.left, y: rect.bottom + 4, ipsetEntries: null, ipsetLoading: false };
 
-      if (alias.type === 'ipset') {
+      if (alias.type === 'ipset' || alias.type === 'client-group') {
         this.aliasTooltip.ipsetLoading = true;
         try {
           const res = await this.api.getAliasEntries({ id: aliasId });
