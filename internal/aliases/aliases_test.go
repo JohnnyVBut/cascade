@@ -2,11 +2,20 @@ package aliases
 
 import (
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/ipset"
 )
+
+// requireIPSet skips the test if the ipset binary is not available (e.g. in CI).
+func requireIPSet(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("ipset"); err != nil {
+		t.Skip("ipset binary not found, skipping kernel ipset test")
+	}
+}
 
 func initTestDB(t *testing.T) *Manager {
 	t.Helper()
@@ -378,6 +387,7 @@ func TestGetMatchSpec_GroupMergesMembers(t *testing.T) {
 }
 
 func TestGetMatchSpec_ClientGroupReturnsIPSet(t *testing.T) {
+	requireIPSet(t)
 	m := initTestDB(t)
 
 	groupID, err := m.EnsureDefaultGroup()
@@ -401,6 +411,7 @@ func TestGetMatchSpec_ClientGroupReturnsIPSet(t *testing.T) {
 }
 
 func TestGetMatchSpec_NonDefaultClientGroupReturnsIPSet(t *testing.T) {
+	requireIPSet(t)
 	m := initTestDB(t)
 
 	a, err := m.Create(Alias{Name: "HomeGroup", Type: "client-group"})
