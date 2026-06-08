@@ -611,20 +611,24 @@
                                 <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
                                   :style="{ left: peer.enabled ? '14px' : '2px' }"></div>
                               </div>
-                              <!-- QR -->
-                              <button v-if="peer.downloadableConfig"
-                                @click="qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg'"
-                                title="Show QR"
-                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                              <!-- QR: active for client peers, dimmed/disabled for S2S -->
+                              <button
+                                @click="!peer.peerType || peer.peerType !== 'interconnect' ? (qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg') : null"
+                                :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Show QR'"
+                                :style="peer.peerType === 'interconnect'
+                                  ? 'padding:3px; background:rgba(107,114,128,0.05); border:none; border-radius:4px; cursor:default; color:inherit; display:flex; align-items:center; line-height:0; opacity:0.25; pointer-events:none;'
+                                  : 'padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;'">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
                                 </svg>
                               </button>
-                              <!-- Download config -->
-                              <button v-if="peer.downloadableConfig"
-                                @click="downloadPeerConfig(peer)"
-                                title="Download config"
-                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                              <!-- Download config: active for client peers, dimmed/disabled for S2S -->
+                              <button
+                                @click="!peer.peerType || peer.peerType !== 'interconnect' ? downloadPeerConfig(peer) : null"
+                                :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Download config'"
+                                :style="peer.peerType === 'interconnect'
+                                  ? 'padding:3px; background:rgba(107,114,128,0.05); border:none; border-radius:4px; cursor:default; color:inherit; display:flex; align-items:center; line-height:0; opacity:0.25; pointer-events:none;'
+                                  : 'padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;'">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                                 </svg>
