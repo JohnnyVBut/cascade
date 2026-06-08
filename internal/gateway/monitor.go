@@ -62,6 +62,7 @@ type monitorState struct {
 	icmpProbes []probe
 	httpProbes []probe
 	status     MonitorStatus
+	adminDown  bool // if true, GetStatus returns "admin_down" regardless of probe results
 	stopCh     chan struct{}
 }
 
@@ -105,8 +106,9 @@ func (m *Monitor) Start(gw Gateway) {
 	}
 
 	state := &monitorState{
-		stopCh: make(chan struct{}),
-		status: MonitorStatus{Status: "unknown"},
+		stopCh:    make(chan struct{}),
+		status:    MonitorStatus{Status: "unknown"},
+		adminDown: gw.AdminDown,
 	}
 
 	m.mu.Lock()
@@ -174,6 +176,8 @@ func (m *Monitor) Stop(gatewayID string) {
 
 // GetStatus returns the current live status of a gateway.
 // Returns MonitorStatus{Status:"unknown"} if the gateway is not monitored.
+// If the gateway is administratively down, Status is overridden to "admin_down"
+// while all other probe fields (latency, packetLoss, etc.) remain unchanged.
 func (m *Monitor) GetStatus(gatewayID string) MonitorStatus {
 	m.mu.RLock()
 	state, ok := m.states[gatewayID]
@@ -185,7 +189,57 @@ func (m *Monitor) GetStatus(gatewayID string) MonitorStatus {
 
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	return state.status
+	st := state.status
+	if state.adminDown {
+		st.Status = "admin_down"
+	}
+	return st
+}
+
+// GetProbeStatus returns the raw probe-computed status without admin_down overlay.
+// Used to populate the realStatus field in the API response.
+func (m *Monitor) GetProbeStatus(gatewayID string) string {
+	m.mu.RLock()
+	state, ok := m.states[gatewayID]
+	m.mu.RUnlock()
+
+	if !ok {
+		return "unknown"
+	}
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.status.Status
+}
+
+// SetAdminDown sets or clears the admin_down flag for a gateway.
+// The probe goroutines continue running; only the reported status changes.
+// A StatusChangeFunc is fired so routing/firewall can react immediately.
+func (m *Monitor) SetAdminDown(gatewayID string, adminDown bool) {
+	m.mu.RLock()
+	state, ok := m.states[gatewayID]
+	m.mu.RUnlock()
+
+	if !ok {
+		// Gateway not monitored (disabled) — nothing to update in state.
+		return
+	}
+
+	state.mu.Lock()
+	prevEffective := state.status.Status
+	if state.adminDown {
+		prevEffective = "admin_down"
+	}
+	state.adminDown = adminDown
+	newEffective := state.status.Status
+	if state.adminDown {
+		newEffective = "admin_down"
+	}
+	state.mu.Unlock()
+
+	if newEffective != prevEffective {
+		m.emitChange(gatewayID, newEffective, prevEffective)
+	}
 }
 
 // ── ICMP probe ────────────────────────────────────────────────────────────────
@@ -243,9 +297,12 @@ func (m *Monitor) probeICMP(gw Gateway, state *monitorState) {
 	prevStatus := state.status.Status
 	recomputeStatus(gw, state, windowSec, thHealthy, thDegraded)
 	newStatus := state.status.Status
+	isAdminDown := state.adminDown
 	state.mu.Unlock()
 
-	if newStatus != prevStatus {
+	// While admin_down: suppress probe-driven status change events so that
+	// routing/firewall don't see spurious "healthy" transitions.
+	if !isAdminDown && newStatus != prevStatus {
 		m.emitChange(gw.ID, newStatus, prevStatus)
 	}
 }
@@ -323,9 +380,11 @@ func (m *Monitor) probeHTTP(gw Gateway, state *monitorState) {
 	prevStatus := state.status.Status
 	recomputeStatus(gw, state, windowSec, thHealthy, thDegraded)
 	newStatus := state.status.Status
+	isAdminDown := state.adminDown
 	state.mu.Unlock()
 
-	if newStatus != prevStatus {
+	// While admin_down: suppress probe-driven status change events.
+	if !isAdminDown && newStatus != prevStatus {
 		m.emitChange(gw.ID, newStatus, prevStatus)
 	}
 }

@@ -1624,6 +1624,7 @@ new Vue({
         monitorHttp:      gw.monitorHttp ? { ...httpDefaults, ...gw.monitorHttp } : { ...httpDefaults },
         monitorRule:      gw.monitorRule || 'icmp_only',
         description:      gw.description || '',
+        adminDown:        !!gw.adminDown,
       };
       this.showGatewayEdit = true;
     },
@@ -1653,11 +1654,53 @@ new Vue({
           },
           monitorRule:      f.monitorRule,
           description:      f.description.trim(),
+          adminDown:        f.adminDown,
         });
         this.showGatewayEdit = false;
         const res = await this.api.getGateways();
         this.gateways = res.gateways || [];
       } catch (err) {
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    // ── Toggle Admin Down ─────────────────────────────────────────────────────
+    async toggleGatewayAdminDown(gw) {
+      const newVal = !gw.adminDown;
+      // Optimistic update: flip adminDown and status locally for instant feedback
+      const idx = this.gateways.findIndex(g => g.id === gw.id);
+      if (idx !== -1) {
+        const updated = { ...this.gateways[idx], adminDown: newVal };
+        if (newVal) {
+          updated.realStatus = updated.status; // preserve real status for ring
+          updated.status = 'admin_down';
+        } else {
+          updated.status = updated.realStatus || 'unknown';
+          updated.realStatus = '';
+        }
+        this.gateways.splice(idx, 1, updated);
+      }
+      try {
+        await this.api.updateGateway({
+          gatewayId:        gw.id,
+          name:             gw.name,
+          interface:        gw.interface,
+          gatewayIP:        gw.gatewayIP,
+          monitorAddress:   gw.monitorAddress || '',
+          monitor:          gw.monitor,
+          monitorInterval:  gw.monitorInterval,
+          windowSeconds:    gw.windowSeconds ?? null,
+          latencyThreshold: gw.latencyThreshold || 500,
+          monitorHttp:      gw.monitorHttp || {},
+          monitorRule:      gw.monitorRule || 'icmp_only',
+          description:      gw.description || '',
+          adminDown:        newVal,
+        });
+        // Next polling cycle will bring fresh realStatus from server
+      } catch (err) {
+        // Revert on error
+        const res = await this.api.getGateways();
+        this.gateways = res.gateways || [];
         this.showToast(`Failed: ${err.message}`, 'error');
       }
     },
@@ -1747,12 +1790,12 @@ new Vue({
 
     // ── Status helpers ────────────────────────────────────────────────────────
     gatewayStatusColor(status) {
-      const map = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#9ca3af' };
+      const map = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#9ca3af', admin_down: '#6b7280' };
       return map[status] || map.unknown;
     },
 
     gatewayStatusLabel(status) {
-      const map = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown' };
+      const map = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown', admin_down: 'Admin Down' };
       return map[status] || 'Unknown';
     },
 

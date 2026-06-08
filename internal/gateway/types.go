@@ -32,6 +32,7 @@ type Gateway struct {
 	MonitorHttp      MonitorHttpConfig `json:"monitorHttp"`
 	MonitorRule      string            `json:"monitorRule"` // icmp_only | http_only | all | any
 	Description      string            `json:"description"`
+	AdminDown        bool              `json:"adminDown"`
 	CreatedAt        string            `json:"createdAt"`
 }
 
@@ -56,7 +57,7 @@ type GatewayGroup struct {
 
 // MonitorStatus is the live probe state of a gateway returned by Monitor.GetStatus.
 type MonitorStatus struct {
-	Status        string  `json:"status"`        // unknown | healthy | degraded | down
+	Status        string  `json:"status"`        // unknown | healthy | degraded | down | admin_down
 	Latency       *int    `json:"latency"`       // ICMP avg latency ms; nil if no data
 	PacketLoss    *int    `json:"packetLoss"`    // ICMP loss %; nil if no data
 	LastCheck     *string `json:"lastCheck"`     // ISO8601
@@ -68,7 +69,10 @@ type MonitorStatus struct {
 
 // GatewayWithStatus combines Gateway data with its live monitoring status.
 // This is what the API returns.
+// RealStatus holds the actual probe status when AdminDown=true (so the UI can
+// show the underlying health while the gateway is administratively disabled).
 type GatewayWithStatus struct {
 	Gateway
 	MonitorStatus
+	RealStatus string `json:"realStatus,omitempty"`
 }

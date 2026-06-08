@@ -2712,9 +2712,18 @@
                 :class="'dark:' + (idx > 0 ? 'border-neutral-700' : '')"
                 style="padding:12px 16px; gap:12px;">
 
-                <!-- Status dot -->
-                <span class="shrink-0 w-3 h-3 rounded-full" style="display:inline-block;"
-                  :style="'background-color:' + gatewayStatusColor(gw.status)"></span>
+                <!-- Admin Down toggle button -->
+                <button @click.stop="toggleGatewayAdminDown(gw)"
+                  class="shrink-0 rounded-full"
+                  style="width:14px; height:14px; display:inline-block; border:none; padding:0; cursor:pointer; transition: opacity 0.15s;"
+                  :style="{
+                    background: gatewayStatusColor(gw.status),
+                    opacity: gw.adminDown ? 0.85 : 1,
+                    outline: gw.adminDown && gw.realStatus ? '2px solid ' + gatewayStatusColor(gw.realStatus) : 'none',
+                    outlineOffset: '2px'
+                  }"
+                  :title="gw.adminDown ? 'Admin Down (probe: ' + gatewayStatusLabel(gw.realStatus || 'unknown') + ') — click to restore' : 'Click to set Admin Down'">
+                </button>
 
                 <!-- Name -->
                 <span class="font-medium dark:text-neutral-200 truncate" style="min-width:120px; max-width:160px;">
@@ -3157,6 +3166,16 @@
                   <input v-model="gatewayEdit.description" type="text" placeholder="Optional note"
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
                 </div>
+              </div>
+
+              <!-- Admin Down -->
+              <div class="mt-4 flex items-center gap-3 rounded-lg"
+                style="padding:10px 14px; background: rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.25);">
+                <input type="checkbox" id="gatewayAdminDown" v-model="gatewayEdit.adminDown" class="w-4 h-4">
+                <label for="gatewayAdminDown" class="text-sm font-medium cursor-pointer select-none"
+                  style="color:#ef4444;">
+                  Admin Down — disable this gateway (monitoring continues, traffic stops)
+                </label>
               </div>
 
               <!-- Footer -->
