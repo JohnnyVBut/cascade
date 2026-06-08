@@ -2460,7 +2460,7 @@ new Vue({
 
     // Toggle interface up/down from dashboard widget
     async dashToggleInterface(iface) {
-      if (iface.status === 'up') {
+      if (iface.enabled) {
         await this.stopTunnelInterface(iface);
       } else {
         await this.startTunnelInterface(iface);
@@ -2488,8 +2488,8 @@ new Vue({
 
     // Human-readable protocol label for dashboard badges
     dashProtoLabel(protocol) {
-      if (protocol === 'wireguard') return 'WG 1.0';
-      if (protocol === 'amneziawg-2.0') return 'AWG 2.0';
+      if (protocol === 'wireguard') return 'WG1.0';
+      if (protocol === 'amneziawg-2.0') return 'AWG2.0';
       if (protocol === 'amneziawg') return 'AWG';
       return protocol || 'WG';
     },
