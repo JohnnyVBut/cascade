@@ -932,12 +932,18 @@ new Vue({
       // inline styles and CSS vars it set on parent elements (which caused a
       // vertical gap on the interfaces page after visiting dashboard).
       if (this.activePage === 'dashboard' && pageId !== 'dashboard' && this.dashGrid) {
-        this.dashGrid.destroy(true);
+        // destroy(false) — remove GridStack listeners/styles but keep DOM nodes
+        // so that Vue's v-if can cleanly remove the subtree without conflict.
+        // destroy(true) removed GridStack-owned nodes before v-if ran, desynchronising
+        // Vue's vdom from the real DOM (visible as blank dashboard on return).
+        this.dashGrid.destroy(false);
         this.dashGrid = null;
       }
       this.activePage = pageId;
       if (pageId === 'dashboard') {
-        this.$nextTick(() => this.dashInitGrid());
+        // loadDashboard already calls dashInitGrid after await $nextTick —
+        // do not call it separately here to avoid a double-init race.
+        this.loadDashboard();
         this.loadSystemInfo();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
