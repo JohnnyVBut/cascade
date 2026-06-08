@@ -158,6 +158,18 @@ func main() {
 	// Registered AFTER all /api/* routes so the SPA fallback (index.html) does
 	// not intercept API requests.
 	// Frontend is embedded into the binary at compile time — no disk files needed.
+	//
+	// Cache-Control: no-cache for JS/CSS so the browser always revalidates after
+	// a server rebuild. Without this, browsers use heuristic caching and may serve
+	// a stale app.js for hours even after docker compose down && up.
+	app.Use("/js/", func(c *fiber.Ctx) error {
+		c.Set("Cache-Control", "no-cache, must-revalidate")
+		return c.Next()
+	})
+	app.Use("/css/", func(c *fiber.Ctx) error {
+		c.Set("Cache-Control", "no-cache, must-revalidate")
+		return c.Next()
+	})
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root:         frontend.FS(),
 		Index:        "index.html",
