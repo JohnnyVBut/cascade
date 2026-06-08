@@ -2275,9 +2275,10 @@ new Vue({
     async loadDashboard() {
       try {
         const res = await this.api.getDashboardWidgets();
-        this.dashWidgets = res.widgets || [];
+        const saved = res.widgets || [];
+        this.dashWidgets = saved.length > 0 ? saved : this.dashDefaultWidgets();
       } catch (e) {
-        this.dashWidgets = [];
+        this.dashWidgets = this.dashDefaultWidgets();
       }
       await this.$nextTick();
       this.dashInitGrid();
@@ -2291,6 +2292,7 @@ new Vue({
       const el = document.getElementById('dashboard-grid');
       if (!el) return;
 
+      // GridStack auto-adopts existing .grid-stack-item children rendered by Vue v-for
       const grid = GridStack.init({
         column: 12,
         cellHeight: 60,
@@ -2299,29 +2301,10 @@ new Vue({
         resizable: { handles: 'se' },
       }, el);
 
-      // Add saved widgets
-      const widgets = this.dashWidgets.length > 0
-        ? this.dashWidgets
-        : this.dashDefaultWidgets();
-
-      widgets.forEach(w => {
-        const content = document.getElementById('dash-tpl-' + w.id);
-        const html = content ? content.innerHTML : `<div class="dash-card"><div class="dash-card-body">${w.type}</div></div>`;
-        grid.addWidget({
-          id: w.id,
-          x: w.x, y: w.y, w: w.w, h: w.h,
-          minW: 2, minH: 2,
-          content: html,
-        });
-      });
-
-      // Save on change
       grid.on('change', () => this.dashSaveLayout(grid));
-
       this.dashGrid = grid;
 
-      // Load system info if server-info widget present
-      if (widgets.some(w => w.type === 'server-info')) {
+      if (this.dashWidgets.some(w => w.type === 'server-info')) {
         this.loadSystemInfo();
       }
     },
@@ -2361,26 +2344,37 @@ new Vue({
       this.dashWidgets.push(newW);
       this.$nextTick(() => {
         if (!this.dashGrid) return;
-        const content = document.getElementById('dash-tpl-' + id);
-        const html = content ? content.innerHTML : `<div class="dash-card"><div class="dash-card-body">${type}</div></div>`;
-        this.dashGrid.addWidget({ id, x: 0, y: 0, w: 4, h: 4, minW: 2, minH: 2, content: html });
+        // Vue has rendered the new item; tell GridStack to adopt it
+        const el = document.querySelector(`[gs-id="${id}"]`);
+        if (el) this.dashGrid.makeWidget(el);
         if (type === 'server-info') this.loadSystemInfo();
       });
     },
 
     dashRemoveWidget(id) {
-      const el = this.dashGrid && this.dashGrid.el
-        ? this.dashGrid.el.querySelector(`[gs-id="${id}"]`)
-        : null;
-      if (el && this.dashGrid) this.dashGrid.removeWidget(el);
-      this.dashWidgets = this.dashWidgets.filter(w => w.id !== id);
+      if (this.dashGrid) {
+        const el = this.dashGrid.el
+          ? this.dashGrid.el.querySelector(`[gs-id="${id}"]`)
+          : null;
+        // removeWidget(el, false) — removes from GridStack but keeps DOM node
+        // Vue will then remove it when we splice dashWidgets
+        if (el) this.dashGrid.removeWidget(el, false);
+      }
+      const idx = this.dashWidgets.findIndex(w => w.id === id);
+      if (idx !== -1) this.dashWidgets.splice(idx, 1);
       this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
     },
 
     dashResetLayout() {
+      // Destroy grid first (keeps DOM nodes, Vue will replace them)
+      if (this.dashGrid) {
+        this.dashGrid.destroy(false);
+        this.dashGrid = null;
+      }
       const defaults = this.dashDefaultWidgets();
       this.dashWidgets = defaults;
       this.api.putDashboardWidgets(defaults).catch(console.error);
+      // Wait for Vue to render the new items, then init GridStack
       this.$nextTick(() => this.dashInitGrid());
     },
 
