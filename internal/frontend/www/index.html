@@ -553,7 +553,9 @@
                           <select v-model="dashPeersGetState(w.id).iface"
                             style="flex:1; font-size:0.72rem; border:1px solid #e5e7eb; border-radius:5px; padding:3px 6px; background:transparent; cursor:pointer;"
                             :style="{ 'border-color': theme==='dark' ? '#525252':'#e5e7eb', color: theme==='dark'?'#d4d4d4':'#374151', background: theme==='dark'?'#404040':'#fff' }">
-                            <option value="">All interfaces</option>
+                            <option value="">All peers</option>
+                            <option value="__clients__">All clients</option>
+                            <option value="__s2s__">All S2S</option>
                             <option v-for="iface in tunnelInterfaces" :key="iface.id" :value="iface.id">{{ iface.name }}</option>
                           </select>
                           <select v-model="dashPeersGetState(w.id).sort"

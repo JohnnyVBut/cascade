@@ -2430,9 +2430,14 @@ new Vue({
     // Returns filtered + sorted peers for a given widget
     dashFilteredPeers(widgetId) {
       const s = this.dashPeersGetState(widgetId);
-      let peers = s.iface
-        ? this.allPeers.filter(p => p.interfaceId === s.iface)
-        : this.allPeers;
+      let peers = this.allPeers;
+      if (s.iface === '__clients__') {
+        peers = peers.filter(p => p.peerType !== 'interconnect');
+      } else if (s.iface === '__s2s__') {
+        peers = peers.filter(p => p.peerType === 'interconnect');
+      } else if (s.iface) {
+        peers = peers.filter(p => p.interfaceId === s.iface);
+      }
       if (s.sort === 'traffic') {
         peers = [...peers].sort((a, b) =>
           ((b.totalTx || 0) + (b.totalRx || 0)) - ((a.totalTx || 0) + (a.totalRx || 0)));
