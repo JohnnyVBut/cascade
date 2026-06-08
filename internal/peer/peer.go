@@ -50,6 +50,7 @@ type Peer struct {
 	Address             string `json:"address"`             // tunnel IP with iface mask ("10.8.0.2/24")
 	ClientAllowedIPs    string `json:"clientAllowedIPs"`    // used in the client config [Peer] section
 	PeerType            string `json:"peerType"`            // client | interconnect
+	GroupID             string `json:"groupId"`             // client-group alias ID; "" for interconnect peers
 	PersistentKeepalive int    `json:"persistentKeepalive"`
 	Enabled             bool   `json:"enabled"`
 	CreatedAt           string `json:"createdAt"`
@@ -91,6 +92,7 @@ type PeerInput struct {
 	Address             string `json:"address"`
 	ClientAllowedIPs    string `json:"clientAllowedIPs"`
 	PeerType            string `json:"peerType"`
+	GroupID             string `json:"groupId"`  // client-group alias ID (for client peers)
 	PersistentKeepalive int    `json:"persistentKeepalive"`
 	// Special flags (not stored directly)
 	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
@@ -111,6 +113,7 @@ type PeerUpdate struct {
 	OneTimeLink         *string `json:"oneTimeLink"`
 	RateDown            *int    `json:"rateDown"`
 	RateUp              *int    `json:"rateUp"`
+	GroupID             *string `json:"groupId"` // client-group alias ID
 }
 
 // InterfaceData carries the interface fields needed for config/QR generation.
@@ -156,7 +159,7 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 	rows, err := db.DB().Query(`
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
-		       peer_type, persistent_keepalive, enabled,
+		       peer_type, group_id, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
 		       total_rx, total_tx, rate_down, rate_up
 		FROM peers
@@ -184,7 +187,7 @@ func GetPeer(id string) (*Peer, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
-		       peer_type, persistent_keepalive, enabled,
+		       peer_type, group_id, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
 		       total_rx, total_tx, rate_down, rate_up
 		FROM peers WHERE id = ?
@@ -220,6 +223,7 @@ func CreatePeer(interfaceID string, inp PeerInput) (*Peer, error) {
 		Address:             strings.TrimSpace(inp.Address),
 		ClientAllowedIPs:    inp.ClientAllowedIPs,
 		PeerType:            strOr(inp.PeerType, "client"),
+		GroupID:             inp.GroupID,
 		PersistentKeepalive: intOr(inp.PersistentKeepalive, 25),
 		Enabled:             true,
 		CreatedAt:           createdAt,
@@ -281,6 +285,9 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 			*upd.RateUp = 0
 		}
 		p.RateUp = *upd.RateUp
+	}
+	if upd.GroupID != nil {
+		p.GroupID = *upd.GroupID
 	}
 	p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -653,7 +660,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 	err := s.Scan(
 		&p.ID, &p.InterfaceID, &p.Name, &p.PublicKey, &p.PrivateKey, &p.PresharedKey,
 		&p.Endpoint, &p.AllowedIPs, &p.Address, &p.ClientAllowedIPs,
-		&p.PeerType, &p.PersistentKeepalive, &enabled,
+		&p.PeerType, &p.GroupID, &p.PersistentKeepalive, &enabled,
 		&p.CreatedAt, &p.UpdatedAt, &p.ExpiredAt, &p.OneTimeLink,
 		&p.TotalRx, &p.TotalTx,
 		&p.RateDown, &p.RateUp,
@@ -683,14 +690,14 @@ func insertPeer(p Peer) error {
 		INSERT INTO peers
 		    (id, interface_id, name, public_key, private_key, preshared_key,
 		     endpoint, allowed_ips, address, client_allowed_ips,
-		     peer_type, persistent_keepalive, enabled,
+		     peer_type, group_id, persistent_keepalive, enabled,
 		     created_at, updated_at, expired_at, one_time_link,
 		     rate_down, rate_up)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		p.ID, p.InterfaceID, p.Name, p.PublicKey, p.PrivateKey, p.PresharedKey,
 		p.Endpoint, p.AllowedIPs, p.Address, p.ClientAllowedIPs,
-		p.PeerType, p.PersistentKeepalive, boolInt(p.Enabled),
+		p.PeerType, p.GroupID, p.PersistentKeepalive, boolInt(p.Enabled),
 		p.CreatedAt, p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
 		p.RateDown, p.RateUp,
 	)
@@ -701,13 +708,13 @@ func updatePeer(p Peer) error {
 	_, err := db.DB().Exec(`
 		UPDATE peers
 		SET name = ?, endpoint = ?, allowed_ips = ?, address = ?,
-		    client_allowed_ips = ?, persistent_keepalive = ?,
+		    client_allowed_ips = ?, group_id = ?, persistent_keepalive = ?,
 		    enabled = ?, updated_at = ?, expired_at = ?, one_time_link = ?,
 		    rate_down = ?, rate_up = ?
 		WHERE id = ?
 	`,
 		p.Name, p.Endpoint, p.AllowedIPs, p.Address,
-		p.ClientAllowedIPs, p.PersistentKeepalive,
+		p.ClientAllowedIPs, p.GroupID, p.PersistentKeepalive,
 		boolInt(p.Enabled), p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
 		p.RateDown, p.RateUp,
 		p.ID,

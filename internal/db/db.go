@@ -508,6 +508,23 @@ ALTER TABLE nat_dnat_rules ADD COLUMN dest_resolved_at TEXT NOT NULL DEFAULT '';
 UPDATE nat_dnat_rules SET dest = dest_ip WHERE dest = '';
 `,
 	},
+	{
+		version: 23,
+		sql: `
+-- Client groups: each client peer belongs to a client-group alias (type='client-group').
+-- group_id references aliases.id. Empty string = peer not yet assigned (migrated to default on startup).
+ALTER TABLE peers ADD COLUMN group_id TEXT NOT NULL DEFAULT '';
+`,
+	},
+	{
+		version: 24,
+		sql: `
+-- Admin Down: administratively disable a gateway without deleting it.
+-- Monitoring continues but effective status is reported as "admin_down".
+-- Routing/firewall treat it as down (failover triggers).
+ALTER TABLE gateways ADD COLUMN admin_down INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

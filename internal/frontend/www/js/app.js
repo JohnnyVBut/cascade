@@ -214,11 +214,18 @@ new Vue({
       allowedIPs: '',
       clientAllowedIPs: '',
       persistentKeepalive: 25,
+      groupId: '',          // client-group alias ID
+      showQR: false,
     },
 
     // Quick peer create (one-click)
     peerCreateName: '',
+    peerCreateShowQR: false,
+    inlineGroupInput: '',        // inline new-group name input value
+    inlineGroupShow: false,      // show inline input in Manual Create modal
+    inlineGroupShowQuick: false, // show inline input in Quick Create modal
     peerCreateExpiredDate: '',
+    peerCreateGroupId: '',    // selected client-group for quick create
 
     // Peer management (inline editing, admin-tunnel style)
     peersPersist: {},
@@ -241,6 +248,7 @@ new Vue({
       clientAllowedIPs: '', // client only
       rateDown: 0,          // kbps, 0 = unlimited
       rateUp: 0,            // kbps, 0 = unlimited
+      groupId: '',          // client-group alias ID
     },
     // Settings
     globalSettings: {
@@ -396,6 +404,7 @@ new Vue({
     // Firewall Aliases page
     aliases: [],
     aliasesLoading: false,
+    clientGroups: [],            // aliases of type client-group
     showAliasCreate: false,
     showAliasEdit: false,
     aliasCreate: {
@@ -791,6 +800,7 @@ new Vue({
       // Re-load data that may have got 401 before login.
       this.loadTunnelInterfaces();
       this.loadSettings();
+      this.loadClientGroups();
       this.loadUsers();
       this.loadCurrentUser();
       if (this.activePage === 'gateways') {
@@ -921,6 +931,7 @@ new Vue({
       }
       if (pageId === 'firewall-aliases') {
         this.loadAliases();
+        this.loadClientGroups();
       }
       if (pageId === 'firewall') {
         this.loadFirewallRules();
@@ -1411,7 +1422,7 @@ new Vue({
         return;
       }
 
-      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive } = this.peerCreate;
+      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, groupId } = this.peerCreate;
 
       // Validation
       if (!name || name.trim() === '') {
@@ -1439,6 +1450,7 @@ new Vue({
         clientAllowedIPs: clientAllowedIPs || undefined,
         endpoint: endpoint || undefined,
         persistentKeepalive: persistentKeepalive || 25,
+        ...(peerType === 'client' && groupId ? { groupId } : {}),
       };
 
       try {
@@ -1450,14 +1462,20 @@ new Vue({
         const interfaceId = this.activeInterfaceId;
         const peerId = res.peer && res.peer.id;
 
+        const showQR = this.peerCreate.showQR;
         this.showPeerCreate = false;
-        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25 };
+        this.inlineGroupShow = false;
+        this.inlineGroupInput = '';
+        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), showQR: false };
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
+        if (peerType === 'client') {
+          this.loadClientGroups();
+          this.loadAliases();
+        }
 
-        // Show QR immediately for client peers with server-generated keys
-        if (mode === 'generate' && peerType === 'client' && peerId) {
+        if (showQR && mode === 'generate' && peerType === 'client' && peerId) {
           this.qrcode = `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
         } else {
           this.showToast(peerType === 'client' ? 'Client created!' : 'Peer created!');
@@ -1606,6 +1624,7 @@ new Vue({
         monitorHttp:      gw.monitorHttp ? { ...httpDefaults, ...gw.monitorHttp } : { ...httpDefaults },
         monitorRule:      gw.monitorRule || 'icmp_only',
         description:      gw.description || '',
+        adminDown:        !!gw.adminDown,
       };
       this.showGatewayEdit = true;
     },
@@ -1635,11 +1654,53 @@ new Vue({
           },
           monitorRule:      f.monitorRule,
           description:      f.description.trim(),
+          adminDown:        f.adminDown,
         });
         this.showGatewayEdit = false;
         const res = await this.api.getGateways();
         this.gateways = res.gateways || [];
       } catch (err) {
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    // ── Toggle Admin Down ─────────────────────────────────────────────────────
+    async toggleGatewayAdminDown(gw) {
+      const newVal = !gw.adminDown;
+      // Optimistic update: flip adminDown and status locally for instant feedback
+      const idx = this.gateways.findIndex(g => g.id === gw.id);
+      if (idx !== -1) {
+        const updated = { ...this.gateways[idx], adminDown: newVal };
+        if (newVal) {
+          updated.realStatus = updated.status; // preserve real status for ring
+          updated.status = 'admin_down';
+        } else {
+          updated.status = updated.realStatus || 'unknown';
+          updated.realStatus = '';
+        }
+        this.gateways.splice(idx, 1, updated);
+      }
+      try {
+        await this.api.updateGateway({
+          gatewayId:        gw.id,
+          name:             gw.name,
+          interface:        gw.interface,
+          gatewayIP:        gw.gatewayIP,
+          monitorAddress:   gw.monitorAddress || '',
+          monitor:          gw.monitor,
+          monitorInterval:  gw.monitorInterval,
+          windowSeconds:    gw.windowSeconds ?? null,
+          latencyThreshold: gw.latencyThreshold || 500,
+          monitorHttp:      gw.monitorHttp || {},
+          monitorRule:      gw.monitorRule || 'icmp_only',
+          description:      gw.description || '',
+          adminDown:        newVal,
+        });
+        // Next polling cycle will bring fresh realStatus from server
+      } catch (err) {
+        // Revert on error
+        const res = await this.api.getGateways();
+        this.gateways = res.gateways || [];
         this.showToast(`Failed: ${err.message}`, 'error');
       }
     },
@@ -1729,12 +1790,12 @@ new Vue({
 
     // ── Status helpers ────────────────────────────────────────────────────────
     gatewayStatusColor(status) {
-      const map = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#9ca3af' };
+      const map = { healthy: '#22c55e', degraded: '#eab308', down: '#ef4444', unknown: '#9ca3af', admin_down: '#6b7280' };
       return map[status] || map.unknown;
     },
 
     gatewayStatusLabel(status) {
-      const map = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown' };
+      const map = { healthy: 'Healthy', degraded: 'Degraded', down: 'Down', unknown: 'Unknown', admin_down: 'Admin Down' };
       return map[status] || 'Unknown';
     },
 
@@ -2191,6 +2252,68 @@ new Vue({
       }
     },
 
+    async loadClientGroups() {
+      try {
+        const res = await this.api.getClientGroups();
+        this.clientGroups = res.groups || [];
+      } catch (err) {
+        console.error('loadClientGroups error:', err);
+        this.clientGroups = [];
+      }
+    },
+
+    defaultGroupId() {
+      const g = this.clientGroups.find(g => g.name === 'default');
+      return g ? g.id : '';
+    },
+
+    // Creates a new client-group inline from the peer create modals.
+    // targetModel: 'manual' | 'quick'
+    async createInlineClientGroup(targetModal) {
+      const name = this.inlineGroupInput.trim();
+      if (!name) return;
+
+      // Basic validation: letters, digits, hyphens, underscores; must start with letter
+      if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,62}$/.test(name)) {
+        this.showToast('Invalid name: start with a letter, only letters/digits/-/_', 'error');
+        return;
+      }
+
+      // Check if already exists
+      const existing = this.clientGroups.find(g => g.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        this.showToast(`Group "${name}" already exists`, 'error');
+        if (targetModal === 'manual') {
+          this.peerCreate.groupId = existing.id;
+          this.inlineGroupShow = false;
+        } else {
+          this.peerCreateGroupId = existing.id;
+          this.inlineGroupShowQuick = false;
+        }
+        this.inlineGroupInput = '';
+        return;
+      }
+
+      try {
+        const res = await this.api.createClientGroup({ name });
+        await this.loadClientGroups();
+        const created = this.clientGroups.find(g => g.id === res.id || g.name === name);
+        if (created) {
+          if (targetModal === 'manual') {
+            this.peerCreate.groupId = created.id;
+            this.inlineGroupShow = false;
+          } else {
+            this.peerCreateGroupId = created.id;
+            this.inlineGroupShowQuick = false;
+          }
+        }
+        this.inlineGroupInput = '';
+        this.showToast(`Group "${name}" created`);
+      } catch (err) {
+        this.showToast(`Failed to create group: ${err.message}`, 'error');
+      }
+    },
+
     _resetAliasCreate() {
       this.aliasCreate = {
         name: '', description: '', type: 'network', entries: '', ipsetEntries: '', memberIds: [],
@@ -2263,6 +2386,7 @@ new Vue({
             this.showToast(`Alias created, but file upload failed: ${err.message}`, 'error');
           }
         } else {
+          if (created.type === 'client-group') await this.loadClientGroups();
           this.showToast('Alias created', 'success');
         }
 
@@ -2376,11 +2500,23 @@ new Vue({
     },
 
     async deleteAlias(alias) {
-      if (!confirm(`Delete alias "${alias.name}"?`)) return;
+      const msg = alias.type === 'client-group'
+        ? `Delete group "${alias.name}"? All peers will be moved to the default group.`
+        : `Delete alias "${alias.name}"?`;
+      if (!confirm(msg)) return;
       try {
-        await this.api.deleteAlias({ id: alias.id });
+        const res = await this.api.deleteAlias({ id: alias.id });
         await this.loadAliases();
-        this.showToast('Alias deleted', 'success');
+        await this.loadClientGroups();
+        if (alias.type === 'client-group') {
+          const moved = res && res.movedCount ? res.movedCount : 0;
+          const toast = moved > 0
+            ? `Group "${alias.name}" deleted. ${moved} peer${moved > 1 ? 's' : ''} moved to default.`
+            : `Group "${alias.name}" deleted.`;
+          this.showToast(toast, 'success', 8000);
+        } else {
+          this.showToast('Alias deleted', 'success');
+        }
       } catch (err) {
         this.showToast(err.message || 'Failed to delete alias', 'error');
       }
@@ -2482,7 +2618,7 @@ new Vue({
       const rect = event.target.getBoundingClientRect();
       this.aliasTooltip = { id: aliasId, alias, x: rect.left, y: rect.bottom + 4, ipsetEntries: null, ipsetLoading: false };
 
-      if (alias.type === 'ipset') {
+      if (alias.type === 'ipset' || alias.type === 'client-group') {
         this.aliasTooltip.ipsetLoading = true;
         try {
           const res = await this.api.getAliasEntries({ id: aliasId });
@@ -2786,6 +2922,7 @@ new Vue({
           autoAllocateIP: true,
           generateKeys: true,
           expiredDate: this.peerCreateExpiredDate || undefined,
+          groupId: this.peerCreateGroupId || this.defaultGroupId() || undefined,
         };
 
         const res = await this.api.createTunnelInterfacePeer({
@@ -2794,16 +2931,23 @@ new Vue({
         });
 
         const peerId = res.peer && res.peer.id;
+        const showQR = this.peerCreateShowQR;
         this.showQuickPeerCreate = false;
         this.peerCreateName = '';
         this.peerCreateExpiredDate = '';
+        this.peerCreateShowQR = false;
+        this.inlineGroupShowQuick = false;
+        this.inlineGroupInput = '';
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
+        this.loadClientGroups();
+        this.loadAliases();
 
-        // Show QR immediately
-        if (peerId) {
+        if (showQR && peerId) {
           this.qrcode = `./api/tunnel-interfaces/${this.activeInterfaceId}/peers/${peerId}/qrcode.svg`;
+        } else {
+          this.showToast('Client created!');
         }
       } catch (err) {
         console.error('Failed to create peer:', err);
@@ -2905,6 +3049,10 @@ new Vue({
         this.peerDelete = null;
         await this._refreshPeersOrAll();
         await this.loadTunnelInterfaces();
+        if (label === 'Client') {
+          this.loadClientGroups();
+          this.loadAliases();
+        }
         this.showToast(`${label} deleted!`);
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');
@@ -2921,6 +3069,7 @@ new Vue({
         clientAllowedIPs: peer.clientAllowedIPs || '',
         rateDown: peer.rateDown ? peer.rateDown / 1000 : 0,
         rateUp:   peer.rateUp   ? peer.rateUp   / 1000 : 0,
+        groupId: peer.groupId || (peer.peerType === 'client' ? this.defaultGroupId() : ''),
       };
       this.showPeerEditModal = true;
     },
@@ -2930,6 +3079,13 @@ new Vue({
       if (!kbps || kbps <= 0) return '';
       if (kbps >= 1000) return (kbps / 1000).toFixed(kbps % 1000 === 0 ? 0 : 1) + 'M';
       return kbps + 'K';
+    },
+
+    // Return the client group name for a given groupId. Returns '' if not found.
+    peerGroupName(groupId) {
+      if (!groupId) return '';
+      const g = this.clientGroups.find(g => g.id === groupId);
+      return g ? g.name : '';
     },
 
     async savePeerEdit() {
@@ -2947,6 +3103,7 @@ new Vue({
         updates.clientAllowedIPs = this.peerEditForm.clientAllowedIPs;
         updates.rateDown = Math.round((Number(this.peerEditForm.rateDown) || 0) * 1000);
         updates.rateUp   = Math.round((Number(this.peerEditForm.rateUp)   || 0) * 1000);
+        updates.groupId  = this.peerEditForm.groupId || '';
       }
       try {
         await this.api.updateTunnelInterfacePeer({
@@ -2957,6 +3114,10 @@ new Vue({
         this.showPeerEditModal = false;
         this.peerEditForm._peer = null;
         await this._refreshPeersOrAll();
+        if (!isInterconnect) {
+          this.loadClientGroups();
+          this.loadAliases();
+        }
         this.showToast(isInterconnect ? 'Peer updated' : 'Client updated', 'success');
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');
@@ -3714,6 +3875,8 @@ new Vue({
         // Load settings + templates at startup so they are available
         // on any page (e.g. "Obfuscation Profile" dropdown in Create Interface modal).
         this.loadSettings();
+        // Load client groups at startup — needed for peer create/edit dropdowns.
+        this.loadClientGroups();
         // Load users and current user for the Users section in Settings.
         this.loadUsers();
         this.loadCurrentUser();

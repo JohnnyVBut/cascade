@@ -136,9 +136,15 @@ func (m *Manager) Create(data Alias) (*Alias, error) {
 
 	isGroup := data.Type == "group"
 	isIPSet := data.Type == "ipset"
+	isClientGroup := data.Type == "client-group"
 	isPort := data.Type == "port"
 	isPortGroup := data.Type == "port-group"
-	isPlain := !isGroup && !isIPSet && !isPort && !isPortGroup
+	isPlain := !isGroup && !isIPSet && !isClientGroup && !isPort && !isPortGroup
+
+	// client-group: validate name is not "default" (reserved, created at startup)
+	if isClientGroup && strings.EqualFold(strings.TrimSpace(data.Name), DefaultGroupName) {
+		return nil, fmt.Errorf("client group name %q is reserved", DefaultGroupName)
+	}
 
 	// Validate and normalise members / entries.
 	var memberIDs []string
@@ -178,7 +184,7 @@ func (m *Manager) Create(data Alias) (*Alias, error) {
 		CreatedAt:   now,
 	}
 
-	if isIPSet {
+	if isIPSet || isClientGroup {
 		a.IPSetName = ipsetNameFromAlias(a.Name)
 	}
 	if isPlain || isPort {
@@ -195,7 +201,7 @@ func (m *Manager) Create(data Alias) (*Alias, error) {
 	}
 
 	// Create kernel ipset.
-	if isIPSet {
+	if isIPSet || isClientGroup {
 		if err := m.ipsetMgr.CreateSet(a.IPSetName); err != nil {
 			return nil, fmt.Errorf("create ipset %s: %w", a.IPSetName, err)
 		}
@@ -282,11 +288,18 @@ func (m *Manager) Update(id string, data Alias) (*Alias, error) {
 }
 
 // Delete removes an alias.
+// For client-group aliases, moves peers to default and then deletes.
 // For ipset aliases, destroys the kernel set and .save file.
 // Returns an error if the alias is referenced by a group.
 func (m *Manager) Delete(id string) error {
 	a, err := m.getOrNotFound(id)
 	if err != nil {
+		return err
+	}
+
+	// client-group: delegate to dedicated method (moves peers, destroys ipset).
+	if a.Type == "client-group" {
+		_, err := m.DeleteClientGroup(id)
 		return err
 	}
 
@@ -330,7 +343,7 @@ func (m *Manager) GetIPSetEntries(id string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	if a.Type != "ipset" {
+	if a.Type != "ipset" && a.Type != "client-group" {
 		return nil, fmt.Errorf("alias %s is not of type ipset", id)
 	}
 	return m.ipsetMgr.ListEntries(a.IPSetName), nil
@@ -441,7 +454,7 @@ func (m *Manager) GetMatchSpec(id string) (*MatchSpec, error) {
 	}
 
 	switch a.Type {
-	case "ipset":
+	case "ipset", "client-group":
 		return &MatchSpec{Type: "ipset", Name: a.IPSetName}, nil
 
 	case "group":
@@ -750,10 +763,10 @@ func validateName(name string) error {
 
 func validateType(t string) error {
 	switch t {
-	case "host", "network", "ipset", "group", "port", "port-group":
+	case "host", "network", "ipset", "group", "port", "port-group", "client-group":
 		return nil
 	}
-	return fmt.Errorf("alias type must be host, network, ipset, group, port, or port-group (got %q)", t)
+	return fmt.Errorf("alias type must be host, network, ipset, group, port, port-group, or client-group (got %q)", t)
 }
 
 func normalizeEntries(entries []string) []string {

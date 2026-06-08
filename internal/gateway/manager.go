@@ -65,7 +65,7 @@ func (m *Manager) GetGateways() ([]Gateway, error) {
 		SELECT id, name, interface, gateway_ip, monitor_address,
 		       enabled, monitor, monitor_interval, window_seconds,
 		       latency_threshold, monitor_http, monitor_rule,
-		       description, created_at
+		       description, admin_down, created_at
 		FROM gateways ORDER BY created_at
 	`)
 	if err != nil {
@@ -90,7 +90,7 @@ func (m *Manager) GetGateway(id string) (*Gateway, error) {
 		SELECT id, name, interface, gateway_ip, monitor_address,
 		       enabled, monitor, monitor_interval, window_seconds,
 		       latency_threshold, monitor_http, monitor_rule,
-		       description, created_at
+		       description, admin_down, created_at
 		FROM gateways WHERE id = ?
 	`, id)
 	gw, err := scanGatewayRow(row)
@@ -114,6 +114,7 @@ type GatewayInput struct {
 	MonitorHttp      MonitorHttpConfig `json:"monitorHttp"`
 	MonitorRule      string            `json:"monitorRule"`
 	Description      string            `json:"description"`
+	AdminDown        *bool             `json:"adminDown"`
 }
 
 // CreateGateway persists a new gateway and starts its monitor.
@@ -180,8 +181,24 @@ func (m *Manager) UpdateGateway(id string, inp GatewayInput) (*Gateway, error) {
 		return nil, err
 	}
 
-	// Restart monitor with updated parameters (resets all probe windows).
-	m.monitor.Start(gw)
+	// If only AdminDown changed, update the flag without resetting probe windows.
+	// Otherwise restart monitor with updated parameters (resets all probe windows).
+	adminDownChanged := gw.AdminDown != existing.AdminDown
+	otherChanged := gw.Name != existing.Name ||
+		gw.Interface != existing.Interface ||
+		gw.GatewayIP != existing.GatewayIP ||
+		gw.MonitorAddress != existing.MonitorAddress ||
+		gw.Enabled != existing.Enabled ||
+		gw.Monitor != existing.Monitor ||
+		gw.MonitorInterval != existing.MonitorInterval ||
+		gw.WindowSeconds != existing.WindowSeconds ||
+		gw.MonitorRule != existing.MonitorRule
+
+	if otherChanged {
+		m.monitor.Start(gw)
+	} else if adminDownChanged {
+		m.monitor.SetAdminDown(gw.ID, gw.AdminDown)
+	}
 	log.Printf("gateway-manager: updated gateway %q (%s)", gw.Name, gw.ID)
 	return &gw, nil
 }
@@ -212,7 +229,11 @@ func (m *Manager) GetGatewayWithStatus(id string) (*GatewayWithStatus, error) {
 	if err != nil || gw == nil {
 		return nil, err
 	}
-	return &GatewayWithStatus{Gateway: *gw, MonitorStatus: m.monitor.GetStatus(id)}, nil
+	ws := &GatewayWithStatus{Gateway: *gw, MonitorStatus: m.monitor.GetStatus(id)}
+	if gw.AdminDown {
+		ws.RealStatus = m.monitor.GetProbeStatus(id)
+	}
+	return ws, nil
 }
 
 // GetAllGatewaysWithStatus returns all gateways enriched with live status.
@@ -224,6 +245,9 @@ func (m *Manager) GetAllGatewaysWithStatus() ([]GatewayWithStatus, error) {
 	out := make([]GatewayWithStatus, len(gateways))
 	for i, gw := range gateways {
 		out[i] = GatewayWithStatus{Gateway: gw, MonitorStatus: m.monitor.GetStatus(gw.ID)}
+		if gw.AdminDown {
+			out[i].RealStatus = m.monitor.GetProbeStatus(gw.ID)
+		}
 	}
 	return out, nil
 }
@@ -376,14 +400,14 @@ func scanGateway(rows *sql.Rows) (Gateway, error) {
 
 func scanGatewayRow(s gatewayScanner) (*Gateway, error) {
 	var gw Gateway
-	var enabled, monitor int
+	var enabled, monitor, adminDown int
 	var monitorHttpJSON string
 
 	err := s.Scan(
 		&gw.ID, &gw.Name, &gw.Interface, &gw.GatewayIP, &gw.MonitorAddress,
 		&enabled, &monitor, &gw.MonitorInterval, &gw.WindowSeconds,
 		&gw.LatencyThreshold, &monitorHttpJSON, &gw.MonitorRule,
-		&gw.Description, &gw.CreatedAt,
+		&gw.Description, &adminDown, &gw.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -391,6 +415,7 @@ func scanGatewayRow(s gatewayScanner) (*Gateway, error) {
 
 	gw.Enabled = enabled != 0
 	gw.Monitor = monitor != 0
+	gw.AdminDown = adminDown != 0
 
 	if monitorHttpJSON != "" && monitorHttpJSON != "{}" {
 		_ = json.Unmarshal([]byte(monitorHttpJSON), &gw.MonitorHttp)
@@ -426,13 +451,13 @@ func insertGateway(gw Gateway) error {
 		    (id, name, interface, gateway_ip, monitor_address,
 		     enabled, monitor, monitor_interval, window_seconds,
 		     latency_threshold, monitor_http, monitor_rule,
-		     description, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     description, admin_down, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		gw.ID, gw.Name, gw.Interface, gw.GatewayIP, gw.MonitorAddress,
 		boolInt(gw.Enabled), boolInt(gw.Monitor), gw.MonitorInterval, gw.WindowSeconds,
 		gw.LatencyThreshold, string(httpJSON), gw.MonitorRule,
-		gw.Description, gw.CreatedAt,
+		gw.Description, boolInt(gw.AdminDown), gw.CreatedAt,
 	)
 	return err
 }
@@ -444,13 +469,13 @@ func updateGateway(gw Gateway) error {
 		SET name = ?, interface = ?, gateway_ip = ?, monitor_address = ?,
 		    enabled = ?, monitor = ?, monitor_interval = ?, window_seconds = ?,
 		    latency_threshold = ?, monitor_http = ?, monitor_rule = ?,
-		    description = ?
+		    description = ?, admin_down = ?
 		WHERE id = ?
 	`,
 		gw.Name, gw.Interface, gw.GatewayIP, gw.MonitorAddress,
 		boolInt(gw.Enabled), boolInt(gw.Monitor), gw.MonitorInterval, gw.WindowSeconds,
 		gw.LatencyThreshold, string(httpJSON), gw.MonitorRule,
-		gw.Description, gw.ID,
+		gw.Description, boolInt(gw.AdminDown), gw.ID,
 	)
 	return err
 }
@@ -501,6 +526,10 @@ func gatewayFromInput(inp GatewayInput) Gateway {
 	if inp.Monitor != nil {
 		monitor = *inp.Monitor
 	}
+	adminDown := false
+	if inp.AdminDown != nil {
+		adminDown = *inp.AdminDown
+	}
 
 	interval := inp.MonitorInterval
 	if interval <= 0 {
@@ -539,6 +568,7 @@ func gatewayFromInput(inp GatewayInput) Gateway {
 		MonitorHttp:      http,
 		MonitorRule:      rule,
 		Description:      strings.TrimSpace(inp.Description),
+		AdminDown:        adminDown,
 	}
 }
 

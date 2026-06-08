@@ -123,8 +123,9 @@ func (m *Manager) handleGatewayStatusChange(gatewayID, newStatus, prevStatus str
 		return
 	}
 
-	goingDown := newStatus == "down" && prevStatus != "down"
-	recovering := newStatus != "down" && prevStatus == "down"
+	isDown := func(s string) bool { return s == "down" || s == "admin_down" }
+	goingDown := isDown(newStatus) && !isDown(prevStatus)
+	recovering := !isDown(newStatus) && isDown(prevStatus)
 
 	for i := range routes {
 		r := &routes[i]
@@ -315,9 +316,9 @@ func (m *Manager) resolveGroupGateway(groupID string) (via, dev string, err erro
 				fallbackGW = gw // remember tier1 as last resort
 			}
 			st := mon.GetStatus(mem.GatewayID)
-			// Use this gateway unless it is explicitly "down".
+			// Use this gateway unless it is explicitly "down" or "admin_down".
 			// "unknown" = not enough probes yet → treat as available.
-			if st.Status != "down" {
+			if st.Status != "down" && st.Status != "admin_down" {
 				return gw.GatewayIP, gw.Interface, nil
 			}
 		}

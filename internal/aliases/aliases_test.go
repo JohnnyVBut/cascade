@@ -2,11 +2,20 @@ package aliases
 
 import (
 	"os"
+	"os/exec"
 	"testing"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/ipset"
 )
+
+// requireIPSet skips the test if the ipset binary is not available (e.g. in CI).
+func requireIPSet(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("ipset"); err != nil {
+		t.Skip("ipset binary not found, skipping kernel ipset test")
+	}
+}
 
 func initTestDB(t *testing.T) *Manager {
 	t.Helper()
@@ -374,6 +383,52 @@ func TestGetMatchSpec_GroupMergesMembers(t *testing.T) {
 	}
 	if len(spec.Entries) != 3 {
 		t.Errorf("merged entries len = %d, want 3", len(spec.Entries))
+	}
+}
+
+func TestGetMatchSpec_ClientGroupReturnsIPSet(t *testing.T) {
+	requireIPSet(t)
+	m := initTestDB(t)
+
+	groupID, err := m.EnsureDefaultGroup()
+	if err != nil {
+		t.Fatalf("EnsureDefaultGroup: %v", err)
+	}
+
+	spec, err := m.GetMatchSpec(groupID)
+	if err != nil {
+		t.Fatalf("GetMatchSpec client-group: %v", err)
+	}
+	if spec.Type != "ipset" {
+		t.Errorf("Type = %q, want 'ipset' for client-group", spec.Type)
+	}
+	if spec.Name == "" {
+		t.Error("expected non-empty ipset Name for client-group")
+	}
+	if len(spec.Entries) != 0 {
+		t.Errorf("expected empty Entries for ipset-backed alias, got %v", spec.Entries)
+	}
+}
+
+func TestGetMatchSpec_NonDefaultClientGroupReturnsIPSet(t *testing.T) {
+	requireIPSet(t)
+	m := initTestDB(t)
+
+	a, err := m.Create(Alias{Name: "HomeGroup", Type: "client-group"})
+	if err != nil {
+		t.Fatalf("Create client-group: %v", err)
+	}
+
+	spec, err := m.GetMatchSpec(a.ID)
+	if err != nil {
+		t.Fatalf("GetMatchSpec client-group: %v", err)
+	}
+	if spec.Type != "ipset" {
+		t.Errorf("Type = %q, want 'ipset'", spec.Type)
+	}
+	wantName := ipsetNameFromAlias("HomeGroup")
+	if spec.Name != wantName {
+		t.Errorf("Name = %q, want %q", spec.Name, wantName)
 	}
 }
 
