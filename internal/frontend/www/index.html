@@ -2722,7 +2722,7 @@
                     outline: gw.adminDown && gw.realStatus ? '2px solid ' + gatewayStatusColor(gw.realStatus) : 'none',
                     outlineOffset: '2px'
                   }"
-                  :title="gw.adminDown ? 'Admin Down (probe: ' + gatewayStatusLabel(gw.realStatus || \'unknown\') + ') — click to restore' : 'Click to set Admin Down'">
+                  :title="gw.adminDown ? 'Admin Down (probe: ' + gatewayStatusLabel(gw.realStatus || 'unknown') + ') — click to restore' : 'Click to set Admin Down'">
                 </button>
 
                 <!-- Name -->
