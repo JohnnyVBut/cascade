@@ -196,6 +196,22 @@ func (m *Monitor) GetStatus(gatewayID string) MonitorStatus {
 	return st
 }
 
+// GetProbeStatus returns the raw probe-computed status without admin_down overlay.
+// Used to populate the realStatus field in the API response.
+func (m *Monitor) GetProbeStatus(gatewayID string) string {
+	m.mu.RLock()
+	state, ok := m.states[gatewayID]
+	m.mu.RUnlock()
+
+	if !ok {
+		return "unknown"
+	}
+
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	return state.status.Status
+}
+
 // SetAdminDown sets or clears the admin_down flag for a gateway.
 // The probe goroutines continue running; only the reported status changes.
 // A StatusChangeFunc is fired so routing/firewall can react immediately.

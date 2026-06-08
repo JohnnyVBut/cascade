@@ -229,7 +229,11 @@ func (m *Manager) GetGatewayWithStatus(id string) (*GatewayWithStatus, error) {
 	if err != nil || gw == nil {
 		return nil, err
 	}
-	return &GatewayWithStatus{Gateway: *gw, MonitorStatus: m.monitor.GetStatus(id)}, nil
+	ws := &GatewayWithStatus{Gateway: *gw, MonitorStatus: m.monitor.GetStatus(id)}
+	if gw.AdminDown {
+		ws.RealStatus = m.monitor.GetProbeStatus(id)
+	}
+	return ws, nil
 }
 
 // GetAllGatewaysWithStatus returns all gateways enriched with live status.
@@ -241,6 +245,9 @@ func (m *Manager) GetAllGatewaysWithStatus() ([]GatewayWithStatus, error) {
 	out := make([]GatewayWithStatus, len(gateways))
 	for i, gw := range gateways {
 		out[i] = GatewayWithStatus{Gateway: gw, MonitorStatus: m.monitor.GetStatus(gw.ID)}
+		if gw.AdminDown {
+			out[i].RealStatus = m.monitor.GetProbeStatus(gw.ID)
+		}
 	}
 	return out, nil
 }

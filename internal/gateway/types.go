@@ -69,7 +69,10 @@ type MonitorStatus struct {
 
 // GatewayWithStatus combines Gateway data with its live monitoring status.
 // This is what the API returns.
+// RealStatus holds the actual probe status when AdminDown=true (so the UI can
+// show the underlying health while the gateway is administratively disabled).
 type GatewayWithStatus struct {
 	Gateway
 	MonitorStatus
+	RealStatus string `json:"realStatus,omitempty"`
 }
