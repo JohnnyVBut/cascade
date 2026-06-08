@@ -5730,7 +5730,7 @@
                 <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
                 </svg>
-                <span v-if="peerCreate.peerType === 'client'">Keys and IP will be generated automatically. QR code will appear right after creation — scan it with AmneziaWG.</span>
+                <span v-if="peerCreate.peerType === 'client'">Keys and IP will be generated automatically. Enable "Show QR" below to scan the config immediately after creation.</span>
                 <span v-else>Keys will be generated on the server. After creation, download the config to configure the remote side manually.</span>
               </div>
 
@@ -5804,18 +5804,27 @@
             </div>
 
             <div class="modal-section dark:border-neutral-600">
-              <div class="flex gap-3 justify-end">
-                <button @click="showPeerCreate = false"
-                  class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded hover:bg-gray-50 dark:hover:bg-neutral-600 dark:text-neutral-200 transition">
-                  Cancel
-                </button>
-                <button @click="createPeer"
-                  class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
-                  <span v-if="peerCreate.peerType === 'client' && peerCreate.mode === 'generate'">Generate & Show QR</span>
-                  <span v-else-if="peerCreate.peerType === 'client'">Add Client</span>
-                  <span v-else-if="peerCreate.mode === 'generate'">Generate Keys & Create</span>
-                  <span v-else>Add Interconnect Peer</span>
-                </button>
+              <div class="flex items-center justify-between">
+                <label v-if="peerCreate.peerType === 'client' && peerCreate.mode === 'generate'"
+                  class="flex items-center gap-2 text-sm cursor-pointer select-none"
+                  :style="{ color: theme === 'dark' ? '#d4d4d4' : '#374151' }">
+                  <input type="checkbox" v-model="peerCreate.showQR" class="rounded">
+                  Show QR after create
+                </label>
+                <div v-else></div>
+                <div class="flex gap-3">
+                  <button @click="showPeerCreate = false"
+                    class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded hover:bg-gray-50 dark:hover:bg-neutral-600 dark:text-neutral-200 transition">
+                    Cancel
+                  </button>
+                  <button @click="createPeer"
+                    class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded transition">
+                    <span v-if="peerCreate.peerType === 'client' && peerCreate.mode === 'generate'">{{ peerCreate.showQR ? 'Create & Show QR' : 'Create' }}</span>
+                    <span v-else-if="peerCreate.peerType === 'client'">Add Client</span>
+                    <span v-else-if="peerCreate.mode === 'generate'">Generate Keys & Create</span>
+                    <span v-else>Add Interconnect Peer</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -5855,15 +5864,22 @@
               </div>
             </div>
             <div class="modal-section dark:border-neutral-600">
-              <div class="flex gap-3 justify-end">
-                <button @click="showQuickPeerCreate = false"
-                  class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded hover:bg-gray-50 dark:hover:bg-neutral-600 dark:text-neutral-200 transition text-sm">
-                  Cancel
-                </button>
-                <button @click="createQuickPeer" :disabled="!peerCreateName"
-                  class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded transition text-sm font-medium">
-                  Create & Show QR
-                </button>
+              <div class="flex items-center justify-between">
+                <label class="flex items-center gap-2 text-sm cursor-pointer select-none"
+                  :style="{ color: theme === 'dark' ? '#d4d4d4' : '#374151' }">
+                  <input type="checkbox" v-model="peerCreateShowQR" class="rounded">
+                  Show QR after create
+                </label>
+                <div class="flex gap-3">
+                  <button @click="showQuickPeerCreate = false"
+                    class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded hover:bg-gray-50 dark:hover:bg-neutral-600 dark:text-neutral-200 transition text-sm">
+                    Cancel
+                  </button>
+                  <button @click="createQuickPeer" :disabled="!peerCreateName"
+                    class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded transition text-sm font-medium">
+                    {{ peerCreateShowQR ? 'Create & Show QR' : 'Create' }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
