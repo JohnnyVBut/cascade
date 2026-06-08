@@ -931,6 +931,12 @@
                               style="margin-left:4px;font-size:0.65rem;padding:1px 6px;background:rgba(59,130,246,0.12);color:#2563eb;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;">
                               S2S
                             </span>
+                            <!-- Client group badge -->
+                            <span v-if="peer.peerType !== 'interconnect' && peerGroupName(peer.groupId) && peerEditNameId !== peer.id"
+                              style="margin-left:4px;font-size:0.65rem;padding:1px 6px;background:rgba(124,58,237,0.1);color:#7c3aed;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                              :title="'Group: ' + peerGroupName(peer.groupId)">
+                              {{peerGroupName(peer.groupId)}}
+                            </span>
                             <span v-if="peer.peerType !== 'interconnect' && peer.rateDown > 0 && peerEditNameId !== peer.id"
                               style="margin-left:4px;font-size:0.65rem;padding:1px 5px;background:rgba(220,38,38,0.1);color:#dc2626;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
                               :title="'Download limit: ' + formatRate(peer.rateDown) + 'bit/s'">
@@ -1202,7 +1208,7 @@
                     <input type="file" accept=".json" @change="restoreInterface" class="hidden"/>
                   </label>
                   <!-- Manual peer add (wrench) -->
-                  <button @click="showPeerCreate = true" :title="currentInterface && currentInterface.disableRoutes ? 'Add peer manually' : 'Add client manually'"
+                  <button @click="peerCreate.peerType = 'client'; peerCreate.groupId = defaultGroupId(); showPeerCreate = true" :title="currentInterface && currentInterface.disableRoutes ? 'Add peer manually' : 'Add client manually'"
                     class="hover:bg-red-800 hover:border-red-800 hover:text-white text-gray-700 dark:text-neutral-200 max-md:border-x-0 border-2 border-gray-100 dark:border-neutral-600 py-2 px-4 md:rounded inline-flex items-center transition">
                     <svg class="w-4 md:mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.47-3.66a.5.5 0 010-.82l5.47-3.66a.5.5 0 01.77.41v7.32a.5.5 0 01-.77.41zM21.75 12a9.75 9.75 0 11-19.5 0 9.75 9.75 0 0119.5 0z"/>
@@ -1210,7 +1216,7 @@
                     <span class="max-md:hidden text-sm">Manual</span>
                   </button>
                   <!-- New peer (quick create) -->
-                  <button @click="showQuickPeerCreate = true; peerCreateName = ''; peerCreateExpiredDate = '';"
+                  <button @click="showQuickPeerCreate = true; peerCreateName = ''; peerCreateExpiredDate = ''; peerCreateGroupId = defaultGroupId();"
                     class="hover:bg-red-800 hover:border-red-800 hover:text-white text-gray-700 dark:text-neutral-200 max-md:border-l-0 border-2 border-gray-100 dark:border-neutral-600 py-2 px-4 rounded-r-full md:rounded inline-flex items-center transition">
                     <svg class="w-4 md:mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -1266,6 +1272,12 @@
                           <span v-if="peer.peerType === 'interconnect' && peerEditNameId !== peer.id"
                             style="margin-left:6px;font-size:0.65rem;padding:1px 6px;background:rgba(59,130,246,0.12);color:#2563eb;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;">
                             S2S
+                          </span>
+                          <!-- Client group badge -->
+                          <span v-if="peer.peerType !== 'interconnect' && peerGroupName(peer.groupId) && peerEditNameId !== peer.id"
+                            style="margin-left:4px;font-size:0.65rem;padding:1px 6px;background:rgba(124,58,237,0.1);color:#7c3aed;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                            :title="'Group: ' + peerGroupName(peer.groupId)">
+                            {{peerGroupName(peer.groupId)}}
                           </span>
                           <span v-if="peer.peerType !== 'interconnect' && peer.rateDown > 0 && peerEditNameId !== peer.id"
                             style="margin-left:6px;font-size:0.65rem;padding:1px 5px;background:rgba(220,38,38,0.1);color:#dc2626;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
@@ -4384,7 +4396,7 @@
         <!-- ============================================================== -->
         <!-- Firewall Aliases Page                                          -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'firewall-aliases'" style="display:flex; flex-direction:column; gap:16px;">
+        <div v-if="activePage === 'firewall-aliases'" style="display:flex; flex-direction:column; gap:24px;">
           <!-- Header -->
           <div class="flex items-center justify-between">
             <h1 class="text-2xl font-bold dark:text-neutral-200">Firewall Aliases</h1>
@@ -4419,7 +4431,10 @@
               <tbody>
                 <tr v-for="alias in aliases" :key="alias.id"
                   class="dark:border-neutral-600" style="border-top-width:1px;">
-                  <td class="dark:text-neutral-200 font-medium tc">{{ alias.name }}</td>
+                  <td class="dark:text-neutral-200 font-medium tc">
+                    {{ alias.name }}
+                    <span v-if="alias.type === 'client-group' && alias.name === 'default'" class="text-xs text-gray-400 dark:text-neutral-500 font-normal">(protected)</span>
+                  </td>
                   <td class="tc">
                     <span class="text-xs font-medium rounded-full px-2 py-1"
                       :style="alias.type === 'ipset'      ? 'background:#f3e8ff;color:#7c3aed;' :
@@ -4443,6 +4458,7 @@
                     <span v-else-if="alias.type === 'port-group'">
                       {{ (alias.memberIds || []).length }} port aliases
                     </span>
+                    <span v-else-if="alias.type === 'client-group'">{{ alias.entryCount }} peers</span>
                     <span v-else>{{ (alias.entries || []).length }} entries</span>
                   </td>
                   <td class="text-gray-500 dark:text-neutral-400 text-xs tc">{{ alias.description || '—' }}</td>
@@ -4455,7 +4471,8 @@
                         class="text-xs bg-gray-100 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded px-2 py-1 transition">
                         Edit
                       </button>
-                      <button @click="deleteAlias(alias)"
+                      <button v-if="!(alias.type === 'client-group' && alias.name === 'default')"
+                        @click="deleteAlias(alias)"
                         class="text-xs bg-red-100 text-red-600 rounded px-2 py-1 transition">
                         Delete
                       </button>
@@ -4496,6 +4513,7 @@
                   <option value="host">Host — list of single IP addresses</option>
                   <option value="network">Network — list of CIDR prefixes</option>
                   <option value="ipset">ipset — large kernel set (upload file or generate)</option>
+                  <option value="client-group">Client Group — ipset auto-managed by peer membership</option>
                   <option value="group">Group — combines multiple host/network aliases</option>
                   <option value="port">Port — list of protocol:port entries</option>
                   <option value="port-group">Port Group — combines multiple port aliases</option>
@@ -5774,6 +5792,15 @@
                   placeholder="25"
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
               </div>
+
+              <div v-if="peerCreate.peerType === 'client'" class="mb-4">
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Client Group</label>
+                <select v-model="peerCreate.groupId"
+                  class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                  style="padding:8px 12px;">
+                  <option v-for="g in clientGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+                </select>
+              </div>
             </div>
 
             <div class="modal-section dark:border-neutral-600">
@@ -5816,6 +5843,15 @@
                 <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Expire Date <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional)</span></label>
                 <input v-model="peerCreateExpiredDate" type="date"
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+              </div>
+              <div class="mb-4">
+                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Client Group</label>
+                <select v-model="peerCreateGroupId"
+                  class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                  style="padding:8px 12px;">
+                  <option v-if="clientGroups.length === 0" value="" disabled>Loading groups…</option>
+                  <option v-for="g in clientGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+                </select>
               </div>
             </div>
             <div class="modal-section dark:border-neutral-600">
@@ -6008,6 +6044,15 @@
                 <p class="text-xs text-gray-400 dark:text-neutral-500" style="margin-top:4px;">
                   Examples: 10 = 10 Mbit/s, 0.5 = 500 Kbit/s. WireGuard overhead compensated automatically.
                 </p>
+              </div>
+
+              <!-- Client Group (client only) -->
+              <div v-if="peerEditForm._peer.peerType !== 'interconnect'">
+                <label class="block text-sm font-medium mb-1 dark:text-neutral-200">Client Group</label>
+                <select v-model="peerEditForm.groupId"
+                  class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm">
+                  <option v-for="g in clientGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+                </select>
               </div>
 
               <!-- Persistent Keepalive -->
@@ -6397,14 +6442,14 @@
       <!-- Entries -->
       <div style="padding:6px 12px 8px; max-height:200px; overflow-y:auto;">
         <!-- host / network / port -->
-        <template v-if="aliasTooltip.alias.type !== 'ipset' && aliasTooltip.alias.type !== 'group' && aliasTooltip.alias.type !== 'port-group'">
+        <template v-if="aliasTooltip.alias.type !== 'ipset' && aliasTooltip.alias.type !== 'group' && aliasTooltip.alias.type !== 'port-group' && aliasTooltip.alias.type !== 'client-group'">
           <div v-if="!aliasTooltip.alias.entries || !aliasTooltip.alias.entries.length"
             class="text-gray-400 dark:text-neutral-500 text-xs italic">empty</div>
           <div v-for="e in aliasTooltip.alias.entries" :key="e"
             class="font-mono text-xs" style="padding:1px 0; color:#374151;">{{ e }}</div>
         </template>
-        <!-- ipset -->
-        <template v-else-if="aliasTooltip.alias.type === 'ipset'">
+        <!-- ipset / client-group -->
+        <template v-else-if="aliasTooltip.alias.type === 'ipset' || aliasTooltip.alias.type === 'client-group'">
           <div v-if="aliasTooltip.ipsetLoading" class="text-xs text-gray-400 dark:text-neutral-500 italic">Loading…</div>
           <template v-else-if="aliasTooltip.ipsetEntries && aliasTooltip.ipsetEntries.length">
             <div v-for="e in aliasTooltip.ipsetEntries.slice(0, 20)" :key="e"

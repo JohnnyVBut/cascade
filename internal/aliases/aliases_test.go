@@ -377,6 +377,50 @@ func TestGetMatchSpec_GroupMergesMembers(t *testing.T) {
 	}
 }
 
+func TestGetMatchSpec_ClientGroupReturnsIPSet(t *testing.T) {
+	m := initTestDB(t)
+
+	groupID, err := m.EnsureDefaultGroup()
+	if err != nil {
+		t.Fatalf("EnsureDefaultGroup: %v", err)
+	}
+
+	spec, err := m.GetMatchSpec(groupID)
+	if err != nil {
+		t.Fatalf("GetMatchSpec client-group: %v", err)
+	}
+	if spec.Type != "ipset" {
+		t.Errorf("Type = %q, want 'ipset' for client-group", spec.Type)
+	}
+	if spec.Name == "" {
+		t.Error("expected non-empty ipset Name for client-group")
+	}
+	if len(spec.Entries) != 0 {
+		t.Errorf("expected empty Entries for ipset-backed alias, got %v", spec.Entries)
+	}
+}
+
+func TestGetMatchSpec_NonDefaultClientGroupReturnsIPSet(t *testing.T) {
+	m := initTestDB(t)
+
+	a, err := m.Create(Alias{Name: "HomeGroup", Type: "client-group"})
+	if err != nil {
+		t.Fatalf("Create client-group: %v", err)
+	}
+
+	spec, err := m.GetMatchSpec(a.ID)
+	if err != nil {
+		t.Fatalf("GetMatchSpec client-group: %v", err)
+	}
+	if spec.Type != "ipset" {
+		t.Errorf("Type = %q, want 'ipset'", spec.Type)
+	}
+	wantName := ipsetNameFromAlias("HomeGroup")
+	if spec.Name != wantName {
+		t.Errorf("Name = %q, want %q", spec.Name, wantName)
+	}
+}
+
 // ── GetPortMatchSpec ──────────────────────────────────────────────────────────
 
 func TestGetPortMatchSpec_PortAlias(t *testing.T) {

@@ -22,11 +22,13 @@ package api
 import (
 	"crypto/rand"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
@@ -98,10 +100,22 @@ func createPeer(c *fiber.Ctx) error {
 	if inp.PersistentKeepalive == 0 {
 		inp.PersistentKeepalive = d.PersistentKeepalive
 	}
+	// Auto-assign client peers to default group when no group specified.
+	if inp.PeerType == "client" && inp.GroupID == "" {
+		if defaultID, err := aliases.Get().GetDefaultGroupID(); err == nil {
+			inp.GroupID = defaultID
+		}
+	}
 
 	p, err := mgr().AddPeer(ifaceID, inp)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	// Rebuild client-group ipset after adding peer.
+	if p.PeerType == "client" && p.GroupID != "" {
+		if err := aliases.Get().RebuildGroupIPSet(p.GroupID); err != nil {
+			log.Printf("api: createPeer: rebuild group ipset %s: %v", p.GroupID, err)
+		}
 	}
 	// Wrap as { peer: {...} } because the frontend does `res.peer && res.peer.id`.
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"peer": p})
@@ -214,19 +228,59 @@ func updatePeer(c *fiber.Ctx) error {
 		n := int(v)
 		upd.RateUp = &n
 	}
+	if v, ok := raw["groupId"].(string); ok {
+		upd.GroupID = &v
+	}
+
+	// Capture old groupId before update to detect group change.
+	oldPeer, _ := peer.GetPeer(peerID)
+	oldGroupID := ""
+	if oldPeer != nil {
+		oldGroupID = oldPeer.GroupID
+	}
 
 	p, err := mgr().UpdatePeer(ifaceID, peerID, upd)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+
+	// Rebuild ipsets when group changes: old group loses peer, new group gains peer.
+	if upd.GroupID != nil && p.PeerType == "client" {
+		if oldGroupID != "" && oldGroupID != p.GroupID {
+			if err := aliases.Get().RebuildGroupIPSet(oldGroupID); err != nil {
+				log.Printf("api: updatePeer: rebuild old group ipset %s: %v", oldGroupID, err)
+			}
+		}
+		if p.GroupID != "" {
+			if err := aliases.Get().RebuildGroupIPSet(p.GroupID); err != nil {
+				log.Printf("api: updatePeer: rebuild new group ipset %s: %v", p.GroupID, err)
+			}
+		}
+	}
+
 	return c.JSON(p)
 }
 
 // DELETE /api/tunnel-interfaces/:id/peers/:peerId
 func deletePeer(c *fiber.Ctx) error {
+	// Capture groupId before deletion.
+	p, _ := peer.GetPeer(c.Params("peerId"))
+	groupID := ""
+	if p != nil {
+		groupID = p.GroupID
+	}
+
 	if err := mgr().RemovePeer(c.Params("id"), c.Params("peerId")); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
 	}
+
+	// Rebuild group ipset after peer removal.
+	if groupID != "" {
+		if err := aliases.Get().RebuildGroupIPSet(groupID); err != nil {
+			log.Printf("api: deletePeer: rebuild group ipset %s: %v", groupID, err)
+		}
+	}
+
 	return c.SendStatus(fiber.StatusNoContent)
 }
 

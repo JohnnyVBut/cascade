@@ -748,6 +748,18 @@ class API {
     return this.call({ method: 'get', path: '/aliases' });
   }
 
+  async getClientGroups() {
+    return this.call({ method: 'get', path: '/aliases/client-groups' });
+  }
+
+  async createClientGroup(data) {
+    return this.call({ method: 'post', path: '/aliases', body: { ...data, type: 'client-group' } });
+  }
+
+  async deleteClientGroup({ id }) {
+    return this.call({ method: 'delete', path: `/aliases/${id}` });
+  }
+
   /**
    * Создать новый алиас.
    * @param {{ name, type, entries?, description? }} data

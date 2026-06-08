@@ -158,6 +158,18 @@ func main() {
 	// Registered AFTER all /api/* routes so the SPA fallback (index.html) does
 	// not intercept API requests.
 	// Frontend is embedded into the binary at compile time — no disk files needed.
+	//
+	// Cache-Control: no-cache for JS/CSS so the browser always revalidates after
+	// a server rebuild. Without this, browsers use heuristic caching and may serve
+	// a stale app.js for hours even after docker compose down && up.
+	app.Use("/js/", func(c *fiber.Ctx) error {
+		c.Set("Cache-Control", "no-cache, must-revalidate")
+		return c.Next()
+	})
+	app.Use("/css/", func(c *fiber.Ctx) error {
+		c.Set("Cache-Control", "no-cache, must-revalidate")
+		return c.Next()
+	})
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root:         frontend.FS(),
 		Index:        "index.html",
@@ -210,6 +222,18 @@ func main() {
 	//     via X dev wgY table N" executes with wgY already present.
 	if err := fwMgr.RebuildChains(); err != nil {
 		log.Printf("firewall post-tunnel rebuildChains warning: %v", err)
+	}
+
+	// 5c. Client Groups — ensure default group exists, migrate existing peers,
+	//     and rebuild all group ipsets from the peers table.
+	if _, err := aliasMgr.EnsureDefaultGroup(); err != nil {
+		log.Printf("client groups: ensure default: %v", err)
+	}
+	if err := aliasMgr.AssignPeerToDefaultGroup(); err != nil {
+		log.Printf("client groups: assign existing peers: %v", err)
+	}
+	if err := aliasMgr.RestoreAllGroupIPSets(); err != nil {
+		log.Printf("client groups: restore ipsets: %v", err)
 	}
 
 	// 6. RouteManager — RestoreAll() adds kernel routes AFTER interfaces exist.
