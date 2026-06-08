@@ -167,6 +167,7 @@ new Vue({
       { type: 'gateways',       label: 'Gateways',        icon: '📡' },
       { type: 'peers-summary',  label: 'Peers Summary',   icon: '👥' },
       { type: 'peers',          label: 'Peers',           icon: '🔗' },
+      { type: 'nat',            label: 'NAT',             icon: '🔀' },
       { type: 'traffic',        label: 'Traffic',         icon: '📊' },
     ],
     dashPeersState: {},   // per-widget: { [widgetId]: { iface: '', sort: 'name' } }
@@ -2299,6 +2300,9 @@ new Vue({
       } catch (e) {
         this.dashWidgets = this.dashDefaultWidgets();
       }
+      // Pre-load NAT data if the nat widget is present (or just always — it's cheap)
+      if (this.natRules.length === 0) this.loadNatRules();
+      if (this.dnatRules.length === 0) this.loadDnatRules();
       await this.$nextTick();
       this.dashInitGrid();
     },

@@ -542,6 +542,95 @@
                       </div>
                     </template>
 
+                    <!-- ── nat ── -->
+                    <template v-else-if="w.type === 'nat'">
+                      <div style="display:flex; flex-direction:column; height:100%; margin:-12px -16px;">
+
+                        <!-- Outbound NAT section -->
+                        <div style="padding:6px 12px 4px; flex-shrink:0;">
+                          <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; margin-bottom:4px;">
+                            Outbound
+                            <span style="font-weight:400; font-size:0.65rem; margin-left:4px;">
+                              ({{ natRules.filter(r => r.enabled).length }}/{{ natRules.length }})
+                            </span>
+                          </div>
+                          <div v-if="natRules.length === 0" style="font-size:0.72rem; color:#9ca3af; padding:4px 0;">No rules</div>
+                          <div v-for="rule in natRules" :key="rule.id"
+                            style="display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid #f3f4f6; font-size:0.72rem;"
+                            :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#f3f4f6', opacity: rule.enabled ? 1 : 0.5 }">
+                            <!-- toggle -->
+                            <div @click="toggleNatRule(rule)"
+                              :title="rule.enabled ? 'Disable' : 'Enable'"
+                              style="width:26px; height:14px; border-radius:7px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0;"
+                              :style="{ background: rule.enabled ? '#16a34a' : '#d1d5db' }">
+                              <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
+                                :style="{ left: rule.enabled ? '14px' : '2px' }"></div>
+                            </div>
+                            <!-- rule info -->
+                            <div style="flex:1; min-width:0; overflow:hidden;">
+                              <span style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;"
+                                :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">
+                                {{ rule.name || rule.outInterface }}
+                              </span>
+                            </div>
+                            <!-- type badge -->
+                            <span style="flex-shrink:0; font-size:0.6rem; font-weight:600; padding:1px 5px; border-radius:3px;"
+                              :style="rule.type === 'MASQUERADE'
+                                ? 'background:rgba(99,102,241,0.12); color:#6366f1;'
+                                : 'background:rgba(234,179,8,0.12); color:#ca8a04;'">
+                              {{ rule.type }}
+                            </span>
+                            <!-- auto badge -->
+                            <span v-if="rule.auto" style="flex-shrink:0; font-size:0.6rem; font-weight:600; padding:1px 5px; border-radius:3px; background:rgba(107,114,128,0.1); color:#9ca3af;">auto</span>
+                            <!-- outInterface -->
+                            <span style="flex-shrink:0; font-size:0.65rem; font-family:monospace; color:#9ca3af; white-space:nowrap;">{{ rule.outInterface }}</span>
+                          </div>
+                        </div>
+
+                        <!-- divider -->
+                        <div style="height:1px; background:#f3f4f6; flex-shrink:0; margin:0 12px;"
+                          :style="{ background: theme==='dark'?'#525252':'#f3f4f6' }"></div>
+
+                        <!-- Port Forwarding (DNAT) section -->
+                        <div style="padding:6px 12px 4px; flex:1; overflow-y:auto;">
+                          <div style="font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:#9ca3af; margin-bottom:4px;">
+                            Port Forwarding
+                            <span style="font-weight:400; font-size:0.65rem; margin-left:4px;">
+                              ({{ dnatRules.filter(r => r.enabled).length }}/{{ dnatRules.length }})
+                            </span>
+                          </div>
+                          <div v-if="dnatRules.length === 0" style="font-size:0.72rem; color:#9ca3af; padding:4px 0;">No rules</div>
+                          <div v-for="rule in dnatRules" :key="rule.id"
+                            style="display:flex; align-items:center; gap:6px; padding:3px 0; border-bottom:1px solid #f3f4f6; font-size:0.72rem;"
+                            :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#f3f4f6', opacity: rule.enabled ? 1 : 0.5 }">
+                            <!-- toggle -->
+                            <div @click="toggleDnat(rule)"
+                              :title="rule.enabled ? 'Disable' : 'Enable'"
+                              style="width:26px; height:14px; border-radius:7px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0;"
+                              :style="{ background: rule.enabled ? '#16a34a' : '#d1d5db' }">
+                              <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
+                                :style="{ left: rule.enabled ? '14px' : '2px' }"></div>
+                            </div>
+                            <!-- rule info -->
+                            <div style="flex:1; min-width:0; overflow:hidden;">
+                              <span style="font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;"
+                                :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">
+                                {{ rule.name || (rule.inPort + ' → ' + rule.dest) }}
+                              </span>
+                            </div>
+                            <!-- proto badge -->
+                            <span style="flex-shrink:0; font-size:0.6rem; font-weight:600; padding:1px 5px; border-radius:3px; background:rgba(34,197,94,0.1); color:#16a34a; text-transform:uppercase;">
+                              {{ rule.protocol }}
+                            </span>
+                            <!-- port mapping -->
+                            <span style="flex-shrink:0; font-size:0.65rem; font-family:monospace; color:#9ca3af; white-space:nowrap;">
+                              :{{ rule.inPort }}→{{ rule.dest }}{{ rule.destPort && rule.destPort !== rule.inPort ? ':' + rule.destPort : '' }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+
                     <!-- ── peers (full list with filter + controls) ── -->
                     <template v-else-if="w.type === 'peers'">
                       <!-- expand out of body padding to fill card edge-to-edge -->
