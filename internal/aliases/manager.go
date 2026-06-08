@@ -454,7 +454,7 @@ func (m *Manager) GetMatchSpec(id string) (*MatchSpec, error) {
 	}
 
 	switch a.Type {
-	case "ipset":
+	case "ipset", "client-group":
 		return &MatchSpec{Type: "ipset", Name: a.IPSetName}, nil
 
 	case "group":
