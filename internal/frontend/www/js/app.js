@@ -924,6 +924,13 @@ new Vue({
 
     // Sidebar navigation
     switchPage(pageId) {
+      // FIX: destroy GridStack when leaving dashboard — clears ResizeObserver,
+      // inline styles and CSS vars it set on parent elements (which caused a
+      // vertical gap on the interfaces page after visiting dashboard).
+      if (this.activePage === 'dashboard' && pageId !== 'dashboard' && this.dashGrid) {
+        this.dashGrid.destroy(true);
+        this.dashGrid = null;
+      }
       this.activePage = pageId;
       if (pageId === 'dashboard') {
         this.$nextTick(() => this.dashInitGrid());
@@ -2294,7 +2301,11 @@ new Vue({
       const el = document.getElementById('dashboard-grid');
       if (!el) return;
 
-      // GridStack auto-adopts existing .grid-stack-item children rendered by Vue v-for
+      // GridStack auto-adopts existing .grid-stack-item children rendered by Vue v-for.
+      // FIX: GridStack fires 'change' synchronously during init() before all items are placed,
+      // which would cause dashSaveLayout to overwrite correct positions with wrong ones.
+      // We use a flag to suppress saves during init and enable them after a short delay.
+      this._dashSaveEnabled = false;
       const grid = GridStack.init({
         column: 12,
         cellHeight: 60,
@@ -2303,8 +2314,13 @@ new Vue({
         resizable: { handles: 'se' },
       }, el);
 
-      grid.on('change', () => this.dashSaveLayout(grid));
+      grid.on('change', () => {
+        if (this._dashSaveEnabled) this.dashSaveLayout(grid);
+      });
       this.dashGrid = grid;
+
+      // Enable saving after GridStack's init-time change events have all fired
+      setTimeout(() => { this._dashSaveEnabled = true; }, 300);
 
       if (this.dashWidgets.some(w => w.type === 'server-info')) {
         this.loadSystemInfo();
