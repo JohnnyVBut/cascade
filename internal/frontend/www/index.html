@@ -576,6 +576,12 @@
                                 :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">
                                 {{ rule.name || rule.outInterface }}
                               </span>
+                              <!-- source -->
+                              <span style="font-size:0.65rem; font-family:monospace; color:#9ca3af; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">
+                                <template v-if="rule.sourceAliasId">{{ (aliases.find(a => a.id === rule.sourceAliasId) || {}).name || rule.sourceAliasId }}</template>
+                                <template v-else-if="rule.source">{{ rule.source }}</template>
+                                <template v-else>any → </template>{{ rule.outInterface }}
+                              </span>
                             </div>
                             <!-- type badge -->
                             <span style="flex-shrink:0; font-size:0.6rem; font-weight:600; padding:1px 5px; border-radius:3px;"
@@ -586,8 +592,6 @@
                             </span>
                             <!-- auto badge -->
                             <span v-if="rule.auto" style="flex-shrink:0; font-size:0.6rem; font-weight:600; padding:1px 5px; border-radius:3px; background:rgba(107,114,128,0.1); color:#9ca3af;">auto</span>
-                            <!-- outInterface -->
-                            <span style="flex-shrink:0; font-size:0.65rem; font-family:monospace; color:#9ca3af; white-space:nowrap;">{{ rule.outInterface }}</span>
                           </div>
                         </div>
 
