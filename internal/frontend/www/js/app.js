@@ -2361,16 +2361,9 @@ new Vue({
       const grid = document.getElementById('dashboard-grid');
       if (!grid) return;
 
-      const zoomFor = (width) => {
-        if (width < 160) return 0.60;
-        if (width < 230) return 0.70;
-        if (width < 320) return 0.80;
-        if (width < 420) return 0.90;
-        if (width < 550) return 1.00;
-        if (width < 720) return 1.10;
-        if (width < 950) return 1.20;
-        return 1.30;
-      };
+      // Proportional scaling: 450px = 1.0 (reference), linear, clamped 0.55–1.5.
+      // Fully automatic — no hardcoded breakpoints, works on any screen size.
+      const zoomFor = (width) => Math.max(0.55, Math.min(1.5, width / 450));
 
       const obs = new ResizeObserver(entries => {
         for (const entry of entries) {
