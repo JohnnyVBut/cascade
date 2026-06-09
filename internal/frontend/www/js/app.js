@@ -3423,6 +3423,12 @@ new Vue({
         updates.rateUp   = Math.round((Number(this.peerEditForm.rateUp)   || 0) * 1000);
         updates.groupId  = this.peerEditForm.groupId || '';
         updates.expiredAt = this.peerEditForm.expiredAt || '';
+        // If a new future expiry date was set and peer is currently disabled,
+        // re-enable it automatically so the renewal takes effect immediately.
+        const newExpiry = this.peerEditForm.expiredAt;
+        if (!peer.enabled && newExpiry && new Date(newExpiry) > new Date()) {
+          updates.enabled = true;
+        }
       }
       try {
         await this.api.updateTunnelInterfacePeer({
