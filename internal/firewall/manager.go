@@ -551,6 +551,9 @@ func (m *Manager) rebuildChains() error {
 	util.Exec("iptables-nft -t filter -F FIREWALL_FORWARD", 5*time.Second, true)  //nolint
 	util.Exec("iptables-nft -t mangle -F FIREWALL_MANGLE", 5*time.Second, true)   //nolint
 
+	// Remove per-rule subchains from previous run (FW*/FM* created by applyRuleKernelSubchain).
+	m.cleanupSubchains()
+
 	// Clean up PBR routing rules from a previous run.
 	if err := m.cleanupRoutingRules(); err != nil {
 		log.Printf("firewall: cleanupRoutingRules: %v", err)
@@ -617,6 +620,13 @@ func (m *Manager) cleanupRoutingRules() error {
 
 // applyRuleKernel installs iptables-nft rules for a single firewall rule.
 // It computes the cartesian product of port combinations × src endpoints × dst endpoints.
+//
+// iptables-nft limitation: a single rule cannot combine native nft expressions
+// (protocol/port matches like "udp dport 53") with xt_compat expressions (ipset
+// via "-m set --match-set"). The xt_compat match is silently dropped.
+// When both are present, applyRuleKernelSubchain is used instead: address/ipset
+// matching stays in FIREWALL_FORWARD (xt_compat only), port matching moves to a
+// per-rule subchain (native nft only).
 func (m *Manager) applyRuleKernel(rule *Rule) error {
 	srcParts, err := m.buildMatchParts("src", &rule.Source)
 	if err != nil {
@@ -636,6 +646,12 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 		if err := m.applyRoutingForRule(rule); err != nil {
 			log.Printf("firewall: applyRoutingForRule %q: %v", rule.Name, err)
 		}
+	}
+
+	// Use subchain approach when mixing port matches (native nft) with ipset matches
+	// (xt_compat) to avoid silent ipset-match loss.
+	if anyComboHasPort(combos) && (anyPartIsIpset(srcParts) || anyPartIsIpset(dstParts)) {
+		return m.applyRuleKernelSubchain(rule, combos, srcParts, dstParts)
 	}
 
 	for _, combo := range combos {
@@ -662,14 +678,7 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 				}
 
 				// Filter action.
-				target := "ACCEPT"
-				switch strings.ToLower(rule.Action) {
-				case "drop":
-					target = "DROP"
-				case "reject":
-					target = "REJECT --reject-with icmp-port-unreachable"
-				}
-				cmd := fmt.Sprintf("iptables-nft -t filter -A FIREWALL_FORWARD%s -j %s", flags, target)
+				cmd := fmt.Sprintf("iptables-nft -t filter -A FIREWALL_FORWARD%s -j %s", flags, ruleTarget(rule))
 				if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
 					log.Printf("firewall: filter %q: %v", rule.Name, err)
 				}
@@ -677,6 +686,94 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 		}
 	}
 	return nil
+}
+
+// applyRuleKernelSubchain handles rules that combine ipset address matching with
+// protocol/port matching. iptables-nft cannot combine these in one rule.
+//
+// Structure:
+//
+//	FIREWALL_FORWARD: -m set --match-set <ipset> src  →  JUMP FW<id8>   (xt_compat only)
+//	FW<id8>:          -p udp --dport 53               →  ACCEPT          (native nft only)
+//	FW<id8>:          (no match)                      →  RETURN
+func (m *Manager) applyRuleKernelSubchain(rule *Rule, combos []portCombo, srcParts, dstParts []string) error {
+	// Subchain name: "FW"/"FM" + first 8 hex chars of rule UUID (length = 10).
+	shortID := strings.ReplaceAll(rule.ID, "-", "")[:8]
+	filterChain := "FW" + shortID
+	mangleChain := "FM" + shortID
+	isPBR := rule.Action == "accept" && (rule.GatewayID != "" || rule.GatewayGroupID != "")
+
+	// Create and flush subchains (idempotent).
+	for _, tc := range []struct{ table, chain string }{{"filter", filterChain}, {"mangle", mangleChain}} {
+		util.Exec(fmt.Sprintf("iptables-nft -t %s -N %s 2>/dev/null || true", tc.table, tc.chain), 5*time.Second, true)
+		util.Exec(fmt.Sprintf("iptables-nft -t %s -F %s", tc.table, tc.chain), 5*time.Second, true)
+	}
+
+	// Populate subchains with port-only rules (no address/ipset — avoids mixing).
+	for _, combo := range combos {
+		portFlags := buildPortFlags(combo)
+
+		// Filter subchain: optional LOG + action.
+		if rule.Log {
+			cmd := fmt.Sprintf(`iptables-nft -t filter -A %s%s -j LOG --log-prefix "FW: "`, filterChain, portFlags)
+			util.Exec(cmd, 10*time.Second, true) //nolint
+		}
+		cmd := fmt.Sprintf("iptables-nft -t filter -A %s%s -j %s", filterChain, portFlags, ruleTarget(rule))
+		if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
+			log.Printf("firewall: subchain filter %q: %v", rule.Name, err)
+		}
+
+		// Mangle subchain: MARK (PBR) or RETURN.
+		if isPBR {
+			cmd = fmt.Sprintf("iptables-nft -t mangle -A %s%s -j MARK --set-mark %d", mangleChain, portFlags, *rule.Fwmark)
+			if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
+				log.Printf("firewall: subchain mangle MARK %q: %v", rule.Name, err)
+			}
+		} else {
+			cmd = fmt.Sprintf("iptables-nft -t mangle -A %s%s -j RETURN", mangleChain, portFlags)
+			util.Exec(cmd, 10*time.Second, true) //nolint
+		}
+	}
+	// Terminal RETURN: port not matched → fall through to next rule in FIREWALL_FORWARD.
+	util.Exec(fmt.Sprintf("iptables-nft -t filter -A %s -j RETURN", filterChain), 5*time.Second, true)
+	util.Exec(fmt.Sprintf("iptables-nft -t mangle -A %s -j RETURN", mangleChain), 5*time.Second, true)
+
+	// FIREWALL_FORWARD / FIREWALL_MANGLE: address-only matches → jump to subchains.
+	// No port/proto here — xt_compat (ipset) remains isolated from native nft (port).
+	for _, srcPart := range srcParts {
+		for _, dstPart := range dstParts {
+			addrFlags := buildAddrFlags(rule, srcPart, dstPart)
+
+			cmd := fmt.Sprintf("iptables-nft -t filter -A FIREWALL_FORWARD%s -j %s", addrFlags, filterChain)
+			if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
+				log.Printf("firewall: subchain jump filter %q: %v", rule.Name, err)
+			}
+			cmd = fmt.Sprintf("iptables-nft -t mangle -A FIREWALL_MANGLE%s -j %s", addrFlags, mangleChain)
+			util.Exec(cmd, 10*time.Second, true) //nolint
+		}
+	}
+	return nil
+}
+
+// cleanupSubchains removes all FW*/FM* per-rule subchains left from a previous run.
+// Called at the start of rebuildChains before re-applying rules.
+func (m *Manager) cleanupSubchains() {
+	for _, tc := range []struct{ table, prefix string }{{"filter", "FW"}, {"mangle", "FM"}} {
+		out, err := util.Exec(fmt.Sprintf("iptables-nft -t %s -S", tc.table), 5*time.Second, false)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(out, "\n") {
+			parts := strings.Fields(line)
+			// Lines like "-N FWa1b2c3d4" — our chains are exactly 10 chars (prefix 2 + id 8).
+			if len(parts) >= 2 && parts[0] == "-N" &&
+				strings.HasPrefix(parts[1], tc.prefix) && len(parts[1]) == 10 {
+				chain := parts[1]
+				util.Exec(fmt.Sprintf("iptables-nft -t %s -F %s 2>/dev/null || true", tc.table, chain), 5*time.Second, true)
+				util.Exec(fmt.Sprintf("iptables-nft -t %s -X %s 2>/dev/null || true", tc.table, chain), 5*time.Second, true)
+			}
+		}
+	}
 }
 
 // applyRoutingForRule sets ip route + ip rule for a PBR rule.
@@ -814,6 +911,74 @@ func buildMatchFlags(rule *Rule, combo portCombo, srcPart, dstPart string) strin
 	if dstPart != "" {
 		sb.WriteByte(' ')
 		sb.WriteString(dstPart)
+	}
+	return sb.String()
+}
+
+// ruleTarget returns the iptables target string for a rule's action.
+func ruleTarget(rule *Rule) string {
+	switch strings.ToLower(rule.Action) {
+	case "drop":
+		return "DROP"
+	case "reject":
+		return "REJECT --reject-with icmp-port-unreachable"
+	default:
+		return "ACCEPT"
+	}
+}
+
+// anyComboHasPort reports whether any portCombo has a src or dst port match.
+func anyComboHasPort(combos []portCombo) bool {
+	for _, c := range combos {
+		if c.srcPort != "" || c.dstPort != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// anyPartIsIpset reports whether any match-part string uses an ipset (-m set) match.
+func anyPartIsIpset(parts []string) bool {
+	for _, p := range parts {
+		if strings.Contains(p, "--match-set") {
+			return true
+		}
+	}
+	return false
+}
+
+// buildAddrFlags builds match flags for interface and address/ipset matches only
+// (no protocol or port). Used for the FIREWALL_FORWARD jump entry in the subchain approach.
+func buildAddrFlags(rule *Rule, srcPart, dstPart string) string {
+	var sb strings.Builder
+	if rule.Interface != "" && rule.Interface != "any" {
+		fmt.Fprintf(&sb, " -i %s", rule.Interface)
+	}
+	if srcPart != "" {
+		sb.WriteByte(' ')
+		sb.WriteString(srcPart)
+	}
+	if dstPart != "" {
+		sb.WriteByte(' ')
+		sb.WriteString(dstPart)
+	}
+	return sb.String()
+}
+
+// buildPortFlags builds match flags for protocol and port only (no address or interface).
+// Used for rules inside per-rule subchains.
+func buildPortFlags(combo portCombo) string {
+	var sb strings.Builder
+	if combo.proto != "" {
+		fmt.Fprintf(&sb, " -p %s", combo.proto)
+	}
+	if combo.proto != "" {
+		if combo.srcPort != "" {
+			sb.WriteString(portPartStr("--sport", combo.srcPort, combo.srcMultiport))
+		}
+		if combo.dstPort != "" {
+			sb.WriteString(portPartStr("--dport", combo.dstPort, combo.dstMultiport))
+		}
 	}
 	return sb.String()
 }
