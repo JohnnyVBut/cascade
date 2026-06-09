@@ -792,29 +792,28 @@ func buildMatchFlags(rule *Rule, combo portCombo, srcPart, dstPart string) strin
 	if rule.Interface != "" && rule.Interface != "any" {
 		fmt.Fprintf(&sb, " -i %s", rule.Interface)
 	}
-	hasPort := (combo.srcPort != "" || combo.dstPort != "") && combo.proto != ""
 	if combo.proto != "" {
 		fmt.Fprintf(&sb, " -p %s", combo.proto)
-		// iptables-nft requires explicit -m <proto> to activate the port match extension.
-		// Without it, --dport/--sport are silently accepted but not applied to the rule.
-		// Only needed for tcp/udp (not icmp, not multiport path which loads its own module).
-		if hasPort && (combo.proto == "tcp" || combo.proto == "udp") {
-			fmt.Fprintf(&sb, " -m %s", combo.proto)
+	}
+	// Port matches MUST come immediately after -p <proto>, before any -m set or address
+	// matches. iptables-nft splits the rule incorrectly when --sport/--dport appear after
+	// -m set, producing two separate rules (one with the set match, one bare) and losing
+	// the port constraint entirely.
+	if combo.proto != "" {
+		if combo.srcPort != "" {
+			sb.WriteString(portPartStr("--sport", combo.srcPort, combo.srcMultiport))
+		}
+		if combo.dstPort != "" {
+			sb.WriteString(portPartStr("--dport", combo.dstPort, combo.dstMultiport))
 		}
 	}
 	if srcPart != "" {
 		sb.WriteByte(' ')
 		sb.WriteString(srcPart)
 	}
-	if combo.srcPort != "" && combo.proto != "" {
-		sb.WriteString(portPartStr("--sport", combo.srcPort, combo.srcMultiport))
-	}
 	if dstPart != "" {
 		sb.WriteByte(' ')
 		sb.WriteString(dstPart)
-	}
-	if combo.dstPort != "" && combo.proto != "" {
-		sb.WriteString(portPartStr("--dport", combo.dstPort, combo.dstMultiport))
 	}
 	return sb.String()
 }
