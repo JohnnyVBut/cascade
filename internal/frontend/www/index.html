@@ -611,12 +611,12 @@
                       <div style="display:flex; gap:16px; flex-wrap:wrap;">
                         <div style="flex:1; min-width:100px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
                           :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
-                          <div class="text-xl font-bold" style="color:#6366f1;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.totalRx||0), 0)) }}</div>
+                          <div class="text-xl font-bold" style="color:#ef4444;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.totalRx||0), 0)) }}</div>
                           <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Received</div>
                         </div>
                         <div style="flex:1; min-width:100px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
                           :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
-                          <div class="text-xl font-bold" style="color:#8b5cf6;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.totalTx||0), 0)) }}</div>
+                          <div class="text-xl font-bold" style="color:#22c55e;">{{ dashFmtBytes(allPeers.reduce((s,p) => s + (p.totalTx||0), 0)) }}</div>
                           <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Total Sent</div>
                         </div>
                       </div>
@@ -798,8 +798,8 @@
                             <!-- traffic -->
                             <div v-if="peer.totalTx || peer.totalRx"
                               style="flex-shrink:0; font-size:0.65rem; font-family:monospace; text-align:right; line-height:1.5;">
-                              <div style="color:#6366f1;">↓ {{ dashFmtBytes(peer.totalTx || 0) }}</div>
-                              <div style="color:#8b5cf6;">↑ {{ dashFmtBytes(peer.totalRx || 0) }}</div>
+                              <div style="color:#ef4444;">↓ {{ dashFmtBytes(peer.totalTx || 0) }}</div>
+                              <div style="color:#22c55e;">↑ {{ dashFmtBytes(peer.totalRx || 0) }}</div>
                             </div>
 
                             <!-- controls -->
