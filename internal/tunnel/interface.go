@@ -976,7 +976,12 @@ func (t *TunnelInterface) generateWgConfig() string {
 		withNAT := !t.DisableRoutes && !t.NatDisabled
 		var postUpNAT, postDownNAT string
 		if withNAT {
-			postUpNAT = fmt.Sprintf("; iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE", subnet)
+			// Idempotency: -C check before -A prevents duplicate MASQUERADE rules on interface restart.
+			// Without this, each awg-quick up appends a new rule regardless of existing ones.
+			postUpNAT = fmt.Sprintf(
+				"; iptables-nft -t nat -C POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || iptables-nft -t nat -A POSTROUTING -s %s -o $ISP -j MASQUERADE",
+				subnet, subnet,
+			)
 			postDownNAT = fmt.Sprintf("; iptables-nft -t nat -D POSTROUTING -s %s -o $ISP -j MASQUERADE 2>/dev/null || true", subnet)
 		}
 		// MSS clamping — only for client interfaces (DisableRoutes=false).
