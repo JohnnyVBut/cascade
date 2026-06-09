@@ -63,6 +63,12 @@ type Peer struct {
 	RateDown int `json:"rateDown"`
 	RateUp   int `json:"rateUp"`
 
+	// PreviousGroupId stores the peer's group before the expired-peer policy
+	// moved it to the configured expired-peer group. Cleared when the peer's
+	// expiry date is extended (re-activated). "" = not moved by policy.
+	// omitempty: not shown in API responses when empty (internal field).
+	PreviousGroupId string `json:"previousGroupId,omitempty"`
+
 	// Computed from PrivateKey (not stored separately)
 	DownloadableConfig bool `json:"downloadableConfig"`
 
@@ -114,7 +120,8 @@ type PeerUpdate struct {
 	OneTimeLink         *string `json:"oneTimeLink"`
 	RateDown            *int    `json:"rateDown"`
 	RateUp              *int    `json:"rateUp"`
-	GroupID             *string `json:"groupId"` // client-group alias ID
+	GroupID             *string `json:"groupId"`          // client-group alias ID
+	PreviousGroupId     *string `json:"previousGroupId"`  // set internally by expiry policy; not exposed via API
 }
 
 // InterfaceData carries the interface fields needed for config/QR generation.
@@ -162,7 +169,7 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, group_id, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
-		       total_rx, total_tx, rate_down, rate_up
+		       total_rx, total_tx, rate_down, rate_up, previous_group_id
 		FROM peers
 		WHERE interface_id = ?
 		ORDER BY created_at
@@ -190,7 +197,7 @@ func GetPeer(id string) (*Peer, error) {
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, group_id, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
-		       total_rx, total_tx, rate_down, rate_up
+		       total_rx, total_tx, rate_down, rate_up, previous_group_id
 		FROM peers WHERE id = ?
 	`, id)
 	p, err := scanPeerRow(row)
@@ -271,12 +278,38 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 		p.Enabled = *upd.Enabled
 	}
 	if upd.ExpiredAt != nil {
-		p.ExpiredAt = normaliseExpiredAt(*upd.ExpiredAt)
+		// H3: validate the incoming date — return an error if non-empty but unparseable.
+		if *upd.ExpiredAt != "" {
+			normed := normaliseExpiredAt(*upd.ExpiredAt)
+			if normed == "" {
+				return nil, fmt.Errorf("invalid expiredAt value %q: expected RFC3339 or YYYY-MM-DD", *upd.ExpiredAt)
+			}
+			p.ExpiredAt = normed
+		} else {
+			p.ExpiredAt = ""
+		}
 		// If caller didn't explicitly set enabled and peer is disabled,
 		// auto re-enable when a new future expiry date is set (renewal scenario).
 		if upd.Enabled == nil && !p.Enabled && p.ExpiredAt != "" {
 			if t, err := time.Parse(time.RFC3339, p.ExpiredAt); err == nil && time.Now().UTC().Before(t) {
 				p.Enabled = true
+				// Restore the group the peer was in before the expiry policy moved it.
+				// PreviousGroupId is set only by the expiry checker (applyRestrictPolicy),
+				// so its presence is a reliable signal that the policy ran.
+				if p.PreviousGroupId != "" {
+					p.GroupID = p.PreviousGroupId
+					p.PreviousGroupId = ""
+					// Clear rate limits only when the expiry policy definitely ran
+					// (indicated by PreviousGroupId being set). This avoids destroying
+					// manually-configured rate limits on peers where policy only set
+					// rate limits but did not move to a group.
+					p.RateDown = 0
+					p.RateUp = 0
+				}
+				// Note: if the policy applied only rate limits (no group move),
+				// PreviousGroupId is empty and we cannot safely distinguish policy-set
+				// limits from manually-set ones — we leave them unchanged. The operator
+				// can clear them manually if needed.
 			}
 		}
 	}
@@ -297,6 +330,9 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 	}
 	if upd.GroupID != nil {
 		p.GroupID = *upd.GroupID
+	}
+	if upd.PreviousGroupId != nil {
+		p.PreviousGroupId = *upd.PreviousGroupId
 	}
 	p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
@@ -673,6 +709,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 		&p.CreatedAt, &p.UpdatedAt, &p.ExpiredAt, &p.OneTimeLink,
 		&p.TotalRx, &p.TotalTx,
 		&p.RateDown, &p.RateUp,
+		&p.PreviousGroupId,
 	)
 	if err != nil {
 		return nil, err
@@ -701,14 +738,14 @@ func insertPeer(p Peer) error {
 		     endpoint, allowed_ips, address, client_allowed_ips,
 		     peer_type, group_id, persistent_keepalive, enabled,
 		     created_at, updated_at, expired_at, one_time_link,
-		     rate_down, rate_up)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     rate_down, rate_up, previous_group_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		p.ID, p.InterfaceID, p.Name, p.PublicKey, p.PrivateKey, p.PresharedKey,
 		p.Endpoint, p.AllowedIPs, p.Address, p.ClientAllowedIPs,
 		p.PeerType, p.GroupID, p.PersistentKeepalive, boolInt(p.Enabled),
 		p.CreatedAt, p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
-		p.RateDown, p.RateUp,
+		p.RateDown, p.RateUp, p.PreviousGroupId,
 	)
 	return err
 }
@@ -719,13 +756,13 @@ func updatePeer(p Peer) error {
 		SET name = ?, endpoint = ?, allowed_ips = ?, address = ?,
 		    client_allowed_ips = ?, group_id = ?, persistent_keepalive = ?,
 		    enabled = ?, updated_at = ?, expired_at = ?, one_time_link = ?,
-		    rate_down = ?, rate_up = ?
+		    rate_down = ?, rate_up = ?, previous_group_id = ?
 		WHERE id = ?
 	`,
 		p.Name, p.Endpoint, p.AllowedIPs, p.Address,
 		p.ClientAllowedIPs, p.GroupID, p.PersistentKeepalive,
 		boolInt(p.Enabled), p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
-		p.RateDown, p.RateUp,
+		p.RateDown, p.RateUp, p.PreviousGroupId,
 		p.ID,
 	)
 	return err

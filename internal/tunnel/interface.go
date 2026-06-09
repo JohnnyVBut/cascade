@@ -30,6 +30,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/tc"
@@ -513,6 +514,14 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 // UpdatePeer applies upd to the peer in SQLite and in-memory cache.
 // Reloads kernel config only if WireGuard-relevant fields changed.
 func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.Peer, error) {
+	// Capture old groupId before update to handle ipset rebuild on group change.
+	oldGroupID := ""
+	if upd.GroupID != nil {
+		if old := t.GetPeer(peerID); old != nil {
+			oldGroupID = old.GroupID
+		}
+	}
+
 	updated, err := peer.UpdatePeer(peerID, upd)
 	if err != nil {
 		return nil, err
@@ -547,6 +556,23 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 			tc.Apply(t.ID, updated.AllowedIPs, updated.RateDown, updated.RateUp, t.kernelMTU())
 		} else {
 			tc.Remove(t.ID, updated.AllowedIPs)
+		}
+	}
+
+	// Rebuild client-group ipsets when group changes (covers both API and expiry-checker paths).
+	// The API handler also does this, but calling twice is safe — RebuildGroupIPSet is idempotent.
+	if upd.GroupID != nil && updated.PeerType == "client" {
+		if am := aliases.Get(); am != nil {
+			if oldGroupID != "" && oldGroupID != updated.GroupID {
+				if err := am.RebuildGroupIPSet(oldGroupID); err != nil {
+					log.Printf("tunnel: UpdatePeer: rebuild old group ipset %s: %v", oldGroupID, err)
+				}
+			}
+			if updated.GroupID != "" {
+				if err := am.RebuildGroupIPSet(updated.GroupID); err != nil {
+					log.Printf("tunnel: UpdatePeer: rebuild new group ipset %s: %v", updated.GroupID, err)
+				}
+			}
 		}
 	}
 

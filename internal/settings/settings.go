@@ -50,6 +50,14 @@ type GlobalSettings struct {
 	// MTU for client configs. 0 = not set (WireGuard picks automatically).
 	// Per-interface MTU overrides this value when non-zero.
 	MTU int `json:"mtu"`
+
+	// Expired peer policy — what to do when a peer's expiredAt passes.
+	// "disable" (default): disable the peer (Enabled=false).
+	// "restrict": keep peer enabled but apply rate limits and/or move to a group.
+	ExpiredPeerPolicy   string `json:"expiredPeerPolicy"`   // "disable" | "restrict"
+	ExpiredPeerRateDown int    `json:"expiredPeerRateDown"` // kbps downstream limit; 0 = no limit
+	ExpiredPeerRateUp   int    `json:"expiredPeerRateUp"`   // kbps upstream limit;   0 = no limit
+	ExpiredPeerGroupId  string `json:"expiredPeerGroupId"`  // client-group alias ID to move expired peer into; "" = don't move
 }
 
 // Template is an AWG2 obfuscation parameter set.
@@ -603,6 +611,14 @@ func isValidSettingValue(k, v string) bool {
 		var n int
 		fmt.Sscanf(v, "%d", &n)
 		return n == 0 || (n >= 576 && n <= 9000)
+	case "expiredPeerPolicy":
+		return v == "disable" || v == "restrict"
+	case "expiredPeerRateDown", "expiredPeerRateUp":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		return n >= 0
+	case "expiredPeerGroupId":
+		return true // any string is valid (empty = don't move)
 	}
 	return true // unknown keys pass through (applySettingKey will ignore them)
 }
@@ -666,6 +682,24 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 		if n == 0 || (n >= 576 && n <= 9000) {
 			s.MTU = n
 		}
+	case "expiredPeerPolicy":
+		if v == "disable" || v == "restrict" {
+			s.ExpiredPeerPolicy = v
+		}
+	case "expiredPeerRateDown":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n >= 0 {
+			s.ExpiredPeerRateDown = n
+		}
+	case "expiredPeerRateUp":
+		var n int
+		fmt.Sscanf(v, "%d", &n)
+		if n >= 0 {
+			s.ExpiredPeerRateUp = n
+		}
+	case "expiredPeerGroupId":
+		s.ExpiredPeerGroupId = v
 	}
 }
 

@@ -286,6 +286,11 @@ new Vue({
       publicIPManual: '',
       // MTU for client configs (0 = auto)
       mtu: 0,
+      // Expired peer policy
+      expiredPeerPolicy:   'disable',  // "disable" | "restrict"
+      expiredPeerRateDown: 0,          // kbps downstream; 0 = no limit
+      expiredPeerRateUp:   0,          // kbps upstream;   0 = no limit
+      expiredPeerGroupId:  '',         // client-group alias ID; '' = don't move
       // UI preferences
       lang: 'en',
       // Runtime-only (returned by GET, not sent in PUT)

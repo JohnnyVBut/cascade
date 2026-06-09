@@ -2842,6 +2842,67 @@
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-2">Shown on each peer card. Changes apply immediately.</p>
               </div>
 
+              <!-- Expired Peer Policy -->
+              <div style="border-top-width:1px; padding-top:12px;" class="dark:border-neutral-600">
+                <p class="text-sm font-semibold dark:text-neutral-300 mb-1">Expired Peer Policy</p>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mb-3">What happens when a peer's expiry date passes.</p>
+
+                <!-- Policy radio -->
+                <div class="flex flex-col gap-2 mb-3">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" v-model="globalSettings.expiredPeerPolicy" value="disable">
+                    <span class="text-sm dark:text-neutral-200">
+                      <span class="font-medium">Disable peer</span>
+                      <span class="text-gray-400 dark:text-neutral-500 ml-1">(default) — sets peer Enabled = off</span>
+                    </span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" v-model="globalSettings.expiredPeerPolicy" value="restrict">
+                    <span class="text-sm dark:text-neutral-200">
+                      <span class="font-medium">Restrict access</span>
+                      <span class="text-gray-400 dark:text-neutral-500 ml-1">— peer stays enabled, apply rate limit and/or move to group</span>
+                    </span>
+                  </label>
+                </div>
+
+                <!-- Restrict options (shown only when policy = restrict) -->
+                <div v-if="globalSettings.expiredPeerPolicy === 'restrict'"
+                  style="margin-left:20px; padding:12px; border-left:3px solid #7c3aed; background:rgba(124,58,237,0.05); border-radius:4px;">
+
+                  <!-- Rate limits -->
+                  <p class="text-xs font-medium dark:text-neutral-300 mb-2">Bandwidth limits <span class="font-normal text-gray-400">(0 = no limit)</span></p>
+                  <div class="flex gap-4 mb-3">
+                    <div>
+                      <label class="block text-xs text-gray-500 dark:text-neutral-400 mb-1">↓ Down (kbps)</label>
+                      <input v-model.number="globalSettings.expiredPeerRateDown" type="number" min="0" placeholder="0"
+                        class="w-28 px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                    <div>
+                      <label class="block text-xs text-gray-500 dark:text-neutral-400 mb-1">↑ Up (kbps)</label>
+                      <input v-model.number="globalSettings.expiredPeerRateUp" type="number" min="0" placeholder="0"
+                        class="w-28 px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    </div>
+                  </div>
+
+                  <!-- Move to group -->
+                  <p class="text-xs font-medium dark:text-neutral-300 mb-2">Move to group <span class="font-normal text-gray-400">(optional — leave blank to keep current group)</span></p>
+                  <select v-model="globalSettings.expiredPeerGroupId"
+                    class="px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                    <option value="">— don't change group —</option>
+                    <option v-for="g in clientGroups" :key="g.id" :value="g.id">{{ g.name }}</option>
+                  </select>
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                    The peer's original group is saved and restored automatically when the expiry date is extended.
+                  </p>
+
+                  <!-- Warning when neither rate nor group is configured -->
+                  <p v-if="!globalSettings.expiredPeerRateDown && !globalSettings.expiredPeerRateUp && !globalSettings.expiredPeerGroupId"
+                    class="text-xs mt-2" style="color:#f59e0b;">
+                    ⚠ No rate limits or group configured — restrict policy will have no effect.
+                  </p>
+                </div>
+              </div>
+
               <div class="flex items-center gap-3 pt-2">
                 <button @click="saveSettings"
                   class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded transition text-sm font-medium">

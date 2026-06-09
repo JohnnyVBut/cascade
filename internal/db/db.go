@@ -536,6 +536,15 @@ CREATE TABLE IF NOT EXISTS dashboard_widgets (
 );
 `,
 	},
+	{
+		version: 26,
+		sql: `
+-- Expired peer policy support: remember which group a peer was in before the
+-- expiry policy moved it to the configured expired-peer group. Cleared when
+-- the peer's expiry date is extended past now (i.e. the peer is "re-activated").
+ALTER TABLE peers ADD COLUMN previous_group_id TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
