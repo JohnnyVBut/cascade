@@ -232,6 +232,7 @@ new Vue({
       clientAllowedIPs: '',
       persistentKeepalive: 25,
       groupId: '',          // client-group alias ID
+      expiredAt: '',        // YYYY-MM-DD or empty
       showQR: false,
     },
 
@@ -1464,7 +1465,7 @@ new Vue({
         return;
       }
 
-      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, groupId } = this.peerCreate;
+      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, groupId, expiredAt } = this.peerCreate;
 
       // Validation
       if (!name || name.trim() === '') {
@@ -1493,6 +1494,7 @@ new Vue({
         endpoint: endpoint || undefined,
         persistentKeepalive: persistentKeepalive || 25,
         ...(peerType === 'client' && groupId ? { groupId } : {}),
+        ...(expiredAt ? { expiredAt } : {}),
       };
 
       try {
@@ -1508,7 +1510,7 @@ new Vue({
         this.showPeerCreate = false;
         this.inlineGroupShow = false;
         this.inlineGroupInput = '';
-        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), showQR: false };
+        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), expiredAt: '', showQR: false };
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
@@ -3235,7 +3237,7 @@ new Vue({
           name,
           autoAllocateIP: true,
           generateKeys: true,
-          expiredDate: this.peerCreateExpiredDate || undefined,
+          expiredAt: this.peerCreateExpiredDate || undefined,
           groupId: this.peerCreateGroupId || this.defaultGroupId() || undefined,
         };
 

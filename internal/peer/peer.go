@@ -94,6 +94,7 @@ type PeerInput struct {
 	PeerType            string `json:"peerType"`
 	GroupID             string `json:"groupId"`  // client-group alias ID (for client peers)
 	PersistentKeepalive int    `json:"persistentKeepalive"`
+	ExpiredAt           string `json:"expiredAt"` // RFC3339 or YYYY-MM-DD; "" = no expiry
 	// Special flags (not stored directly)
 	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
 	AutoAllocateIP bool   `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
@@ -228,6 +229,7 @@ func CreatePeer(interfaceID string, inp PeerInput) (*Peer, error) {
 		Enabled:             true,
 		CreatedAt:           createdAt,
 		UpdatedAt:           now,
+		ExpiredAt:           normaliseExpiredAt(inp.ExpiredAt),
 	}
 	p.DownloadableConfig = p.PrivateKey != ""
 
@@ -777,4 +779,22 @@ func intOr(v, def int) int {
 		return def
 	}
 	return v
+}
+
+// normaliseExpiredAt accepts RFC3339, YYYY-MM-DD, or empty string.
+// Returns normalised RFC3339 UTC string, or "" if input is empty/invalid.
+func normaliseExpiredAt(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// Try RFC3339 first
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	// Try YYYY-MM-DD (treat as end of day UTC)
+	if t, err := time.Parse("2006-01-02", s); err == nil {
+		return t.UTC().Format(time.RFC3339)
+	}
+	return ""
 }

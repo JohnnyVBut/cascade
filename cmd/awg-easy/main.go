@@ -250,6 +250,14 @@ func main() {
 	natMgr.RestoreAll()
 	nat.SetInstance(natMgr)
 
+	// 8. Peer expiry checker — disables peers whose expiredAt has passed.
+	//    Runs every 60 s; first check at 30 s after startup.
+	{
+		stopExpiry := make(chan struct{})
+		tunnel.StartExpiryChecker(stopExpiry)
+		defer close(stopExpiry)
+	}
+
 	// ── Start HTTP server ──────────────────────────────────────────────────────
 	// cfg.BindHost="" → ":port" → listens on all interfaces (0.0.0.0).
 	// cfg.BindHost="127.0.0.1" → "127.0.0.1:port" → localhost only (behind reverse proxy).

@@ -777,6 +777,17 @@
                                   :title="'Last handshake: ' + new Date(peer.latestHandshakeAt).toLocaleString()">
                                   🤝{{ dashTimeShort(peer.latestHandshakeAt) }}
                                 </span>
+                                <!-- expiry badge -->
+                                <span v-if="peer.expiredAt"
+                                  style="font-size:0.6rem; font-weight:600; padding:1px 4px; border-radius:3px; margin-left:2px;"
+                                  :title="'Expires: ' + new Date(peer.expiredAt).toLocaleDateString('ru-RU')"
+                                  :style="new Date(peer.expiredAt) < new Date()
+                                    ? { background: 'rgba(239,68,68,0.15)', color: '#ef4444' }
+                                    : (new Date(peer.expiredAt) - new Date() < 7*24*3600*1000)
+                                      ? { background: 'rgba(245,158,11,0.15)', color: theme==='dark'?'#fbbf24':'#d97706' }
+                                      : { background: theme==='dark'?'rgba(156,163,175,0.15)':'rgba(107,114,128,0.08)', color: theme==='dark'?'#d1d5db':'#6b7280' }">
+                                  ⏰{{ new Date(peer.expiredAt).toLocaleDateString('en-GB', {day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-') }}
+                                </span>
                               </div>
                               <div style="font-size:0.65rem; color:#9ca3af; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                 {{ peer.address || peer.allowedIPs }}
@@ -6358,6 +6369,16 @@
               </div>
             </div>
 
+            <!-- Expiry date (client peers only) -->
+            <div v-if="peerCreate.peerType === 'client'" class="modal-section dark:border-neutral-600">
+              <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                Expiry date <span class="font-normal text-gray-400">(optional — peer will be disabled after this date)</span>
+              </label>
+              <input v-model="peerCreate.expiredAt" type="date"
+                class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
+                style="padding:8px 12px;">
+            </div>
+
             <div class="modal-section dark:border-neutral-600">
               <div class="flex items-center justify-between">
                 <label v-if="peerCreate.peerType === 'client' && peerCreate.mode === 'generate'"
@@ -6403,8 +6424,8 @@
                   v-on:keyup.enter="createQuickPeer"
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
               </div>
-              <div v-if="enableExpireTime" class="mb-4">
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Expire Date <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional)</span></label>
+              <div class="mb-4">
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Expiry date <span class="text-gray-400 dark:text-neutral-500 font-normal">(optional)</span></label>
                 <input v-model="peerCreateExpiredDate" type="date"
                   class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
               </div>
