@@ -819,13 +819,22 @@ func (m *Manager) buildPortCombinations(rule *Rule) ([]portCombo, error) {
 
 	if !srcHasAlias && !dstHasAlias {
 		// Legacy path.
+		srcPort := strings.TrimSpace(rule.Source.Port)
+		dstPort := strings.TrimSpace(rule.Destination.Port)
+		hasPort := srcPort != "" || dstPort != ""
+
 		protos := expandProtocol(rule.Protocol)
-		combos := make([]portCombo, len(protos))
-		for i, proto := range protos {
-			combos[i] = portCombo{
-				proto:   proto,
-				srcPort: strings.TrimSpace(rule.Source.Port),
-				dstPort: strings.TrimSpace(rule.Destination.Port),
+		var combos []portCombo
+		for _, proto := range protos {
+			if proto == "" && hasPort {
+				// iptables requires -p <proto> before --sport/--dport.
+				// When protocol is "any" but ports are specified, expand to both
+				// tcp and udp so the port constraint is actually applied.
+				for _, p := range []string{"tcp", "udp"} {
+					combos = append(combos, portCombo{proto: p, srcPort: srcPort, dstPort: dstPort})
+				}
+			} else {
+				combos = append(combos, portCombo{proto: proto, srcPort: srcPort, dstPort: dstPort})
 			}
 		}
 		return combos, nil
@@ -927,10 +936,12 @@ func ruleTarget(rule *Rule) string {
 	}
 }
 
-// anyComboHasPort reports whether any portCombo has a src or dst port match.
+// anyComboHasPort reports whether any portCombo has a src or dst port match
+// that will actually be emitted (requires proto to be set — iptables cannot
+// match ports without -p <proto>).
 func anyComboHasPort(combos []portCombo) bool {
 	for _, c := range combos {
-		if c.srcPort != "" || c.dstPort != "" {
+		if c.proto != "" && (c.srcPort != "" || c.dstPort != "") {
 			return true
 		}
 	}
