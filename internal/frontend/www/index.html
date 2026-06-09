@@ -532,8 +532,8 @@
                           <span style="font-weight:600; white-space:nowrap; flex-shrink:0;"
                             :style="{ color: theme==='dark'?'#e5e5e5':'#374151' }">{{ iface.name }}</span>
 
-                          <!-- system id -->
-                          <span style="font-family:monospace; color:#9ca3af; white-space:nowrap; flex-shrink:0; font-size:0.65rem;">{{ iface.id }}</span>
+                          <!-- system id + port -->
+                          <span style="font-family:monospace; color:#9ca3af; white-space:nowrap; flex-shrink:0; font-size:0.65rem;">{{ iface.id }}:{{ iface.listenPort }}</span>
 
                           <!-- S2S badge -->
                           <span v-if="iface.disableRoutes"
@@ -581,15 +581,19 @@
                                 : 'padding:3px; background:rgba(99,102,241,0.1); border:none; border-radius:4px; cursor:pointer; color:#6366f1; display:flex; align-items:center; line-height:0;'">
                               <svg style="width:13px;height:13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             </button>
+                            <!-- Edit interface -->
+                            <button @click="openInterfaceEdit(iface)" title="Edit interface"
+                              style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                              <svg style="width:13px;height:13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
                           </div>
                         </div>
 
-                        <!-- Row 2: address + port + mtu + mss + traffic + peers -->
+                        <!-- Row 2: address + traffic + peers -->
                         <div style="display:flex; align-items:center; gap:8px; margin-top:2px; padding-left:16px; font-size:0.65rem; font-family:monospace; color:#9ca3af; flex-wrap:wrap;">
                           <span>{{ iface.address }}</span>
-                          <span>:{{ iface.listenPort }}</span>
-<span style="color:#6366f1;">↓{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalRx||0),0)) }}</span>
-                          <span style="color:#8b5cf6;">↑{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalTx||0),0)) }}</span>
+                          <span style="color:#ef4444;">↓{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalRx||0),0)) }}</span>
+                          <span style="color:#22c55e;">↑{{ dashFmtBytes(allPeers.filter(p=>p.interfaceId===iface.id).reduce((s,p)=>s+(p.totalTx||0),0)) }}</span>
                           <span>{{ iface.peerCount||0 }} peers</span>
                         </div>
                       </div>
