@@ -775,7 +775,10 @@
                               <div style="font-size:0.65rem; color:#9ca3af; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                 {{ peer.address || peer.allowedIPs }}
                                 <span v-if="peer.runtimeEndpoint" style="margin-left:4px;">· {{ peer.peerType === 'interconnect' ? peer.runtimeEndpoint : peerPublicIP(peer.runtimeEndpoint) }}</span>
-                                <span v-if="peer.latestHandshakeAt" style="margin-left:4px;">· {{ peer.latestHandshakeAt | timeago }}</span>
+                                <span v-if="peer.latestHandshakeAt" style="margin-left:5px; display:inline-flex; align-items:center; gap:2px;"
+                                  :title="'Last handshake: ' + new Date(peer.latestHandshakeAt).toLocaleString()">
+                                  <span style="font-style:normal; line-height:1;">🤝</span>{{ dashTimeShort(peer.latestHandshakeAt) }}
+                                </span>
                               </div>
                             </div>
 

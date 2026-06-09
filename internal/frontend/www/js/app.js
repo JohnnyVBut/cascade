@@ -2485,6 +2485,17 @@ new Vue({
       } catch (e) { /* non-fatal */ }
     },
 
+    // Compact elapsed time: "5s", "20m", "3h", "2d"
+    dashTimeShort(ts) {
+      if (!ts) return '';
+      const sec = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+      if (sec < 0) return '';
+      if (sec < 60) return sec + 's';
+      if (sec < 3600) return Math.floor(sec / 60) + 'm';
+      if (sec < 86400) return Math.floor(sec / 3600) + 'h';
+      return Math.floor(sec / 86400) + 'd';
+    },
+
     dashFmtBytes(bytes) {
       if (!bytes || bytes === 0) return '0 B';
       const units = ['B', 'KB', 'MB', 'GB', 'TB'];
