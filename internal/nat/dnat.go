@@ -413,6 +413,8 @@ func buildDnatDeleteCmds(rule *DnatRule) []string {
 }
 
 // applyDnatRule adds DNAT rules to the kernel idempotently (-C before -A, FIX-14).
+// After applying, flushes conntrack entries for the inbound port so that existing
+// flows (which may have been tracked without NAT) pick up the new DNAT rule.
 func (m *Manager) applyDnatRule(rule *DnatRule) error {
 	addCmds := buildDnatCmds(rule, "A")
 	chkCmds := buildDnatCmds(rule, "C")
@@ -427,10 +429,12 @@ func (m *Manager) applyDnatRule(rule *DnatRule) error {
 			return fmt.Errorf("iptables-nft: %w", err)
 		}
 	}
+	flushConntrackForDnat(rule)
 	return nil
 }
 
 // removeDnatRule deletes DNAT rules from the kernel.
+// After removal, flushes conntrack entries so stale NAT state is cleared.
 func (m *Manager) removeDnatRule(rule *DnatRule) error {
 	for _, cmd := range buildDnatDeleteCmds(rule) {
 		log.Printf("nat: removeDnatRule: %s", cmd)
@@ -438,7 +442,28 @@ func (m *Manager) removeDnatRule(rule *DnatRule) error {
 			log.Printf("nat: removeDnatRule: %s (may already be gone): %v", cmd, err)
 		}
 	}
+	flushConntrackForDnat(rule)
 	return nil
+}
+
+// flushConntrackForDnat removes conntrack entries for the inbound port of a DNAT rule.
+// This is required because conntrack caches NAT decisions per-flow: if a flow was
+// established before the DNAT rule was added, conntrack would apply the old "no-NAT"
+// decision to every subsequent packet, bypassing the nat table entirely.
+// Uses conntrack(8) if available; silently skips if not installed (FIX-GO-24).
+func flushConntrackForDnat(rule *DnatRule) {
+	protos := []string{rule.Protocol}
+	if rule.Protocol == "both" {
+		protos = []string{"tcp", "udp"}
+	}
+	for _, proto := range protos {
+		cmd := fmt.Sprintf("conntrack -D -p %s --dport %d", proto, rule.InPort)
+		if out, err := util.ExecSilent(cmd); err != nil {
+			log.Printf("nat: flushConntrackForDnat: %s: %v %s", cmd, err, out)
+		} else {
+			log.Printf("nat: flushConntrackForDnat: flushed conntrack %s dport=%d", proto, rule.InPort)
+		}
+	}
 }
 
 // validateDnat checks DnatRuleInput for required fields and safe values.
