@@ -271,7 +271,7 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 		p.Enabled = *upd.Enabled
 	}
 	if upd.ExpiredAt != nil {
-		p.ExpiredAt = *upd.ExpiredAt
+		p.ExpiredAt = normaliseExpiredAt(*upd.ExpiredAt)
 	}
 	if upd.OneTimeLink != nil {
 		p.OneTimeLink = *upd.OneTimeLink

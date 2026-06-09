@@ -47,7 +47,12 @@ func checkExpiredPeers() {
 		}
 		expAt, err := time.Parse(time.RFC3339, p.ExpiredAt)
 		if err != nil {
-			continue
+			// Fallback: YYYY-MM-DD (legacy format stored before normalisation was added)
+			expAt, err = time.Parse("2006-01-02", p.ExpiredAt)
+			if err != nil {
+				log.Printf("expiry: peer %q has unparseable expiredAt %q, skipping", p.ID, p.ExpiredAt)
+				continue
+			}
 		}
 		if now.Before(expAt) {
 			continue
