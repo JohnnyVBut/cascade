@@ -3386,6 +3386,7 @@ new Vue({
         rateDown: peer.rateDown ? peer.rateDown / 1000 : 0,
         rateUp:   peer.rateUp   ? peer.rateUp   / 1000 : 0,
         groupId: peer.groupId || (peer.peerType === 'client' ? this.defaultGroupId() : ''),
+        expiredAt: peer.expiredAt ? peer.expiredAt.slice(0, 10) : '',
       };
       this.showPeerEditModal = true;
     },
@@ -3420,6 +3421,7 @@ new Vue({
         updates.rateDown = Math.round((Number(this.peerEditForm.rateDown) || 0) * 1000);
         updates.rateUp   = Math.round((Number(this.peerEditForm.rateUp)   || 0) * 1000);
         updates.groupId  = this.peerEditForm.groupId || '';
+        updates.expiredAt = this.peerEditForm.expiredAt || '';
       }
       try {
         await this.api.updateTunnelInterfacePeer({

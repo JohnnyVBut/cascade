@@ -6664,6 +6664,15 @@
                 </select>
               </div>
 
+              <!-- Expiry date (client peers only) -->
+              <div v-if="peerEditForm._peer && peerEditForm._peer.peerType !== 'interconnect'">
+                <label class="block text-sm font-medium mb-1 dark:text-neutral-200">
+                  Expiry date <span class="text-gray-400 font-normal">(optional — clear to remove)</span>
+                </label>
+                <input v-model="peerEditForm.expiredAt" type="date"
+                  class="w-full border border-gray-300 dark:border-neutral-500 dark:bg-neutral-600 dark:text-neutral-100 rounded px-3 py-2 text-sm"/>
+              </div>
+
               <!-- Persistent Keepalive -->
               <div>
                 <label class="block text-sm font-medium mb-1 dark:text-neutral-200">Persistent Keepalive <span class="text-gray-400 font-normal">(seconds, 0 = off)</span></label>
