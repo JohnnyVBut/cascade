@@ -267,6 +267,7 @@ new Vue({
       rateDown: 0,          // kbps, 0 = unlimited
       rateUp: 0,            // kbps, 0 = unlimited
       groupId: '',          // client-group alias ID
+      expiredAt: '',        // YYYY-MM-DD or '' = no expiry
     },
     // Settings
     globalSettings: {
