@@ -1000,8 +1000,8 @@ func (t *TunnelInterface) generateWgConfig() string {
 			)
 		}
 		postUp := fmt.Sprintf(
-			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -A FORWARD -o %s -j ACCEPT%s%s\n",
-			getISP, t.ID, t.ID, t.ID, postUpNAT, postUpMSS,
+			"PostUp = %s; ip link set %s txqueuelen 500; iptables-nft -C FORWARD -i %s -j ACCEPT 2>/dev/null || iptables-nft -A FORWARD -i %s -j ACCEPT; iptables-nft -C FORWARD -o %s -j ACCEPT 2>/dev/null || iptables-nft -A FORWARD -o %s -j ACCEPT%s%s\n",
+			getISP, t.ID, t.ID, t.ID, t.ID, t.ID, postUpNAT, postUpMSS,
 		)
 		postDown := fmt.Sprintf(
 			"PostDown = %s; iptables-nft -D FORWARD -i %s -j ACCEPT 2>/dev/null || true; iptables-nft -D FORWARD -o %s -j ACCEPT 2>/dev/null || true%s%s\n",

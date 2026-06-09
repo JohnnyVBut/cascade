@@ -1353,14 +1353,20 @@ func validateInput(inp RuleInput) error {
 }
 
 // normalizeEndpoint sanitises and fills defaults for an endpoint.
+// Port fields are preserved even for type=any — a rule can match "any source,
+// but only on port 53" which is perfectly valid.
 func normalizeEndpoint(ep Endpoint) Endpoint {
+	ep.Port = strings.TrimSpace(ep.Port)
+	ep.PortAliasID = strings.TrimSpace(ep.PortAliasID)
 	if ep.Type == "" || ep.Type == "any" {
-		return Endpoint{Type: "any"}
+		return Endpoint{
+			Type:        "any",
+			Port:        ep.Port,
+			PortAliasID: ep.PortAliasID,
+		}
 	}
 	ep.Value = strings.TrimSpace(ep.Value)
 	ep.AliasID = strings.TrimSpace(ep.AliasID)
-	ep.Port = strings.TrimSpace(ep.Port)
-	ep.PortAliasID = strings.TrimSpace(ep.PortAliasID)
 	return ep
 }
 
