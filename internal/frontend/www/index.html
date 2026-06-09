@@ -803,15 +803,12 @@
                             </div>
 
                             <!-- controls -->
-                            <div style="display:flex; gap:2px; flex-shrink:0; align-items:center;">
-                              <!-- enable/disable toggle -->
-                              <div @click="peer.enabled ? disablePeer(peer) : enablePeer(peer)"
-                                :title="peer.enabled ? 'Disable' : 'Enable'"
-                                style="width:26px; height:14px; border-radius:7px; cursor:pointer; position:relative; transition:background 0.2s; flex-shrink:0;"
-                                :style="{ background: peer.enabled ? '#16a34a' : '#d1d5db' }">
-                                <div style="position:absolute; top:2px; width:10px; height:10px; border-radius:50%; background:#fff; transition:left 0.15s;"
-                                  :style="{ left: peer.enabled ? '14px' : '2px' }"></div>
-                              </div>
+                            <div style="display:flex; gap:4px; flex-shrink:0; align-items:center;">
+                              <!-- enable/disable dot -->
+                              <span @click="peer.enabled ? disablePeer(peer) : enablePeer(peer)"
+                                :title="peer.enabled ? 'Click to disable' : 'Click to enable'"
+                                style="width:10px; height:10px; border-radius:50%; cursor:pointer; flex-shrink:0; display:inline-block; transition:background 0.2s;"
+                                :style="{ background: peer.enabled ? '#22c55e' : '#9ca3af' }"></span>
                               <!-- QR: active for client peers, dimmed/disabled for S2S -->
                               <button
                                 @click="!peer.peerType || peer.peerType !== 'interconnect' ? (qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg') : null"
