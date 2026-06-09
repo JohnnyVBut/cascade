@@ -2362,18 +2362,45 @@ new Vue({
       if (!grid) return;
 
       // Proportional scaling: 450px = 1.0 (reference), linear, clamped 0.55–1.5.
-      // Fully automatic — no hardcoded breakpoints, works on any screen size.
-      const zoomFor = (width) => Math.max(0.55, Math.min(1.5, width / 450));
+      // Multiplied by per-widget fontScale (user +/- adjustment, default 1.0).
+      const zoomFor = (width, fontScale) =>
+        Math.max(0.55, Math.min(1.5, (width / 450) * (fontScale || 1.0)));
 
       const obs = new ResizeObserver(entries => {
         for (const entry of entries) {
+          const gsItem = entry.target.closest('[gs-id]');
+          const widgetId = gsItem ? gsItem.getAttribute('gs-id') : null;
+          const widget = widgetId ? this.dashWidgets.find(w => w.id === widgetId) : null;
           const card = entry.target.querySelector('.dash-card');
-          if (card) card.style.zoom = zoomFor(entry.contentRect.width);
+          if (card) card.style.zoom = zoomFor(entry.contentRect.width, widget ? widget.fontScale : 1.0);
         }
       });
 
       grid.querySelectorAll('.grid-stack-item-content').forEach(c => obs.observe(c));
       this._dashResizeObs = obs;
+    },
+
+    // Adjust per-widget font scale by delta (+0.1 or -0.1), clamp 0.5–2.0.
+    // Triggers ResizeObserver re-fire by dispatching a resize on the content element.
+    dashAdjustFontScale(widgetId, delta) {
+      const idx = this.dashWidgets.findIndex(w => w.id === widgetId);
+      if (idx === -1) return;
+      const w = this.dashWidgets[idx];
+      const current = w.fontScale || 1.0;
+      const next = Math.round(Math.max(0.5, Math.min(2.0, current + delta)) * 10) / 10;
+      this.dashWidgets.splice(idx, 1, { ...w, fontScale: next });
+      // Apply zoom immediately without waiting for ResizeObserver
+      this.$nextTick(() => {
+        const gsItem = document.querySelector(`[gs-id="${widgetId}"]`);
+        if (!gsItem) return;
+        const content = gsItem.querySelector('.grid-stack-item-content');
+        const card = gsItem.querySelector('.dash-card');
+        if (card && content) {
+          const autoZoom = Math.max(0.55, Math.min(1.5, content.offsetWidth / 450));
+          card.style.zoom = Math.max(0.55, Math.min(1.5, autoZoom * next));
+        }
+      });
+      this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
     },
 
     dashDefaultWidgets() {

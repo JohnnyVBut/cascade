@@ -438,8 +438,15 @@
                 <div class="dash-card">
                   <div class="dash-card-header">
                     <span>{{ dashWidgetLabel(w.type) }}</span>
-                    <button @click="dashRemoveWidget(w.id)" title="Remove widget"
-                      style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit;">✕</button>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                      <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
+                        style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
+                      <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
+                      <button @click="dashAdjustFontScale(w.id, +0.1)" title="Larger text"
+                        style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">+</button>
+                      <button @click="dashRemoveWidget(w.id)" title="Remove widget"
+                        style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit; margin-left:2px;">✕</button>
+                    </div>
                   </div>
                   <div class="dash-card-body">
 
