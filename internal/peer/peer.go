@@ -288,14 +288,19 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 		} else {
 			p.ExpiredAt = ""
 		}
-		// If caller didn't explicitly set enabled and peer is disabled,
-		// auto re-enable when a new future expiry date is set (renewal scenario).
-		if upd.Enabled == nil && !p.Enabled && p.ExpiredAt != "" {
+		// Renewal: expiry date extended to the future.
+		// - If peer was disabled (policy=disable): re-enable it.
+		// - If peer has PreviousGroupId set (policy=restrict was applied): restore
+		//   group and clear rate limits regardless of enabled state — the restrict
+		//   policy keeps the peer enabled, so !p.Enabled would never be true here.
+		if p.ExpiredAt != "" {
 			if t, err := time.Parse(time.RFC3339, p.ExpiredAt); err == nil && time.Now().UTC().Before(t) {
-				p.Enabled = true
-				// PreviousGroupId is set by applyRestrictPolicy whenever ANY policy action
-				// fires (rate limits or group move). Its presence means "policy ran" —
-				// restore group and clear rate limits unconditionally.
+				// Re-enable if disabled (policy=disable scenario).
+				if upd.Enabled == nil && !p.Enabled {
+					p.Enabled = true
+				}
+				// Restore group and rate limits if restrict policy was applied
+				// (PreviousGroupId is the "policy ran" marker set by applyRestrictPolicy).
 				if p.PreviousGroupId != "" {
 					p.GroupID = p.PreviousGroupId
 					p.PreviousGroupId = ""
