@@ -3387,7 +3387,7 @@ new Vue({
         rateDown: peer.rateDown ? peer.rateDown / 1000 : 0,
         rateUp:   peer.rateUp   ? peer.rateUp   / 1000 : 0,
         groupId: peer.groupId || (peer.peerType === 'client' ? this.defaultGroupId() : ''),
-        expiredAt: peer.expiredAt ? peer.expiredAt.slice(0, 10) : '',
+        expiredAt: peer.expiredAt ? (typeof peer.expiredAt === 'string' ? peer.expiredAt.slice(0, 10) : new Date(peer.expiredAt).toISOString().slice(0, 10)) : '',
       };
       this.showPeerEditModal = true;
     },
