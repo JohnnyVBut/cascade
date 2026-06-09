@@ -750,10 +750,8 @@ func (m *Manager) buildPortCombinations(rule *Rule) ([]portCombo, error) {
 	if dstHasAlias {
 		specs, err := m.am.GetPortMatchSpec(rule.Destination.PortAliasID)
 		if err != nil {
-			log.Printf("firewall: buildPortCombinations rule=%q dst portAlias=%q: GetPortMatchSpec error: %v", rule.Name, rule.Destination.PortAliasID, err)
 			return nil, err
 		}
-		log.Printf("firewall: buildPortCombinations rule=%q dst portAlias=%q: specs=%+v", rule.Name, rule.Destination.PortAliasID, specs)
 		dstSpecs = specs
 	} else {
 		dstSpecs = []aliases.PortMatchSpec{{Proto: "", Ports: rule.Destination.Port, Multiport: false}}
