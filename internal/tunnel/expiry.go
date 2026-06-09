@@ -124,6 +124,17 @@ func applyRestrictPolicy(m *Manager, p *peer.Peer, s *settings.GlobalSettings) {
 		actions = append(actions, "moved-to-expired-group")
 	}
 
+	// Always set PreviousGroupId when any policy action fires (even rate-limit-only).
+	// It serves as a "policy was applied" marker so renewal can clear rate limits.
+	// If PreviousGroupId is already set (second tick, idempotency), leave it alone.
+	if changed && upd.PreviousGroupId == nil && p.PreviousGroupId == "" {
+		prev := p.GroupID
+		if prev == "" {
+			prev = "default"
+		}
+		upd.PreviousGroupId = &prev
+	}
+
 	if !changed {
 		// Policy is "restrict" but nothing needs updating (already applied, or nothing configured).
 		if s.ExpiredPeerRateDown == 0 && s.ExpiredPeerRateUp == 0 && s.ExpiredPeerGroupId == "" {

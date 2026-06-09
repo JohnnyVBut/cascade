@@ -293,23 +293,15 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 		if upd.Enabled == nil && !p.Enabled && p.ExpiredAt != "" {
 			if t, err := time.Parse(time.RFC3339, p.ExpiredAt); err == nil && time.Now().UTC().Before(t) {
 				p.Enabled = true
-				// Restore the group the peer was in before the expiry policy moved it.
-				// PreviousGroupId is set only by the expiry checker (applyRestrictPolicy),
-				// so its presence is a reliable signal that the policy ran.
+				// PreviousGroupId is set by applyRestrictPolicy whenever ANY policy action
+				// fires (rate limits or group move). Its presence means "policy ran" —
+				// restore group and clear rate limits unconditionally.
 				if p.PreviousGroupId != "" {
 					p.GroupID = p.PreviousGroupId
 					p.PreviousGroupId = ""
-					// Clear rate limits only when the expiry policy definitely ran
-					// (indicated by PreviousGroupId being set). This avoids destroying
-					// manually-configured rate limits on peers where policy only set
-					// rate limits but did not move to a group.
 					p.RateDown = 0
 					p.RateUp = 0
 				}
-				// Note: if the policy applied only rate limits (no group move),
-				// PreviousGroupId is empty and we cannot safely distinguish policy-set
-				// limits from manually-set ones — we leave them unchanged. The operator
-				// can clear them manually if needed.
 			}
 		}
 	}
