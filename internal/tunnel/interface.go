@@ -514,12 +514,11 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 // UpdatePeer applies upd to the peer in SQLite and in-memory cache.
 // Reloads kernel config only if WireGuard-relevant fields changed.
 func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.Peer, error) {
-	// Capture old groupId before update to handle ipset rebuild on group change.
-	oldGroupID := ""
-	if upd.GroupID != nil {
-		if old := t.GetPeer(peerID); old != nil {
-			oldGroupID = old.GroupID
-		}
+	// Capture old peer state before update to detect changes that need kernel sync.
+	var oldPeer *peer.Peer
+	if old := t.GetPeer(peerID); old != nil {
+		copy := *old
+		oldPeer = &copy
 	}
 
 	updated, err := peer.UpdatePeer(peerID, upd)
@@ -548,9 +547,16 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 		}
 	}
 
-	// Apply/remove tc bandwidth limits when rate fields change.
+	// Apply/remove tc bandwidth limits when rate values actually changed.
+	// Check actual before/after values, not just upd fields — the renewal path
+	// in peer.UpdatePeer may zero out RateDown/RateUp without setting upd.RateDown/Up.
+	oldRateDown, oldRateUp := 0, 0
+	if oldPeer != nil {
+		oldRateDown = oldPeer.RateDown
+		oldRateUp = oldPeer.RateUp
+	}
 	if t.Enabled && updated.PeerType == "client" &&
-		(upd.RateDown != nil || upd.RateUp != nil) {
+		(updated.RateDown != oldRateDown || updated.RateUp != oldRateUp) {
 		if updated.RateDown > 0 || updated.RateUp > 0 {
 			tc.EnsureQdisc(t.ID)
 			tc.Apply(t.ID, updated.AllowedIPs, updated.RateDown, updated.RateUp, t.kernelMTU())
@@ -560,10 +566,14 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 	}
 
 	// Rebuild client-group ipsets when group changes (covers both API and expiry-checker paths).
-	// The API handler also does this, but calling twice is safe — RebuildGroupIPSet is idempotent.
-	if upd.GroupID != nil && updated.PeerType == "client" {
+	// Compare actual before/after group values — renewal path changes GroupID without setting upd.GroupID.
+	oldGroupID := ""
+	if oldPeer != nil {
+		oldGroupID = oldPeer.GroupID
+	}
+	if updated.PeerType == "client" && oldGroupID != updated.GroupID {
 		if am := aliases.Get(); am != nil {
-			if oldGroupID != "" && oldGroupID != updated.GroupID {
+			if oldGroupID != "" {
 				if err := am.RebuildGroupIPSet(oldGroupID); err != nil {
 					log.Printf("tunnel: UpdatePeer: rebuild old group ipset %s: %v", oldGroupID, err)
 				}
