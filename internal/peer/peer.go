@@ -272,6 +272,13 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 	}
 	if upd.ExpiredAt != nil {
 		p.ExpiredAt = normaliseExpiredAt(*upd.ExpiredAt)
+		// If caller didn't explicitly set enabled and peer is disabled,
+		// auto re-enable when a new future expiry date is set (renewal scenario).
+		if upd.Enabled == nil && !p.Enabled && p.ExpiredAt != "" {
+			if t, err := time.Parse(time.RFC3339, p.ExpiredAt); err == nil && time.Now().UTC().Before(t) {
+				p.Enabled = true
+			}
+		}
 	}
 	if upd.OneTimeLink != nil {
 		p.OneTimeLink = *upd.OneTimeLink
