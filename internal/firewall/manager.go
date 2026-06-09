@@ -554,6 +554,10 @@ func (m *Manager) rebuildChains() error {
 	// Remove per-rule subchains from previous run (FW*/FM* created by applyRuleKernelSubchain).
 	m.cleanupSubchains()
 
+	// Always allow ESTABLISHED/RELATED traffic first — return packets from the internet
+	// to VPN clients must pass even when default policy is DROP.
+	util.Exec("iptables-nft -t filter -A FIREWALL_FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT", 5*time.Second, true) //nolint
+
 	// Clean up PBR routing rules from a previous run.
 	if err := m.cleanupRoutingRules(); err != nil {
 		log.Printf("firewall: cleanupRoutingRules: %v", err)
