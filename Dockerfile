@@ -55,7 +55,8 @@ RUN apk add --no-cache \
     iptables-legacy \
     iproute2 \
     ipset \
-    sqlite
+    sqlite \
+    conntrack-tools
 
 # Use iptables-legacy as default iptables.
 # Alpine не имеет update-alternatives (это команда dpkg/Debian).
