@@ -1,7 +1,7 @@
 // Package db manages the SQLite database lifecycle.
 //
-// Single file: <dataDir>/wireguard.db
-// Backup: cp wireguard.db wireguard.db.bak
+// Single file: <dataDir>/cascade.db  (auto-renamed from wireguard.db on first run)
+// Backup: cp cascade.db cascade.db.bak
 //
 // Design decisions:
 //   - modernc.org/sqlite: pure Go, no CGO → static binary (CGO_ENABLED=0)
@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 
 	_ "modernc.org/sqlite" // register "sqlite" driver
@@ -21,10 +22,40 @@ import (
 
 var instance *sql.DB
 
-// Init opens (or creates) wireguard.db in dataDir and runs all pending migrations.
+// migrateDBName renames wireguard.db → cascade.db (and WAL/SHM siblings) when
+// upgrading from the old naming scheme. Runs unattended: logs what it does,
+// never fails the startup — if rename fails the old file is used as-is.
+func migrateDBName(dataDir string) {
+	oldBase := filepath.Join(dataDir, "wireguard.db")
+	newBase := filepath.Join(dataDir, "cascade.db")
+
+	// Nothing to do if the new name already exists or the old one is absent.
+	if _, err := os.Stat(newBase); err == nil {
+		return // cascade.db already present — skip
+	}
+	if _, err := os.Stat(oldBase); os.IsNotExist(err) {
+		return // neither file exists — fresh install
+	}
+
+	// Rename main DB file.
+	if err := os.Rename(oldBase, newBase); err != nil {
+		log.Printf("db: rename wireguard.db → cascade.db failed: %v (continuing with old name)", err)
+		return
+	}
+	log.Printf("db: renamed wireguard.db → cascade.db")
+
+	// Rename WAL / SHM siblings — ignore errors (they may not exist).
+	for _, ext := range []string{"-wal", "-shm"} {
+		_ = os.Rename(oldBase+ext, newBase+ext)
+	}
+}
+
+// Init opens (or creates) cascade.db in dataDir and runs all pending migrations.
 // Must be called once at startup before any other package uses DB().
 func Init(dataDir string) error {
-	path := filepath.Join(dataDir, "wireguard.db")
+	migrateDBName(dataDir)
+
+	path := filepath.Join(dataDir, "cascade.db")
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
