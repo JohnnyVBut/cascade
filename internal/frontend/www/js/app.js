@@ -2362,11 +2362,14 @@ new Vue({
       if (!grid) return;
 
       const zoomFor = (width) => {
-        if (width < 180) return 0.68;
-        if (width < 260) return 0.78;
-        if (width < 360) return 0.88;
-        if (width < 480) return 0.95;
-        return 1.0;
+        if (width < 160) return 0.60;
+        if (width < 230) return 0.70;
+        if (width < 320) return 0.80;
+        if (width < 420) return 0.90;
+        if (width < 550) return 1.00;
+        if (width < 720) return 1.10;
+        if (width < 950) return 1.20;
+        return 1.30;
       };
 
       const obs = new ResizeObserver(entries => {
