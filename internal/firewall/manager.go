@@ -792,8 +792,15 @@ func buildMatchFlags(rule *Rule, combo portCombo, srcPart, dstPart string) strin
 	if rule.Interface != "" && rule.Interface != "any" {
 		fmt.Fprintf(&sb, " -i %s", rule.Interface)
 	}
+	hasPort := (combo.srcPort != "" || combo.dstPort != "") && combo.proto != ""
 	if combo.proto != "" {
 		fmt.Fprintf(&sb, " -p %s", combo.proto)
+		// iptables-nft requires explicit -m <proto> to activate the port match extension.
+		// Without it, --dport/--sport are silently accepted but not applied to the rule.
+		// Only needed for tcp/udp (not icmp, not multiport path which loads its own module).
+		if hasPort && (combo.proto == "tcp" || combo.proto == "udp") {
+			fmt.Fprintf(&sb, " -m %s", combo.proto)
+		}
 	}
 	if srcPart != "" {
 		sb.WriteByte(' ')
