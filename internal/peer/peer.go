@@ -288,27 +288,6 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 		} else {
 			p.ExpiredAt = ""
 		}
-		// Renewal: expiry date extended to the future.
-		// - If peer was disabled (policy=disable): re-enable it.
-		// - If peer has PreviousGroupId set (policy=restrict was applied): restore
-		//   group and clear rate limits regardless of enabled state — the restrict
-		//   policy keeps the peer enabled, so !p.Enabled would never be true here.
-		if p.ExpiredAt != "" {
-			if t, err := time.Parse(time.RFC3339, p.ExpiredAt); err == nil && time.Now().UTC().Before(t) {
-				// Re-enable if disabled (policy=disable scenario).
-				if upd.Enabled == nil && !p.Enabled {
-					p.Enabled = true
-				}
-				// Restore group and rate limits if restrict policy was applied
-				// (PreviousGroupId is the "policy ran" marker set by applyRestrictPolicy).
-				if p.PreviousGroupId != "" {
-					p.GroupID = p.PreviousGroupId
-					p.PreviousGroupId = ""
-					p.RateDown = 0
-					p.RateUp = 0
-				}
-			}
-		}
 	}
 	if upd.OneTimeLink != nil {
 		p.OneTimeLink = *upd.OneTimeLink
@@ -331,6 +310,28 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 	if upd.PreviousGroupId != nil {
 		p.PreviousGroupId = *upd.PreviousGroupId
 	}
+
+	// Renewal logic — runs AFTER all upd.* fields are applied so that the
+	// restore can override whatever rateDown/rateUp/groupId the caller sent.
+	// Triggered when expiredAt was updated and the new value is in the future.
+	if upd.ExpiredAt != nil && p.ExpiredAt != "" {
+		if t, err := time.Parse(time.RFC3339, p.ExpiredAt); err == nil && time.Now().UTC().Before(t) {
+			// Re-enable if disabled (policy=disable scenario).
+			if upd.Enabled == nil && !p.Enabled {
+				p.Enabled = true
+			}
+			// Restore group and rate limits if the restrict policy was applied.
+			// PreviousGroupId is the "policy ran" marker set by applyRestrictPolicy.
+			// Override any rateDown/rateUp the caller sent — renewal always clears them.
+			if p.PreviousGroupId != "" {
+				p.GroupID = p.PreviousGroupId
+				p.PreviousGroupId = ""
+				p.RateDown = 0
+				p.RateUp = 0
+			}
+		}
+	}
+
 	p.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
 
 	if err := updatePeer(*p); err != nil {
