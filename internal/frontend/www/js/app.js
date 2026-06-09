@@ -940,6 +940,10 @@ new Vue({
         this.dashGrid.destroy(false);
         this.dashGrid = null;
       }
+      if (this._dashResizeObs) {
+        this._dashResizeObs.disconnect();
+        this._dashResizeObs = null;
+      }
       this.activePage = pageId;
       if (pageId === 'dashboard') {
         // loadDashboard already calls dashInitGrid after await $nextTick —
@@ -2335,11 +2339,45 @@ new Vue({
       this.dashGrid = grid;
 
       // Enable saving after GridStack's init-time change events have all fired
-      setTimeout(() => { this._dashSaveEnabled = true; }, 300);
+      setTimeout(() => {
+        this._dashSaveEnabled = true;
+        this.dashInitResizeObservers();
+      }, 300);
 
       if (this.dashWidgets.some(w => w.type === 'server-info')) {
         this.loadSystemInfo();
       }
+    },
+
+    // Attach ResizeObserver to each widget content container.
+    // Applies CSS zoom to the inner .dash-card so fonts/icons/buttons scale
+    // automatically when the widget is resized. GridStack layout is unaffected
+    // because it measures the outer .grid-stack-item-content, not .dash-card.
+    dashInitResizeObservers() {
+      if (this._dashResizeObs) {
+        this._dashResizeObs.disconnect();
+        this._dashResizeObs = null;
+      }
+      const grid = document.getElementById('dashboard-grid');
+      if (!grid) return;
+
+      const zoomFor = (width) => {
+        if (width < 180) return 0.68;
+        if (width < 260) return 0.78;
+        if (width < 360) return 0.88;
+        if (width < 480) return 0.95;
+        return 1.0;
+      };
+
+      const obs = new ResizeObserver(entries => {
+        for (const entry of entries) {
+          const card = entry.target.querySelector('.dash-card');
+          if (card) card.style.zoom = zoomFor(entry.contentRect.width);
+        }
+      });
+
+      grid.querySelectorAll('.grid-stack-item-content').forEach(c => obs.observe(c));
+      this._dashResizeObs = obs;
     },
 
     dashDefaultWidgets() {
@@ -2379,7 +2417,14 @@ new Vue({
         if (!this.dashGrid) return;
         // Vue has rendered the new item; tell GridStack to adopt it
         const el = document.querySelector(`[gs-id="${id}"]`);
-        if (el) this.dashGrid.makeWidget(el);
+        if (el) {
+          this.dashGrid.makeWidget(el);
+          // Observe the new widget for resize scaling
+          if (this._dashResizeObs) {
+            const content = el.querySelector('.grid-stack-item-content');
+            if (content) this._dashResizeObs.observe(content);
+          }
+        }
         if (type === 'server-info') this.loadSystemInfo();
       });
     },
