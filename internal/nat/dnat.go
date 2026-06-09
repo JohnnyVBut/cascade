@@ -458,8 +458,15 @@ func flushConntrackForDnat(rule *DnatRule) {
 	}
 	for _, proto := range protos {
 		cmd := fmt.Sprintf("conntrack -D -p %s --dport %d", proto, rule.InPort)
-		if out, err := util.ExecSilent(cmd); err != nil {
-			log.Printf("nat: flushConntrackForDnat: %s: %v %s", cmd, err, out)
+		out, err := util.ExecSilent(cmd)
+		if err != nil {
+			// conntrack exits 1 with "0 flow entries have been deleted" when no entries matched —
+			// this is expected on startup or after a fresh conntrack table. Not an error.
+			if strings.Contains(out, "0 flow entries") {
+				log.Printf("nat: flushConntrackForDnat: no entries for %s dport=%d (ok)", proto, rule.InPort)
+			} else {
+				log.Printf("nat: flushConntrackForDnat: %s: %v %s", cmd, err, out)
+			}
 		} else {
 			log.Printf("nat: flushConntrackForDnat: flushed conntrack %s dport=%d", proto, rule.InPort)
 		}
