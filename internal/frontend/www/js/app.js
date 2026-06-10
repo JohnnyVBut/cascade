@@ -3292,7 +3292,7 @@ new Vue({
       const { name, color } = this.separatorEdit;
       try {
         if (this.separatorEditId) {
-          await this.api.updateFirewallRule(this.separatorEditId, { ruleType: 'separator', name: name.trim() || 'Separator', color });
+          await this.api.updateFirewallRule({ id: this.separatorEditId, ruleType: 'separator', name: name.trim() || 'Separator', color });
         } else {
           await this.api.createFirewallRule({ ruleType: 'separator', name: name.trim() || 'Separator', color });
         }
