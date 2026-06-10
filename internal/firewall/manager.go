@@ -472,7 +472,7 @@ func (m *Manager) AddSeparator(name, color string) (*Rule, error) {
 	`
 	for _, tbl := range []string{"firewall_rules", "firewall_rules_applied"} {
 		if _, err := tx.Exec(fmt.Sprintf(insertSep, tbl),
-			sep.ID, sep.Name, sep.Order, sep.SeparatorColor, sep.CreatedAt); err != nil {
+			sep.ID, sep.Name, sep.Order, "", sep.SeparatorColor, sep.CreatedAt); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
