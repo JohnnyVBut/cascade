@@ -94,10 +94,11 @@ func main() {
 		status := c.Response().StatusCode()
 		method := c.Method()
 		if method != "GET" || status >= 400 {
-			log.Printf("[%s] %s %s → %d (%s)",
+			log.Printf("[%s] %s %s → %d (%s) [%s]",
 				time.Now().Format("15:04:05"),
 				method, c.Path(), status,
 				time.Since(start).Round(time.Microsecond),
+				c.IP(),
 			)
 		}
 		return err
