@@ -3059,21 +3059,13 @@ new Vue({
     // Initialise (or re-initialise) Sortable.js on the firewall rules tbody.
     // Called after every loadFirewallRules() via $nextTick so the DOM is up-to-date.
     _initSortable() {
-      if (typeof Sortable === 'undefined') {
-        console.warn('[Sortable] library not loaded');
-        return;
-      }
+      if (typeof Sortable === 'undefined') return;
       const tbody = document.getElementById('fw-rules-tbody');
-      if (!tbody) {
-        console.warn('[Sortable] tbody#fw-rules-tbody not found in DOM');
-        return;
-      }
+      if (!tbody) return;
       if (this._sortableInstance) {
         this._sortableInstance.destroy();
         this._sortableInstance = null;
       }
-      const rows = tbody.querySelectorAll('tr[data-id]');
-      console.log('[Sortable] init on tbody, rows found:', rows.length, [...rows].map(r => r.dataset.id));
       this._sortableInstance = Sortable.create(tbody, {
         handle: '.drag-handle',
         draggable: 'tr[data-id]',
@@ -3081,15 +3073,12 @@ new Vue({
         ghostClass: 'fw-drag-ghost',
         forceFallback: true,
         fallbackTolerance: 0,
-        onStart: () => console.log('[Sortable] drag started'),
         onEnd: (evt) => {
-          console.log('[Sortable] drag ended, old:', evt.oldIndex, '→ new:', evt.newIndex);
           if (evt.oldIndex === evt.newIndex) return;
           const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(tr => tr.dataset.id);
           this._reorderFirewallRules(ids);
         },
       });
-      console.log('[Sortable] instance created:', !!this._sortableInstance);
     },
 
     async _reorderFirewallRules(ids) {
