@@ -621,6 +621,29 @@ func (m *Manager) MoveRule(id, direction string) (*Rule, error) {
 	return &a, nil
 }
 
+// ReorderRules sets the order_idx of rules to match the given slice of IDs — pending apply.
+// All IDs must refer to existing rules in firewall_rules.
+func (m *Manager) ReorderRules(ids []string) error {
+	if len(ids) == 0 {
+		return fmt.Errorf("ids must not be empty")
+	}
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE firewall_rules SET order_idx = ? WHERE id = ?`, i, id); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Printf("firewall: rules reordered (%d rules) — pending apply", len(ids))
+	return nil
+}
+
 // SimulateTrace walks the rule list in order, matching srcIP/dstIP against
 // each enabled rule. Returns the first matching rule and all evaluated steps.
 // Used by the route test API to determine which PBR fwmark (if any) applies.

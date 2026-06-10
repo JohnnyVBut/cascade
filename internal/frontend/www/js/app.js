@@ -3045,11 +3045,44 @@ new Vue({
         ]);
         this.firewallRules = Array.isArray(rulesRes) ? rulesRes : (rulesRes.rules || []);
         this.firewallPending = pendingRes.hasPendingChanges || false;
+        this.$nextTick(() => this._initSortable());
       } catch (err) {
         console.error('loadFirewallRules error:', err);
         this.firewallRules = [];
       } finally {
         this.firewallRulesLoading = false;
+      }
+    },
+
+    // Initialise (or re-initialise) Sortable.js on the firewall rules tbody.
+    // Called after every loadFirewallRules() via $nextTick so the DOM is up-to-date.
+    _initSortable() {
+      if (typeof Sortable === 'undefined') return;
+      const tbody = document.getElementById('fw-rules-tbody');
+      if (!tbody) return;
+      if (this._sortableInstance) {
+        this._sortableInstance.destroy();
+        this._sortableInstance = null;
+      }
+      this._sortableInstance = Sortable.create(tbody, {
+        handle: '.drag-handle',
+        animation: 150,
+        ghostClass: 'fw-drag-ghost',
+        onEnd: (evt) => {
+          if (evt.oldIndex === evt.newIndex) return;
+          const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(tr => tr.dataset.id);
+          this._reorderFirewallRules(ids);
+        },
+      });
+    },
+
+    async _reorderFirewallRules(ids) {
+      try {
+        await this.api.reorderFirewallRules(ids);
+        await this.loadFirewallRules();
+      } catch (err) {
+        this.showToast(err.message || 'Failed to reorder rules', 'error');
+        await this.loadFirewallRules(); // revert DOM to server state
       }
     },
 

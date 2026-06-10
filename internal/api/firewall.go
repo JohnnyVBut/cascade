@@ -26,6 +26,7 @@ func RegisterFirewall(api fiber.Router) {
 	g.Patch("/rules/:id", updateFirewallRule)
 	g.Delete("/rules/:id", deleteFirewallRule)
 	g.Post("/rules/:id/move", moveFirewallRule)
+	g.Post("/reorder", reorderFirewallRules)
 	g.Get("/pending", getFirewallPending)
 	g.Post("/apply", applyFirewallRules)
 	g.Post("/discard", discardFirewallChanges)
@@ -152,6 +153,24 @@ func applyFirewallRules(c *fiber.Ctx) error {
 // Reverts draft to the applied snapshot (no kernel change).
 func discardFirewallChanges(c *fiber.Ctx) error {
 	if err := firewall.Get().DiscardChanges(); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /api/firewall/reorder
+// Body: { ids: ["id1", "id2", ...] } — full ordered list of all rule IDs.
+func reorderFirewallRules(c *fiber.Ctx) error {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if len(body.IDs) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "ids must not be empty")
+	}
+	if err := firewall.Get().ReorderRules(body.IDs); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)

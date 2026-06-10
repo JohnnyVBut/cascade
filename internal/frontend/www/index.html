@@ -129,6 +129,9 @@
     flex: 1;
     overflow: auto;
   }
+  /* Sortable drag-and-drop */
+  .drag-handle:active { cursor: grabbing; }
+  .fw-drag-ghost { opacity: 0.4; background: #a5b4fc !important; }
 </style>
 </head>
 
@@ -5514,6 +5517,7 @@
             <table class="w-full text-sm">
               <thead>
                 <tr class="bg-gray-50 dark:bg-neutral-600 text-gray-500 dark:text-neutral-400 text-xs uppercase">
+                  <th style="width:24px; padding:10px 4px;"></th>
                   <th class="text-center font-medium" style="padding:10px 8px; width:36px;">#</th>
                   <th class="text-center font-medium" style="padding:10px 8px; width:36px;">En</th>
                   <th class="text-left font-medium tc">Name</th>
@@ -5526,11 +5530,12 @@
                   <th class="tc"></th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="fw-rules-tbody">
                 <template v-for="rule in firewallRules" :key="rule.id">
 
                 <!-- Separator row -->
-                <tr v-if="rule.ruleType === 'separator'" class="dark:border-neutral-600" style="border-top-width:1px;">
+                <tr v-if="rule.ruleType === 'separator'" :data-id="rule.id" class="dark:border-neutral-600" style="border-top-width:1px;">
+                  <td class="drag-handle" style="cursor:grab; text-align:center; color:#9ca3af; user-select:none; padding:0 2px; width:24px;">⠿</td>
                   <td colspan="10" style="padding:0;">
                     <div :style="theme === 'dark' ? 'background:#404040; border-left:3px solid #6b7280;' : 'background:#f3f4f6; border-left:3px solid #9ca3af;'"
                       style="padding:6px 10px; display:flex; align-items:center; gap:8px;">
@@ -5556,9 +5561,10 @@
                 </tr>
 
                 <!-- Regular rule row -->
-                <tr v-else
+                <tr v-else :data-id="rule.id"
                   :class="rule.enabled ? '' : 'opacity-50'"
                   class="dark:border-neutral-600" style="border-top-width:1px;">
+                  <td class="drag-handle" style="cursor:grab; text-align:center; color:#9ca3af; user-select:none; padding:10px 2px; width:24px;">⠿</td>
                   <!-- Order -->
                   <td class="text-center text-gray-400 dark:text-neutral-500 text-xs font-mono" style="padding:10px 8px;">{{ rule.order }}</td>
                   <!-- Enabled dot -->
@@ -7255,6 +7261,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script src="./js/vendor/vue.min.js"></script>
   <script src="./js/vendor/vue-i18n.min.js"></script>
   <script src="./js/vendor/apexcharts.min.js"></script>
