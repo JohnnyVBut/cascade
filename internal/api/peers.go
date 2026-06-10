@@ -58,6 +58,30 @@ func RegisterPeers(api fiber.Router) {
 	g.Get("/:peerId/export-json", exportPeerJSON)
 }
 
+// sanitizePeer returns a shallow copy of p with PrivateKey and PresharedKey
+// zeroed out. Use for all JSON list/get/create/update responses so that
+// sensitive key material is never exposed over the API.
+// Keys are only used internally (config generation, QR code) via dedicated
+// endpoints that produce text/svg output, never raw JSON.
+func sanitizePeer(p *peer.Peer) *peer.Peer {
+	if p == nil {
+		return nil
+	}
+	cp := *p
+	cp.PrivateKey = ""
+	cp.PresharedKey = ""
+	return &cp
+}
+
+// sanitizePeers applies sanitizePeer to a slice.
+func sanitizePeers(ps []*peer.Peer) []*peer.Peer {
+	out := make([]*peer.Peer, len(ps))
+	for i, p := range ps {
+		out[i] = sanitizePeer(p)
+	}
+	return out
+}
+
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 // GET /api/tunnel-interfaces/:id/peers
@@ -70,7 +94,7 @@ func listPeers(c *fiber.Ctx) error {
 	if peers == nil {
 		peers = []*peer.Peer{}
 	}
-	return c.JSON(fiber.Map{"peers": peers})
+	return c.JSON(fiber.Map{"peers": sanitizePeers(peers)})
 }
 
 // GET /api/tunnel-interfaces/:id/peers/:peerId
@@ -79,7 +103,7 @@ func getPeer(c *fiber.Ctx) error {
 	if p == nil {
 		return fiber.NewError(fiber.StatusNotFound, "peer not found")
 	}
-	return c.JSON(p)
+	return c.JSON(sanitizePeer(p))
 }
 
 // POST /api/tunnel-interfaces/:id/peers
@@ -118,7 +142,7 @@ func createPeer(c *fiber.Ctx) error {
 		}
 	}
 	// Wrap as { peer: {...} } because the frontend does `res.peer && res.peer.id`.
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"peer": p})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"peer": sanitizePeer(p)})
 }
 
 // POST /api/tunnel-interfaces/:id/peers/import-json
@@ -177,7 +201,7 @@ func importPeerJSON(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"peer": p})
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"peer": sanitizePeer(p)})
 }
 
 // PATCH /api/tunnel-interfaces/:id/peers/:peerId
@@ -258,7 +282,7 @@ func updatePeer(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.JSON(p)
+	return c.JSON(sanitizePeer(p))
 }
 
 // DELETE /api/tunnel-interfaces/:id/peers/:peerId
@@ -330,7 +354,7 @@ func togglePeer(c *fiber.Ctx, enabled bool) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
 	}
-	return c.JSON(p)
+	return c.JSON(sanitizePeer(p))
 }
 
 // ── Fine-grained update endpoints ─────────────────────────────────────────────
@@ -353,7 +377,7 @@ func renamePeer(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	return c.JSON(fiber.Map{"peer": p})
+	return c.JSON(fiber.Map{"peer": sanitizePeer(p)})
 }
 
 // PUT /api/tunnel-interfaces/:id/peers/:peerId/address
@@ -374,7 +398,7 @@ func updatePeerAddress(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	return c.JSON(fiber.Map{"peer": p})
+	return c.JSON(fiber.Map{"peer": sanitizePeer(p)})
 }
 
 // PUT /api/tunnel-interfaces/:id/peers/:peerId/expireDate
@@ -410,7 +434,7 @@ func updatePeerExpireDate(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	return c.JSON(fiber.Map{"peer": p})
+	return c.JSON(fiber.Map{"peer": sanitizePeer(p)})
 }
 
 // POST /api/tunnel-interfaces/:id/peers/:peerId/generateOneTimeLink
@@ -430,7 +454,7 @@ func generatePeerOneTimeLink(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	return c.JSON(fiber.Map{"peer": p})
+	return c.JSON(fiber.Map{"peer": sanitizePeer(p)})
 }
 
 // GET /api/tunnel-interfaces/:id/peers/:peerId/export-json

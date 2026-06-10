@@ -616,6 +616,16 @@ CREATE TABLE IF NOT EXISTS firewall_rules_applied (
 );
 `,
 	},
+	{
+		version: 29,
+		sql: `
+-- Separator color: visual tint for rule group dividers.
+-- Empty string = default gray. Values: red|orange|yellow|green|cyan|blue|purple.
+-- Separators are always synced to both tables (not part of pending-apply cycle).
+ALTER TABLE firewall_rules         ADD COLUMN separator_color TEXT NOT NULL DEFAULT '';
+ALTER TABLE firewall_rules_applied ADD COLUMN separator_color TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

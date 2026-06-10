@@ -891,6 +891,10 @@ class API {
     return this.call({ method: 'post', path: `/firewall/rules/${id}/move`, body: { direction } });
   }
 
+  async reorderFirewallRules(ids) {
+    return this.call({ method: 'post', path: '/firewall/reorder', body: { ids } });
+  }
+
   async getFirewallPending() {
     return this.call({ method: 'get', path: '/firewall/pending' });
   }

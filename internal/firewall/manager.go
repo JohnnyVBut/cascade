@@ -74,6 +74,7 @@ type Rule struct {
 	FallbackToDefault bool     `json:"fallbackToDefault"` // fallback to default gw (vs blackhole)
 	Log               bool     `json:"log"`
 	Comment           string   `json:"comment"`
+	SeparatorColor    string   `json:"separatorColor"`    // separator tint: ""=gray | red|orange|yellow|green|cyan|blue|purple
 	CreatedAt         string   `json:"createdAt"`
 }
 
@@ -191,7 +192,7 @@ func (m *Manager) GetRules() ([]Rule, error) {
 		SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
 		       source, destination, action,
 		       gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		       log, comment, created_at
+		       log, comment, separator_color, created_at
 		FROM firewall_rules ORDER BY order_idx
 	`)
 	if err != nil {
@@ -216,7 +217,7 @@ func (m *Manager) GetRule(id string) (*Rule, error) {
 		SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
 		       source, destination, action,
 		       gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		       log, comment, created_at
+		       log, comment, separator_color, created_at
 		FROM firewall_rules WHERE id = ?
 	`, id)
 	r, err := scanRuleRow(row)
@@ -234,7 +235,7 @@ func (m *Manager) getAppliedRules() ([]Rule, error) {
 		SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
 		       source, destination, action,
 		       gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		       log, comment, created_at
+		       log, comment, separator_color, created_at
 		FROM firewall_rules_applied ORDER BY order_idx
 	`)
 	if err != nil {
@@ -269,10 +270,10 @@ func (m *Manager) ensureAppliedSnapshot() error {
 		INSERT INTO firewall_rules_applied
 		    (id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
 		     action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		     enabled, log, comment, order_idx, created_at)
+		     enabled, log, comment, separator_color, order_idx, created_at)
 		SELECT id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
 		       action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		       enabled, log, comment, order_idx, created_at
+		       enabled, log, comment, separator_color, order_idx, created_at
 		FROM firewall_rules
 	`)
 	if err != nil {
@@ -297,10 +298,10 @@ func (m *Manager) ApplyRules() error {
 		INSERT INTO firewall_rules_applied
 		    (id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
 		     action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		     enabled, log, comment, order_idx, created_at)
+		     enabled, log, comment, separator_color, order_idx, created_at)
 		SELECT id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
 		       action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		       enabled, log, comment, order_idx, created_at
+		       enabled, log, comment, separator_color, order_idx, created_at
 		FROM firewall_rules
 	`); err != nil {
 		tx.Rollback()
@@ -328,10 +329,10 @@ func (m *Manager) DiscardChanges() error {
 		INSERT INTO firewall_rules
 		    (id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
 		     action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		     enabled, log, comment, order_idx, created_at)
+		     enabled, log, comment, separator_color, order_idx, created_at)
 		SELECT id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
 		       action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		       enabled, log, comment, order_idx, created_at
+		       enabled, log, comment, separator_color, order_idx, created_at
 		FROM firewall_rules_applied
 	`); err != nil {
 		tx.Rollback()
@@ -345,29 +346,40 @@ func (m *Manager) DiscardChanges() error {
 }
 
 // HasPendingChanges reports whether the draft differs from the applied snapshot.
+// NOTE: SQLite compound operators (EXCEPT, UNION ALL) are left-associative and
+// have equal precedence, so we must wrap each EXCEPT in a subquery to avoid the
+// mis-parse: A EXCEPT B UNION ALL C EXCEPT D → ((A EXCEPT B) UNION ALL C) EXCEPT D.
 func (m *Manager) HasPendingChanges() (bool, error) {
 	var diff int
 	err := db.DB().QueryRow(`
 		SELECT COUNT(*) FROM (
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules
-			EXCEPT
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules_applied
+			SELECT * FROM (
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment, separator_color
+				FROM firewall_rules
+				WHERE rule_type != 'separator'
+				EXCEPT
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment, separator_color
+				FROM firewall_rules_applied
+				WHERE rule_type != 'separator'
+			) AS draft_minus_applied
 			UNION ALL
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules_applied
-			EXCEPT
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules
+			SELECT * FROM (
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment, separator_color
+				FROM firewall_rules_applied
+				WHERE rule_type != 'separator'
+				EXCEPT
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment, separator_color
+				FROM firewall_rules
+				WHERE rule_type != 'separator'
+			) AS applied_minus_draft
 		)
 	`).Scan(&diff)
 	if err != nil {
@@ -427,51 +439,117 @@ func (m *Manager) AddRule(inp RuleInput) (*Rule, error) {
 	return &rule, nil
 }
 
+// allowedSeparatorColors is the set of valid separator color values.
+// Empty string means "default" (gray). Must match the frontend palette.
+var allowedSeparatorColors = map[string]bool{
+	"": true, "red": true, "orange": true, "yellow": true,
+	"green": true, "cyan": true, "blue": true, "purple": true,
+}
+
+// sanitizeSeparatorColor returns color if it is in the allowed palette, "" otherwise.
+func sanitizeSeparatorColor(color string) string {
+	if allowedSeparatorColors[color] {
+		return color
+	}
+	return ""
+}
+
+// Separate INSERT constants to avoid fmt.Sprintf table-name interpolation antipattern.
+const insertSepDraft = `
+	INSERT INTO firewall_rules (id, rule_type, name, enabled, order_idx, interface, protocol,
+	    source, destination, action, gateway_id, gateway_group_id, fwmark,
+	    fallback_to_default, log, comment, separator_color, created_at)
+	VALUES (?, 'separator', ?, 1, ?, 'any', 'any', '{}', '{}', 'accept', '', '', NULL, 0, 0, ?, ?, ?)
+`
+const insertSepApplied = `
+	INSERT INTO firewall_rules_applied (id, rule_type, name, enabled, order_idx, interface, protocol,
+	    source, destination, action, gateway_id, gateway_group_id, fwmark,
+	    fallback_to_default, log, comment, separator_color, created_at)
+	VALUES (?, 'separator', ?, 1, ?, 'any', 'any', '{}', '{}', 'accept', '', '', NULL, 0, 0, ?, ?, ?)
+`
+
 // AddSeparator creates a visual separator (no iptables effect) at the end of the list.
-func (m *Manager) AddSeparator(name string) (*Rule, error) {
+// Writes to BOTH firewall_rules and firewall_rules_applied so separators are never
+// part of the pending-apply cycle.
+func (m *Manager) AddSeparator(name, color string) (*Rule, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = "Section"
+		name = "Separator"
 	}
+	color = sanitizeSeparatorColor(color)
 	order, err := m.nextOrder()
 	if err != nil {
 		return nil, err
 	}
 	sep := Rule{
-		ID:        uuid.New().String(),
-		RuleType:  "separator",
-		Name:      name,
-		Enabled:   true,
-		Order:     order,
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		ID:             uuid.New().String(),
+		RuleType:       "separator",
+		Name:           name,
+		SeparatorColor: color,
+		Enabled:        true,
+		Order:          order,
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
-	_, err = db.DB().Exec(`
-		INSERT INTO firewall_rules (id, rule_type, name, enabled, order_idx, interface, protocol,
-		    source, destination, action, gateway_id, gateway_group_id, fwmark,
-		    fallback_to_default, log, comment, created_at)
-		VALUES (?, 'separator', ?, 1, ?, 'any', 'any', '{}', '{}', 'accept', '', '', NULL, 0, 0, '', ?)
-	`, sep.ID, sep.Name, sep.Order, sep.CreatedAt)
+	tx, err := db.DB().Begin()
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("firewall: separator added %q (order=%d)", sep.Name, sep.Order)
+	args := []any{sep.ID, sep.Name, sep.Order, "", sep.SeparatorColor, sep.CreatedAt}
+	if _, err := tx.Exec(insertSepDraft, args...); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if _, err := tx.Exec(insertSepApplied, args...); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	log.Printf("firewall: separator added %q color=%q (order=%d)", sep.Name, sep.Color(), sep.Order)
 	return &sep, nil
 }
 
-// UpdateSeparator renames a separator by ID.
-func (m *Manager) UpdateSeparator(id, name string) (*Rule, error) {
+// UpdateSeparator updates name and color of a separator, syncing both tables.
+// Returns an error if the rule does not exist or is not a separator.
+func (m *Manager) UpdateSeparator(id, name, color string) (*Rule, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		name = "Section"
+		name = "Separator"
 	}
-	if _, err := db.DB().Exec(
-		`UPDATE firewall_rules SET name = ? WHERE id = ? AND rule_type = 'separator'`,
-		name, id,
+	color = sanitizeSeparatorColor(color)
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return nil, err
+	}
+	res, err := tx.Exec(
+		`UPDATE firewall_rules SET name = ?, separator_color = ? WHERE id = ? AND rule_type = 'separator'`,
+		name, color, id,
+	)
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		tx.Rollback()
+		return nil, fmt.Errorf("firewall rule not found")
+	}
+	if _, err := tx.Exec(
+		`UPDATE firewall_rules_applied SET name = ?, separator_color = ? WHERE id = ? AND rule_type = 'separator'`,
+		name, color, id,
 	); err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return m.GetRule(id)
 }
+
+// Color returns SeparatorColor for logging convenience.
+func (r *Rule) Color() string { return r.SeparatorColor }
 
 // UpdateRule replaces a rule's fields, rebuilds chains, returns the updated rule.
 func (m *Manager) UpdateRule(id string, inp RuleInput) (*Rule, error) {
@@ -531,6 +609,7 @@ func (m *Manager) UpdateRule(id string, inp RuleInput) (*Rule, error) {
 }
 
 // DeleteRule removes a rule from the draft (pending apply).
+// For separators: also removes from firewall_rules_applied (separators bypass the apply cycle).
 func (m *Manager) DeleteRule(id string) error {
 	r, err := m.GetRule(id)
 	if err != nil {
@@ -540,10 +619,27 @@ func (m *Manager) DeleteRule(id string) error {
 		return fmt.Errorf("firewall rule not found")
 	}
 
+	if r.RuleType == "separator" {
+		tx, err := db.DB().Begin()
+		if err != nil {
+			return err
+		}
+		for _, tbl := range []string{"firewall_rules", "firewall_rules_applied"} {
+			if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM %s WHERE id = ?`, tbl), id); err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		log.Printf("firewall: separator deleted %q", r.Name)
+		return nil
+	}
+
 	if _, err := db.DB().Exec(`DELETE FROM firewall_rules WHERE id = ?`, id); err != nil {
 		return err
 	}
-
 	log.Printf("firewall: rule deleted %q — pending apply", r.Name)
 	return nil
 }
@@ -606,12 +702,131 @@ func (m *Manager) MoveRule(id, direction string) (*Rule, error) {
 		tx.Rollback()
 		return nil, err
 	}
+	// If either swapped item is a separator, sync BOTH order_idx values to applied.
+	// Rationale: moving a separator doesn't change the relative order of non-separator
+	// rules, so it must not create a "pending changes" diff. Because HasPendingChanges
+	// compares order_idx for non-separators, the neighbor's order_idx must also be
+	// kept in sync when it was displaced only by a separator move.
+	if a.RuleType == "separator" || b.RuleType == "separator" {
+		if _, err := tx.Exec(`UPDATE firewall_rules_applied SET order_idx = ? WHERE id = ?`, b.Order, a.ID); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		if _, err := tx.Exec(`UPDATE firewall_rules_applied SET order_idx = ? WHERE id = ?`, a.Order, b.ID); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
 	a.Order, b.Order = b.Order, a.Order
 	return &a, nil
+}
+
+// ReorderRules sets the order_idx of rules to match the given slice of IDs.
+// The slice must contain exactly all existing rule IDs (no extras, no missing).
+// If only separators changed position (non-separator relative order is unchanged),
+// the reorder is synced to applied immediately and creates no pending diff.
+// If non-separators changed position, only separator order_idx is synced to applied
+// (normal pending apply for the non-separator changes).
+func (m *Manager) ReorderRules(ids []string) error {
+	if len(ids) == 0 {
+		return fmt.Errorf("ids must not be empty")
+	}
+
+	// Fetch current rules to validate and detect separator positions.
+	rules, err := m.GetRules()
+	if err != nil {
+		return err
+	}
+
+	// Validate: incoming list must be exactly the same set of IDs as in the DB.
+	if len(ids) != len(rules) {
+		return fmt.Errorf("reorder list length %d does not match rule count %d", len(ids), len(rules))
+	}
+	knownIDs := make(map[string]bool, len(rules))
+	for _, r := range rules {
+		knownIDs[r.ID] = true
+	}
+	for _, id := range ids {
+		if !knownIDs[id] {
+			return fmt.Errorf("unknown rule id %q in reorder list", id)
+		}
+	}
+
+	// Build separator set and old non-separator sequence (by ID, in current order).
+	sepIDs := make(map[string]bool)
+	oldNonSepSeq := make([]string, 0, len(rules))
+	for _, r := range rules {
+		if r.RuleType == "separator" {
+			sepIDs[r.ID] = true
+		} else {
+			oldNonSepSeq = append(oldNonSepSeq, r.ID)
+		}
+	}
+	// New non-separator sequence from the incoming ids list.
+	newNonSepSeq := make([]string, 0, len(oldNonSepSeq))
+	for _, id := range ids {
+		if !sepIDs[id] {
+			newNonSepSeq = append(newNonSepSeq, id)
+		}
+	}
+	// If relative order of non-separators is unchanged → only separators moved.
+	onlySepsMoved := len(oldNonSepSeq) == len(newNonSepSeq)
+	if onlySepsMoved {
+		for i := range oldNonSepSeq {
+			if oldNonSepSeq[i] != newNonSepSeq[i] {
+				onlySepsMoved = false
+				break
+			}
+		}
+	}
+
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	for i, id := range ids {
+		if _, err := tx.Exec(`UPDATE firewall_rules SET order_idx = ? WHERE id = ?`, i, id); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	// Always sync separator order_idx to applied (separators bypass the apply cycle).
+	if _, err := tx.Exec(`
+		UPDATE firewall_rules_applied
+		SET order_idx = (SELECT order_idx FROM firewall_rules WHERE firewall_rules.id = firewall_rules_applied.id)
+		WHERE id IN (SELECT id FROM firewall_rules WHERE rule_type = 'separator')
+	`); err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if onlySepsMoved {
+		// Non-separator relative order unchanged → also sync non-separator order_idx
+		// so HasPendingChanges does not produce a false positive.
+		if _, err := tx.Exec(`
+			UPDATE firewall_rules_applied
+			SET order_idx = (SELECT order_idx FROM firewall_rules WHERE firewall_rules.id = firewall_rules_applied.id)
+			WHERE id IN (SELECT id FROM firewall_rules WHERE rule_type != 'separator')
+		`); err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if onlySepsMoved {
+		log.Printf("firewall: rules reordered (%d rules) — separators only, no pending diff", len(ids))
+	} else {
+		log.Printf("firewall: rules reordered (%d rules) — pending apply", len(ids))
+	}
+	return nil
 }
 
 // SimulateTrace walks the rule list in order, matching srcIP/dstIP against
@@ -1604,7 +1819,7 @@ func scanRuleRow(s ruleScanner) (*Rule, error) {
 		&r.ID, &r.RuleType, &r.Name, &enabled, &r.Order, &r.Interface, &r.Protocol,
 		&srcJSON, &dstJSON, &r.Action,
 		&r.GatewayID, &r.GatewayGroupID, &fwmark, &fallback,
-		&logVal, &r.Comment, &r.CreatedAt,
+		&logVal, &r.Comment, &r.SeparatorColor, &r.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -1658,13 +1873,13 @@ func insertRule(r Rule) error {
 		    (id, rule_type, name, enabled, order_idx, interface, protocol,
 		     source, destination, action,
 		     gateway_id, gateway_group_id, fwmark, fallback_to_default,
-		     log, comment, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		     log, comment, separator_color, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		r.ID, ruleType, r.Name, boolInt(r.Enabled), r.Order, r.Interface, r.Protocol,
 		string(srcJSON), string(dstJSON), r.Action,
 		r.GatewayID, r.GatewayGroupID, fwmark, boolInt(r.FallbackToDefault),
-		boolInt(r.Log), r.Comment, r.CreatedAt,
+		boolInt(r.Log), r.Comment, r.SeparatorColor, r.CreatedAt,
 	)
 	return err
 }

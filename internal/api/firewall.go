@@ -26,6 +26,7 @@ func RegisterFirewall(api fiber.Router) {
 	g.Patch("/rules/:id", updateFirewallRule)
 	g.Delete("/rules/:id", deleteFirewallRule)
 	g.Post("/rules/:id/move", moveFirewallRule)
+	g.Post("/reorder", reorderFirewallRules)
 	g.Get("/pending", getFirewallPending)
 	g.Post("/apply", applyFirewallRules)
 	g.Post("/discard", discardFirewallChanges)
@@ -65,7 +66,8 @@ func createFirewallRule(c *fiber.Ctx) error {
 	}
 	if rt, _ := raw["ruleType"].(string); rt == "separator" {
 		name, _ := raw["name"].(string)
-		sep, err := firewall.Get().AddSeparator(name)
+		color, _ := raw["color"].(string)
+		sep, err := firewall.Get().AddSeparator(name, color)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
@@ -100,10 +102,11 @@ func updateFirewallRule(c *fiber.Ctx) error {
 		return c.JSON(r)
 	}
 
-	// Separator rename shortcut: { ruleType: "separator", name: "..." }
+	// Separator update: { ruleType: "separator", name: "...", color: "..." }
 	if rt, _ := raw["ruleType"].(string); rt == "separator" {
 		name, _ := raw["name"].(string)
-		sep, err := firewall.Get().UpdateSeparator(id, name)
+		color, _ := raw["color"].(string)
+		sep, err := firewall.Get().UpdateSeparator(id, name, color)
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
@@ -153,6 +156,30 @@ func applyFirewallRules(c *fiber.Ctx) error {
 func discardFirewallChanges(c *fiber.Ctx) error {
 	if err := firewall.Get().DiscardChanges(); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /api/firewall/reorder
+// Body: { ids: ["id1", "id2", ...] } — full ordered list of all rule IDs.
+// The list must contain exactly the current rule IDs (no extras, no missing).
+const maxFirewallRules = 500 // reasonable upper bound to prevent lock-amplification DoS
+
+func reorderFirewallRules(c *fiber.Ctx) error {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if len(body.IDs) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "ids must not be empty")
+	}
+	if len(body.IDs) > maxFirewallRules {
+		return fiber.NewError(fiber.StatusBadRequest, "too many ids")
+	}
+	if err := firewall.Get().ReorderRules(body.IDs); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
