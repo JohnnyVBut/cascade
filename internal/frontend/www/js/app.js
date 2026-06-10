@@ -3066,11 +3066,16 @@ new Vue({
       }
       // draggable: 'tr[data-id]' skips Vue 2 comment-node anchors that
       // <template v-for> inserts between <tr> elements in the DOM.
+      // draggable: 'tr[data-id]' skips Vue 2 comment-node anchors.
+      // forceFallback: true — browsers block native DnD on <tr> elements;
+      // fallback mode clones the row and moves the clone instead.
       this._sortableInstance = Sortable.create(tbody, {
         handle: '.drag-handle',
         draggable: 'tr[data-id]',
         animation: 150,
         ghostClass: 'fw-drag-ghost',
+        forceFallback: true,
+        fallbackTolerance: 3,
         onEnd: (evt) => {
           if (evt.oldIndex === evt.newIndex) return;
           const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(tr => tr.dataset.id);
