@@ -94,15 +94,10 @@ func main() {
 		status := c.Response().StatusCode()
 		method := c.Method()
 		if method != "GET" || status >= 400 {
-			ip := c.Get("X-Forwarded-For")
-			if ip == "" {
-				ip = c.IP()
-			}
-			log.Printf("[%s] %s %s → %d (%s) [%s]",
+			log.Printf("[%s] %s %s → %d (%s)",
 				time.Now().Format("15:04:05"),
 				method, c.Path(), status,
 				time.Since(start).Round(time.Microsecond),
-				ip,
 			)
 		}
 		return err
