@@ -56,8 +56,10 @@ type Endpoint struct {
 }
 
 // Rule is a firewall/PBR rule persisted in SQLite.
+// RuleType is "rule" (default) or "separator" (visual divider, ignored by kernel).
 type Rule struct {
 	ID                string   `json:"id"`
+	RuleType          string   `json:"ruleType"`          // "rule" | "separator"
 	Name              string   `json:"name"`
 	Enabled           bool     `json:"enabled"`
 	Order             int      `json:"order"`
@@ -178,10 +180,10 @@ func (m *Manager) Init() error {
 
 // ── Public CRUD ───────────────────────────────────────────────────────────────
 
-// GetRules returns all rules sorted by order ascending.
+// GetRules returns all rules sorted by order ascending (includes separators).
 func (m *Manager) GetRules() ([]Rule, error) {
 	rows, err := db.DB().Query(`
-		SELECT id, name, enabled, order_idx, interface, protocol,
+		SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
 		       source, destination, action,
 		       gateway_id, gateway_group_id, fwmark, fallback_to_default,
 		       log, comment, created_at
@@ -206,7 +208,7 @@ func (m *Manager) GetRules() ([]Rule, error) {
 // GetRule returns a single rule by ID, or nil if not found.
 func (m *Manager) GetRule(id string) (*Rule, error) {
 	row := db.DB().QueryRow(`
-		SELECT id, name, enabled, order_idx, interface, protocol,
+		SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
 		       source, destination, action,
 		       gateway_id, gateway_group_id, fwmark, fallback_to_default,
 		       log, comment, created_at
@@ -272,6 +274,52 @@ func (m *Manager) AddRule(inp RuleInput) (*Rule, error) {
 
 	log.Printf("firewall: rule added %q (action=%s order=%d)", rule.Name, rule.Action, rule.Order)
 	return &rule, nil
+}
+
+// AddSeparator creates a visual separator (no iptables effect) at the end of the list.
+func (m *Manager) AddSeparator(name string) (*Rule, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "Section"
+	}
+	order, err := m.nextOrder()
+	if err != nil {
+		return nil, err
+	}
+	sep := Rule{
+		ID:        uuid.New().String(),
+		RuleType:  "separator",
+		Name:      name,
+		Enabled:   true,
+		Order:     order,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	_, err = db.DB().Exec(`
+		INSERT INTO firewall_rules (id, rule_type, name, enabled, order_idx, interface, protocol,
+		    source, destination, action, gateway_id, gateway_group_id, fwmark,
+		    fallback_to_default, log, comment, created_at)
+		VALUES (?, 'separator', ?, 1, ?, 'any', 'any', '{}', '{}', 'accept', '', '', NULL, 0, 0, '', ?)
+	`, sep.ID, sep.Name, sep.Order, sep.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("firewall: separator added %q (order=%d)", sep.Name, sep.Order)
+	return &sep, nil
+}
+
+// UpdateSeparator renames a separator by ID.
+func (m *Manager) UpdateSeparator(id, name string) (*Rule, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "Section"
+	}
+	if _, err := db.DB().Exec(
+		`UPDATE firewall_rules SET name = ? WHERE id = ? AND rule_type = 'separator'`,
+		name, id,
+	); err != nil {
+		return nil, err
+	}
+	return m.GetRule(id)
 }
 
 // UpdateRule replaces a rule's fields, rebuilds chains, returns the updated rule.
@@ -572,6 +620,9 @@ func (m *Manager) rebuildChains() error {
 	count := 0
 	ruleErrors := 0
 	for _, rule := range rules {
+		if rule.RuleType == "separator" {
+			continue // separators are visual-only, no iptables commands
+		}
 		if !rule.Enabled {
 			continue
 		}
@@ -1416,7 +1467,7 @@ func scanRuleRow(s ruleScanner) (*Rule, error) {
 	var fwmark sql.NullInt64
 
 	err := s.Scan(
-		&r.ID, &r.Name, &enabled, &r.Order, &r.Interface, &r.Protocol,
+		&r.ID, &r.RuleType, &r.Name, &enabled, &r.Order, &r.Interface, &r.Protocol,
 		&srcJSON, &dstJSON, &r.Action,
 		&r.GatewayID, &r.GatewayGroupID, &fwmark, &fallback,
 		&logVal, &r.Comment, &r.CreatedAt,
@@ -1441,6 +1492,11 @@ func scanRuleRow(s ruleScanner) (*Rule, error) {
 		_ = json.Unmarshal([]byte(dstJSON), &r.Destination)
 	}
 
+	// Normalise rule_type.
+	if r.RuleType == "" {
+		r.RuleType = "rule"
+	}
+
 	// Normalise action to lowercase.
 	r.Action = strings.ToLower(r.Action)
 	if r.Action == "" {
@@ -1459,15 +1515,19 @@ func insertRule(r Rule) error {
 		fwmark = *r.Fwmark
 	}
 
+	ruleType := r.RuleType
+	if ruleType == "" {
+		ruleType = "rule"
+	}
 	_, err := db.DB().Exec(`
 		INSERT INTO firewall_rules
-		    (id, name, enabled, order_idx, interface, protocol,
+		    (id, rule_type, name, enabled, order_idx, interface, protocol,
 		     source, destination, action,
 		     gateway_id, gateway_group_id, fwmark, fallback_to_default,
 		     log, comment, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		r.ID, r.Name, boolInt(r.Enabled), r.Order, r.Interface, r.Protocol,
+		r.ID, ruleType, r.Name, boolInt(r.Enabled), r.Order, r.Interface, r.Protocol,
 		string(srcJSON), string(dstJSON), r.Action,
 		r.GatewayID, r.GatewayGroupID, fwmark, boolInt(r.FallbackToDefault),
 		boolInt(r.Log), r.Comment, r.CreatedAt,

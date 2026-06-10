@@ -576,6 +576,16 @@ CREATE TABLE IF NOT EXISTS dashboard_widgets (
 ALTER TABLE peers ADD COLUMN previous_group_id TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 27,
+		sql: `
+-- Firewall rule separators: visual dividers between rule groups.
+-- rule_type = 'rule' (default) | 'separator'.
+-- Separator rows have only id, name, order_idx, created_at populated;
+-- all other columns are ignored by RebuildChains.
+ALTER TABLE firewall_rules ADD COLUMN rule_type TEXT NOT NULL DEFAULT 'rule';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

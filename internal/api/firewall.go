@@ -54,7 +54,20 @@ func getFirewallRules(c *fiber.Ctx) error {
 
 // POST /api/firewall/rules
 // Body: RuleInput { name, interface, protocol, source, destination, action, gatewayId?, ... }
+// Special: if body contains { ruleType: "separator", name: "..." } — creates a visual separator.
 func createFirewallRule(c *fiber.Ctx) error {
+	var raw map[string]any
+	if err := c.BodyParser(&raw); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if rt, _ := raw["ruleType"].(string); rt == "separator" {
+		name, _ := raw["name"].(string)
+		sep, err := firewall.Get().AddSeparator(name)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		return c.Status(fiber.StatusCreated).JSON(sep)
+	}
 	var inp firewall.RuleInput
 	if err := c.BodyParser(&inp); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
@@ -82,6 +95,16 @@ func updateFirewallRule(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 		return c.JSON(r)
+	}
+
+	// Separator rename shortcut: { ruleType: "separator", name: "..." }
+	if rt, _ := raw["ruleType"].(string); rt == "separator" {
+		name, _ := raw["name"].(string)
+		sep, err := firewall.Get().UpdateSeparator(id, name)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		return c.JSON(sep)
 	}
 
 	var upd firewall.RuleInput

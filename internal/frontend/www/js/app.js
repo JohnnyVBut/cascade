@@ -3195,6 +3195,28 @@ new Vue({
       }
     },
 
+    async addFirewallSeparator() {
+      const name = window.prompt('Section name:', 'New Section');
+      if (name === null) return; // cancelled
+      try {
+        await this.api.createFirewallRule({ ruleType: 'separator', name: name.trim() || 'Section' });
+        await this.loadFirewallRules();
+      } catch (err) {
+        this.showToast(err.message || 'Failed to add section', 'error');
+      }
+    },
+
+    async renameSeparator(rule) {
+      const name = window.prompt('Section name:', rule.name);
+      if (name === null) return; // cancelled
+      try {
+        await this.api.updateFirewallRule({ id: rule.id, ruleType: 'separator', name: name.trim() || 'Section' });
+        await this.loadFirewallRules();
+      } catch (err) {
+        this.showToast(err.message || 'Failed to rename section', 'error');
+      }
+    },
+
     _firewallEndpointLabel(ep) {
       if (!ep || ep.type === 'any') return 'Any';
       const inv = ep.invert ? 'NOT ' : '';
