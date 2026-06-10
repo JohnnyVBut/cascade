@@ -3057,31 +3057,37 @@ new Vue({
     // Initialise (or re-initialise) Sortable.js on the firewall rules tbody.
     // Called after every loadFirewallRules() via $nextTick so the DOM is up-to-date.
     _initSortable() {
-      if (typeof Sortable === 'undefined') return;
+      if (typeof Sortable === 'undefined') {
+        console.warn('[Sortable] library not loaded');
+        return;
+      }
       const tbody = document.getElementById('fw-rules-tbody');
-      if (!tbody) return;
+      if (!tbody) {
+        console.warn('[Sortable] tbody#fw-rules-tbody not found in DOM');
+        return;
+      }
       if (this._sortableInstance) {
         this._sortableInstance.destroy();
         this._sortableInstance = null;
       }
-      // draggable: 'tr[data-id]' skips Vue 2 comment-node anchors that
-      // <template v-for> inserts between <tr> elements in the DOM.
-      // draggable: 'tr[data-id]' skips Vue 2 comment-node anchors.
-      // forceFallback: true — browsers block native DnD on <tr> elements;
-      // fallback mode clones the row and moves the clone instead.
+      const rows = tbody.querySelectorAll('tr[data-id]');
+      console.log('[Sortable] init on tbody, rows found:', rows.length, [...rows].map(r => r.dataset.id));
       this._sortableInstance = Sortable.create(tbody, {
         handle: '.drag-handle',
         draggable: 'tr[data-id]',
         animation: 150,
         ghostClass: 'fw-drag-ghost',
         forceFallback: true,
-        fallbackTolerance: 3,
+        fallbackTolerance: 0,
+        onStart: () => console.log('[Sortable] drag started'),
         onEnd: (evt) => {
+          console.log('[Sortable] drag ended, old:', evt.oldIndex, '→ new:', evt.newIndex);
           if (evt.oldIndex === evt.newIndex) return;
           const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(tr => tr.dataset.id);
           this._reorderFirewallRules(ids);
         },
       });
+      console.log('[Sortable] instance created:', !!this._sortableInstance);
     },
 
     async _reorderFirewallRules(ids) {
