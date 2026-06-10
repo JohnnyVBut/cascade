@@ -661,14 +661,16 @@ func (m *Manager) MoveRule(id, direction string) (*Rule, error) {
 		tx.Rollback()
 		return nil, err
 	}
-	// Separators bypass the apply cycle — sync their order_idx in applied immediately.
-	if a.RuleType == "separator" {
+	// If either swapped item is a separator, sync BOTH order_idx values to applied.
+	// Rationale: moving a separator doesn't change the relative order of non-separator
+	// rules, so it must not create a "pending changes" diff. Because HasPendingChanges
+	// compares order_idx for non-separators, the neighbor's order_idx must also be
+	// kept in sync when it was displaced only by a separator move.
+	if a.RuleType == "separator" || b.RuleType == "separator" {
 		if _, err := tx.Exec(`UPDATE firewall_rules_applied SET order_idx = ? WHERE id = ?`, b.Order, a.ID); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
-	}
-	if b.RuleType == "separator" {
 		if _, err := tx.Exec(`UPDATE firewall_rules_applied SET order_idx = ? WHERE id = ?`, a.Order, b.ID); err != nil {
 			tx.Rollback()
 			return nil, err
@@ -682,12 +684,49 @@ func (m *Manager) MoveRule(id, direction string) (*Rule, error) {
 	return &a, nil
 }
 
-// ReorderRules sets the order_idx of rules to match the given slice of IDs — pending apply.
-// All IDs must refer to existing rules in firewall_rules.
+// ReorderRules sets the order_idx of rules to match the given slice of IDs.
+// If only separators changed position (non-separator relative order is unchanged),
+// the reorder is synced to applied immediately and creates no pending diff.
+// If non-separators changed position, only separators are synced (normal pending apply).
 func (m *Manager) ReorderRules(ids []string) error {
 	if len(ids) == 0 {
 		return fmt.Errorf("ids must not be empty")
 	}
+
+	// Fetch current rules to determine which are separators and what the old order was.
+	rules, err := m.GetRules()
+	if err != nil {
+		return err
+	}
+
+	// Build a set of separator IDs and old non-separator sequence (by ID).
+	sepIDs := map[string]bool{}
+	oldNonSepSeq := []string{}
+	for _, r := range rules {
+		if r.RuleType == "separator" {
+			sepIDs[r.ID] = true
+		} else {
+			oldNonSepSeq = append(oldNonSepSeq, r.ID)
+		}
+	}
+	// New non-separator sequence from the incoming ids list.
+	newNonSepSeq := []string{}
+	for _, id := range ids {
+		if !sepIDs[id] {
+			newNonSepSeq = append(newNonSepSeq, id)
+		}
+	}
+	// If relative order of non-separators is unchanged → only separators moved.
+	onlySepsMoved := len(oldNonSepSeq) == len(newNonSepSeq)
+	if onlySepsMoved {
+		for i := range oldNonSepSeq {
+			if oldNonSepSeq[i] != newNonSepSeq[i] {
+				onlySepsMoved = false
+				break
+			}
+		}
+	}
+
 	tx, err := db.DB().Begin()
 	if err != nil {
 		return err
@@ -698,19 +737,36 @@ func (m *Manager) ReorderRules(ids []string) error {
 			return err
 		}
 	}
-	// Separators bypass the apply cycle — sync their order_idx in applied.
-	if _, err := tx.Exec(`
-		UPDATE firewall_rules_applied
-		SET order_idx = (SELECT order_idx FROM firewall_rules WHERE firewall_rules.id = firewall_rules_applied.id)
-		WHERE id IN (SELECT id FROM firewall_rules WHERE rule_type = 'separator')
-	`); err != nil {
-		tx.Rollback()
-		return err
+
+	if onlySepsMoved {
+		// Sync ALL order_idx to applied — no pending diff.
+		if _, err := tx.Exec(`
+			UPDATE firewall_rules_applied
+			SET order_idx = (SELECT order_idx FROM firewall_rules WHERE firewall_rules.id = firewall_rules_applied.id)
+			WHERE id IN (SELECT id FROM firewall_rules)
+		`); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		log.Printf("firewall: rules reordered (%d rules) — separators only, no pending diff", len(ids))
+	} else {
+		// Non-separators changed position — normal pending apply; only sync separator order.
+		if _, err := tx.Exec(`
+			UPDATE firewall_rules_applied
+			SET order_idx = (SELECT order_idx FROM firewall_rules WHERE firewall_rules.id = firewall_rules_applied.id)
+			WHERE id IN (SELECT id FROM firewall_rules WHERE rule_type = 'separator')
+		`); err != nil {
+			tx.Rollback()
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		log.Printf("firewall: rules reordered (%d rules) — pending apply", len(ids))
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	log.Printf("firewall: rules reordered (%d rules) — pending apply", len(ids))
 	return nil
 }
 
