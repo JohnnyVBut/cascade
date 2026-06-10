@@ -3088,8 +3088,12 @@ new Vue({
         fallbackTolerance: 0,
         onEnd: (evt) => {
           if (evt.oldIndex === evt.newIndex) return;
-          const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(tr => tr.dataset.id);
-          this._reorderFirewallRules(ids);
+          // Debounce: cancel any in-flight reorder and wait 120ms for rapid consecutive drags.
+          clearTimeout(this._reorderTimer);
+          this._reorderTimer = setTimeout(() => {
+            const ids = Array.from(tbody.querySelectorAll('tr[data-id]')).map(tr => tr.dataset.id);
+            this._reorderFirewallRules(ids);
+          }, 120);
         },
       });
     },

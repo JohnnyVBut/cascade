@@ -162,6 +162,9 @@ func discardFirewallChanges(c *fiber.Ctx) error {
 
 // POST /api/firewall/reorder
 // Body: { ids: ["id1", "id2", ...] } — full ordered list of all rule IDs.
+// The list must contain exactly the current rule IDs (no extras, no missing).
+const maxFirewallRules = 500 // reasonable upper bound to prevent lock-amplification DoS
+
 func reorderFirewallRules(c *fiber.Ctx) error {
 	var body struct {
 		IDs []string `json:"ids"`
@@ -172,8 +175,11 @@ func reorderFirewallRules(c *fiber.Ctx) error {
 	if len(body.IDs) == 0 {
 		return fiber.NewError(fiber.StatusBadRequest, "ids must not be empty")
 	}
+	if len(body.IDs) > maxFirewallRules {
+		return fiber.NewError(fiber.StatusBadRequest, "too many ids")
+	}
 	if err := firewall.Get().ReorderRules(body.IDs); err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
