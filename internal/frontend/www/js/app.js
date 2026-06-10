@@ -4307,6 +4307,13 @@ new Vue({
     },
   },
   mounted() {
+    // Remove splash screen — Vue is mounted, content is ready
+    const splash = document.getElementById('app-splash');
+    if (splash) {
+      splash.classList.add('splash-hide');
+      setTimeout(() => { if (splash.parentNode) splash.parentNode.removeChild(splash); }, 400);
+    }
+
     this.prefersDarkScheme.addListener(this.handlePrefersChange);
     this.setTheme(this.uiTheme);
 
