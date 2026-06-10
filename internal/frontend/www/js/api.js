@@ -891,6 +891,18 @@ class API {
     return this.call({ method: 'post', path: `/firewall/rules/${id}/move`, body: { direction } });
   }
 
+  async getFirewallPending() {
+    return this.call({ method: 'get', path: '/firewall/pending' });
+  }
+
+  async applyFirewallRules() {
+    return this.call({ method: 'post', path: '/firewall/apply' });
+  }
+
+  async discardFirewallChanges() {
+    return this.call({ method: 'post', path: '/firewall/discard' });
+  }
+
   // ============================================================
   // Users API — multi-user management
   // ============================================================

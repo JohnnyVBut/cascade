@@ -479,6 +479,8 @@ new Vue({
     // Firewall Rules (поглощает PBR)
     firewallRules: [],
     firewallRulesLoading: false,
+    firewallPending: false,   // unapplied changes exist
+    firewallApplying: false,  // Apply button loading state
     firewallInterfaces: [],
     showFirewallCreate: false,
     showFirewallEdit: false,
@@ -3037,13 +3039,41 @@ new Vue({
     async loadFirewallRules() {
       this.firewallRulesLoading = true;
       try {
-        const res = await this.api.getFirewallRules();
-        this.firewallRules = Array.isArray(res) ? res : (res.rules || []);
+        const [rulesRes, pendingRes] = await Promise.all([
+          this.api.getFirewallRules(),
+          this.api.getFirewallPending(),
+        ]);
+        this.firewallRules = Array.isArray(rulesRes) ? rulesRes : (rulesRes.rules || []);
+        this.firewallPending = pendingRes.hasPendingChanges || false;
       } catch (err) {
         console.error('loadFirewallRules error:', err);
         this.firewallRules = [];
       } finally {
         this.firewallRulesLoading = false;
+      }
+    },
+
+    async applyFirewallRules() {
+      this.firewallApplying = true;
+      try {
+        await this.api.applyFirewallRules();
+        this.firewallPending = false;
+        this.showToast('Firewall rules applied', 'success');
+      } catch (err) {
+        this.showToast(err.message || 'Failed to apply firewall rules', 'error');
+      } finally {
+        this.firewallApplying = false;
+      }
+    },
+
+    async discardFirewallChanges() {
+      if (!confirm('Discard all unapplied changes and revert to last applied state?')) return;
+      try {
+        await this.api.discardFirewallChanges();
+        await this.loadFirewallRules();
+        this.showToast('Changes discarded', 'success');
+      } catch (err) {
+        this.showToast(err.message || 'Failed to discard changes', 'error');
       }
     },
 

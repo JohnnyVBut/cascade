@@ -586,6 +586,36 @@ ALTER TABLE peers ADD COLUMN previous_group_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE firewall_rules ADD COLUMN rule_type TEXT NOT NULL DEFAULT 'rule';
 `,
 	},
+	{
+		version: 28,
+		sql: `
+-- Staged firewall apply: firewall_rules_applied is a snapshot of firewall_rules
+-- at the time the user last clicked "Apply". The kernel is always rebuilt from
+-- this snapshot, not from the live firewall_rules table.
+-- On first start (empty applied table) Init() copies firewall_rules → applied.
+CREATE TABLE IF NOT EXISTS firewall_rules_applied (
+    id                  TEXT PRIMARY KEY,
+    rule_type           TEXT NOT NULL DEFAULT 'rule',
+    name                TEXT NOT NULL DEFAULT '',
+    interface           TEXT NOT NULL DEFAULT '',
+    protocol            TEXT NOT NULL DEFAULT 'any',
+    source              TEXT NOT NULL DEFAULT '{}',
+    destination         TEXT NOT NULL DEFAULT '{}',
+    src_port            TEXT NOT NULL DEFAULT '',
+    dst_port            TEXT NOT NULL DEFAULT '',
+    action              TEXT NOT NULL DEFAULT 'ACCEPT',
+    gateway_id          TEXT NOT NULL DEFAULT '',
+    gateway_group_id    TEXT NOT NULL DEFAULT '',
+    fwmark              INTEGER,
+    fallback_to_default INTEGER NOT NULL DEFAULT 0,
+    enabled             INTEGER NOT NULL DEFAULT 1,
+    log                 INTEGER NOT NULL DEFAULT 0,
+    comment             TEXT NOT NULL DEFAULT '',
+    order_idx           INTEGER NOT NULL DEFAULT 0,
+    created_at          TEXT NOT NULL DEFAULT ''
+);
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

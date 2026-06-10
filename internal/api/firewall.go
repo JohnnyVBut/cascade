@@ -26,6 +26,9 @@ func RegisterFirewall(api fiber.Router) {
 	g.Patch("/rules/:id", updateFirewallRule)
 	g.Delete("/rules/:id", deleteFirewallRule)
 	g.Post("/rules/:id/move", moveFirewallRule)
+	g.Get("/pending", getFirewallPending)
+	g.Post("/apply", applyFirewallRules)
+	g.Post("/discard", discardFirewallChanges)
 }
 
 // GET /api/firewall/interfaces
@@ -122,6 +125,34 @@ func updateFirewallRule(c *fiber.Ctx) error {
 func deleteFirewallRule(c *fiber.Ctx) error {
 	if err := firewall.Get().DeleteRule(c.Params("id")); err != nil {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GET /api/firewall/pending
+// Returns { hasPendingChanges: bool } — whether draft differs from applied snapshot.
+func getFirewallPending(c *fiber.Ctx) error {
+	has, err := firewall.Get().HasPendingChanges()
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(fiber.Map{"hasPendingChanges": has})
+}
+
+// POST /api/firewall/apply
+// Copies draft → applied snapshot and rebuilds iptables chains.
+func applyFirewallRules(c *fiber.Ctx) error {
+	if err := firewall.Get().ApplyRules(); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// POST /api/firewall/discard
+// Reverts draft to the applied snapshot (no kernel change).
+func discardFirewallChanges(c *fiber.Ctx) error {
+	if err := firewall.Get().DiscardChanges(); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }

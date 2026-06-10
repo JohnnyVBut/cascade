@@ -162,6 +162,11 @@ func (m *Manager) Init() error {
 		// Non-fatal: container may not have iptables on dev machine.
 	}
 
+	// Ensure the applied snapshot exists (first run after upgrade: copy draft → applied).
+	if err := m.ensureAppliedSnapshot(); err != nil {
+		log.Printf("firewall: ensureAppliedSnapshot warning: %v", err)
+	}
+
 	if err := m.rebuildChains(); err != nil {
 		log.Printf("firewall: initial rebuildChains warning: %v", err)
 	}
@@ -221,7 +226,157 @@ func (m *Manager) GetRule(id string) (*Rule, error) {
 	return r, err
 }
 
-// AddRule creates a new rule, rebuilds chains, returns the created rule.
+// ── Staged apply ──────────────────────────────────────────────────────────────
+
+// getAppliedRules reads rules from the applied snapshot table (used by rebuildChains).
+func (m *Manager) getAppliedRules() ([]Rule, error) {
+	rows, err := db.DB().Query(`
+		SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+		       source, destination, action,
+		       gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		       log, comment, created_at
+		FROM firewall_rules_applied ORDER BY order_idx
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Rule
+	for rows.Next() {
+		r, err := scanRule(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ensureAppliedSnapshot copies firewall_rules → firewall_rules_applied when the
+// applied table is empty. Called on Init() to handle first-run and upgrades from
+// pre-staged versions where no snapshot exists yet.
+func (m *Manager) ensureAppliedSnapshot() error {
+	var count int
+	if err := db.DB().QueryRow(`SELECT COUNT(*) FROM firewall_rules_applied`).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil // snapshot already exists
+	}
+	// First run or upgrade: seed applied from draft so existing rules stay active.
+	_, err := db.DB().Exec(`
+		INSERT INTO firewall_rules_applied
+		    (id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
+		     action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		     enabled, log, comment, order_idx, created_at)
+		SELECT id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
+		       action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		       enabled, log, comment, order_idx, created_at
+		FROM firewall_rules
+	`)
+	if err != nil {
+		return fmt.Errorf("ensureAppliedSnapshot: %w", err)
+	}
+	log.Printf("firewall: applied snapshot seeded from draft (%d rules)", count)
+	return nil
+}
+
+// ApplyRules copies the current draft (firewall_rules) → applied snapshot, then
+// rebuilds iptables chains from the snapshot.
+func (m *Manager) ApplyRules() error {
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM firewall_rules_applied`); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO firewall_rules_applied
+		    (id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
+		     action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		     enabled, log, comment, order_idx, created_at)
+		SELECT id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
+		       action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		       enabled, log, comment, order_idx, created_at
+		FROM firewall_rules
+	`); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Printf("firewall: rules applied (snapshot updated)")
+	return m.rebuildChains()
+}
+
+// DiscardChanges overwrites the draft (firewall_rules) with the applied snapshot,
+// reverting all unapplied edits. No kernel change is needed (kernel already matches applied).
+func (m *Manager) DiscardChanges() error {
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM firewall_rules`); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO firewall_rules
+		    (id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
+		     action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		     enabled, log, comment, order_idx, created_at)
+		SELECT id, rule_type, name, interface, protocol, source, destination, src_port, dst_port,
+		       action, gateway_id, gateway_group_id, fwmark, fallback_to_default,
+		       enabled, log, comment, order_idx, created_at
+		FROM firewall_rules_applied
+	`); err != nil {
+		tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	log.Printf("firewall: draft discarded — reverted to applied snapshot")
+	return nil
+}
+
+// HasPendingChanges reports whether the draft differs from the applied snapshot.
+func (m *Manager) HasPendingChanges() (bool, error) {
+	var diff int
+	err := db.DB().QueryRow(`
+		SELECT COUNT(*) FROM (
+			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+			       source, destination, action, gateway_id, gateway_group_id,
+			       fwmark, fallback_to_default, log, comment
+			FROM firewall_rules
+			EXCEPT
+			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+			       source, destination, action, gateway_id, gateway_group_id,
+			       fwmark, fallback_to_default, log, comment
+			FROM firewall_rules_applied
+			UNION ALL
+			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+			       source, destination, action, gateway_id, gateway_group_id,
+			       fwmark, fallback_to_default, log, comment
+			FROM firewall_rules_applied
+			EXCEPT
+			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+			       source, destination, action, gateway_id, gateway_group_id,
+			       fwmark, fallback_to_default, log, comment
+			FROM firewall_rules
+		)
+	`).Scan(&diff)
+	if err != nil {
+		return false, err
+	}
+	return diff > 0, nil
+}
+
+// AddRule creates a new rule, returns the created rule.
 func (m *Manager) AddRule(inp RuleInput) (*Rule, error) {
 	if err := validateInput(inp); err != nil {
 		return nil, err
@@ -268,11 +423,7 @@ func (m *Manager) AddRule(inp RuleInput) (*Rule, error) {
 		return nil, err
 	}
 
-	if err := m.rebuildChains(); err != nil {
-		log.Printf("firewall: AddRule rebuildChains: %v", err)
-	}
-
-	log.Printf("firewall: rule added %q (action=%s order=%d)", rule.Name, rule.Action, rule.Order)
+	log.Printf("firewall: rule added %q (action=%s order=%d) — pending apply", rule.Name, rule.Action, rule.Order)
 	return &rule, nil
 }
 
@@ -375,15 +526,11 @@ func (m *Manager) UpdateRule(id string, inp RuleInput) (*Rule, error) {
 		return nil, err
 	}
 
-	if err := m.rebuildChains(); err != nil {
-		log.Printf("firewall: UpdateRule rebuildChains: %v", err)
-	}
-
-	log.Printf("firewall: rule updated %q", rule.Name)
+	log.Printf("firewall: rule updated %q — pending apply", rule.Name)
 	return &rule, nil
 }
 
-// DeleteRule removes a rule and rebuilds chains.
+// DeleteRule removes a rule from the draft (pending apply).
 func (m *Manager) DeleteRule(id string) error {
 	r, err := m.GetRule(id)
 	if err != nil {
@@ -397,15 +544,11 @@ func (m *Manager) DeleteRule(id string) error {
 		return err
 	}
 
-	if err := m.rebuildChains(); err != nil {
-		log.Printf("firewall: DeleteRule rebuildChains: %v", err)
-	}
-
-	log.Printf("firewall: rule deleted %q", r.Name)
+	log.Printf("firewall: rule deleted %q — pending apply", r.Name)
 	return nil
 }
 
-// ToggleRule enables or disables a rule and rebuilds chains.
+// ToggleRule enables or disables a rule (pending apply).
 func (m *Manager) ToggleRule(id string, enabled bool) (*Rule, error) {
 	r, err := m.GetRule(id)
 	if err != nil {
@@ -420,15 +563,10 @@ func (m *Manager) ToggleRule(id string, enabled bool) (*Rule, error) {
 	}
 
 	r.Enabled = enabled
-
-	if err := m.rebuildChains(); err != nil {
-		log.Printf("firewall: ToggleRule rebuildChains: %v", err)
-	}
-
 	return r, nil
 }
 
-// MoveRule swaps the order of a rule with its neighbour ("up" or "down").
+// MoveRule swaps the order of a rule with its neighbour ("up" or "down") — pending apply.
 func (m *Manager) MoveRule(id, direction string) (*Rule, error) {
 	rules, err := m.GetRules()
 	if err != nil {
@@ -470,10 +608,6 @@ func (m *Manager) MoveRule(id, direction string) (*Rule, error) {
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
-	}
-
-	if err := m.rebuildChains(); err != nil {
-		log.Printf("firewall: MoveRule rebuildChains: %v", err)
 	}
 
 	a.Order, b.Order = b.Order, a.Order
@@ -611,8 +745,8 @@ func (m *Manager) rebuildChains() error {
 		log.Printf("firewall: cleanupRoutingRules: %v", err)
 	}
 
-	// Re-apply all enabled rules in order.
-	rules, err := m.GetRules()
+	// Re-apply all enabled rules in order — always from the applied snapshot.
+	rules, err := m.getAppliedRules()
 	if err != nil {
 		return err
 	}

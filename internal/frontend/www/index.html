@@ -375,6 +375,17 @@
         <!-- ==================== Content Area ==================== -->
         <main class="flex-grow overflow-y-auto" style="height: 100vh; padding: 24px 32px;">
 
+        <!-- Firewall pending changes global banner -->
+        <div v-if="firewallPending && activePage !== 'firewall'"
+          style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:10px 16px; margin-bottom:12px; display:flex; align-items:center; gap:10px; cursor:pointer;"
+          @click="activePage = 'firewall'">
+          <span style="font-size:1rem;">⚠️</span>
+          <span style="font-size:0.85rem; color:#713f12; flex:1;">
+            <strong>Unapplied firewall changes</strong> — click to go to Firewall Rules and apply.
+          </span>
+          <span style="font-size:0.75rem; color:#92400e; font-weight:600;">Go to Firewall →</span>
+        </div>
+
         <!-- Update banner -->
         <div v-if="versionInfo && versionInfo.updateAvailable"
           style="background:#92400e; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
@@ -5453,6 +5464,17 @@
           <div class="flex items-center justify-between">
             <h1 class="text-2xl font-bold dark:text-neutral-200">Firewall Rules</h1>
             <div class="flex gap-2">
+              <button @click="discardFirewallChanges()" v-if="firewallPending"
+                class="text-white rounded-lg font-medium text-sm transition btn"
+                style="background:#ef4444;">
+                Discard
+              </button>
+              <button @click="applyFirewallRules()"
+                :disabled="!firewallPending || firewallApplying"
+                class="text-white rounded-lg font-medium text-sm transition btn"
+                :style="firewallPending ? 'background:#16a34a;' : 'background:#9ca3af; cursor:not-allowed;'">
+                {{ firewallApplying ? 'Applying...' : 'Apply ▶' }}
+              </button>
               <button @click="addFirewallSeparator()"
                 class="text-white rounded-lg font-medium text-sm transition btn"
                 style="background:#6b7280;">
@@ -5463,6 +5485,16 @@
                 + Add Rule
               </button>
             </div>
+          </div>
+
+          <!-- Pending changes banner -->
+          <div v-if="firewallPending"
+            style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:10px 16px; display:flex; align-items:center; gap:10px;">
+            <span style="font-size:1.1rem;">⚠️</span>
+            <span style="font-size:0.85rem; color:#713f12; flex:1;">
+              You have <strong>unapplied firewall changes</strong>. The kernel still uses the last applied ruleset.
+              Click <strong>Apply ▶</strong> to activate, or <strong>Discard</strong> to revert.
+            </span>
           </div>
 
           <p class="text-sm text-gray-500 dark:text-neutral-400">
