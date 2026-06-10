@@ -3064,8 +3064,11 @@ new Vue({
         this._sortableInstance.destroy();
         this._sortableInstance = null;
       }
+      // draggable: 'tr[data-id]' skips Vue 2 comment-node anchors that
+      // <template v-for> inserts between <tr> elements in the DOM.
       this._sortableInstance = Sortable.create(tbody, {
         handle: '.drag-handle',
+        draggable: 'tr[data-id]',
         animation: 150,
         ghostClass: 'fw-drag-ghost',
         onEnd: (evt) => {
