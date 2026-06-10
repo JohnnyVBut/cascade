@@ -345,29 +345,36 @@ func (m *Manager) DiscardChanges() error {
 }
 
 // HasPendingChanges reports whether the draft differs from the applied snapshot.
+// NOTE: SQLite compound operators (EXCEPT, UNION ALL) are left-associative and
+// have equal precedence, so we must wrap each EXCEPT in a subquery to avoid the
+// mis-parse: A EXCEPT B UNION ALL C EXCEPT D → ((A EXCEPT B) UNION ALL C) EXCEPT D.
 func (m *Manager) HasPendingChanges() (bool, error) {
 	var diff int
 	err := db.DB().QueryRow(`
 		SELECT COUNT(*) FROM (
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules
-			EXCEPT
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules_applied
+			SELECT * FROM (
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment
+				FROM firewall_rules
+				EXCEPT
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment
+				FROM firewall_rules_applied
+			) AS draft_minus_applied
 			UNION ALL
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules_applied
-			EXCEPT
-			SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
-			       source, destination, action, gateway_id, gateway_group_id,
-			       fwmark, fallback_to_default, log, comment
-			FROM firewall_rules
+			SELECT * FROM (
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment
+				FROM firewall_rules_applied
+				EXCEPT
+				SELECT id, rule_type, name, enabled, order_idx, interface, protocol,
+				       source, destination, action, gateway_id, gateway_group_id,
+				       fwmark, fallback_to_default, log, comment
+				FROM firewall_rules
+			) AS applied_minus_draft
 		)
 	`).Scan(&diff)
 	if err != nil {
