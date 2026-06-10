@@ -1608,6 +1608,7 @@ new Vue({
     },
 
     async refreshGateways() {
+      if (!this.authenticated) return;
       try {
         const res = await this.api.getGateways();
         this.gateways = res.gateways || [];
