@@ -483,6 +483,19 @@ new Vue({
     firewallApplying: false,  // Apply button loading state
     firewallInterfaces: [],
     showFirewallCreate: false,
+    showSeparatorModal: false,
+    separatorEditId: null,    // null = new, string = edit existing
+    separatorEdit: { name: '', color: '' },
+    separatorColors: [
+      { value: '',         label: 'Default', swatch: '#6b7280' },
+      { value: 'red',      label: 'Red',     swatch: '#ef4444' },
+      { value: 'orange',   label: 'Orange',  swatch: '#f97316' },
+      { value: 'yellow',   label: 'Yellow',  swatch: '#eab308' },
+      { value: 'green',    label: 'Green',   swatch: '#22c55e' },
+      { value: 'cyan',     label: 'Cyan',    swatch: '#06b6d4' },
+      { value: 'blue',     label: 'Blue',    swatch: '#3b82f6' },
+      { value: 'purple',   label: 'Purple',  swatch: '#a855f7' },
+    ],
     showFirewallEdit: false,
     firewallCreate: {
       name: '',
@@ -3263,26 +3276,49 @@ new Vue({
       }
     },
 
-    async addFirewallSeparator() {
-      const name = window.prompt('Section name:', 'New Section');
-      if (name === null) return; // cancelled
+    openAddSeparator() {
+      this.separatorEdit = { name: '', color: '' };
+      this.separatorEditId = null;
+      this.showSeparatorModal = true;
+    },
+
+    openEditSeparator(rule) {
+      this.separatorEdit = { name: rule.name, color: rule.separatorColor || '' };
+      this.separatorEditId = rule.id;
+      this.showSeparatorModal = true;
+    },
+
+    async saveSeparator() {
+      const { name, color } = this.separatorEdit;
       try {
-        await this.api.createFirewallRule({ ruleType: 'separator', name: name.trim() || 'Section' });
+        if (this.separatorEditId) {
+          await this.api.updateFirewallRule(this.separatorEditId, { ruleType: 'separator', name: name.trim() || 'Separator', color });
+        } else {
+          await this.api.createFirewallRule({ ruleType: 'separator', name: name.trim() || 'Separator', color });
+        }
+        this.showSeparatorModal = false;
         await this.loadFirewallRules();
+        this.showToast(this.separatorEditId ? 'Separator updated' : 'Separator added', 'success');
       } catch (err) {
-        this.showToast(err.message || 'Failed to add section', 'error');
+        this.showToast(err.message || 'Failed to save separator', 'error');
       }
     },
 
-    async renameSeparator(rule) {
-      const name = window.prompt('Section name:', rule.name);
-      if (name === null) return; // cancelled
-      try {
-        await this.api.updateFirewallRule({ id: rule.id, ruleType: 'separator', name: name.trim() || 'Section' });
-        await this.loadFirewallRules();
-      } catch (err) {
-        this.showToast(err.message || 'Failed to rename section', 'error');
-      }
+    // Returns inline style for a separator row based on its color value.
+    _sepRowStyle(color) {
+      const map = {
+        '':       { border: '#6b7280', bg: '#f3f4f6', darkBg: '#404040' },
+        'red':    { border: '#ef4444', bg: '#fff0f0', darkBg: '#4a1a1a' },
+        'orange': { border: '#f97316', bg: '#fff4eb', darkBg: '#4a2a10' },
+        'yellow': { border: '#eab308', bg: '#fefce8', darkBg: '#3a3510' },
+        'green':  { border: '#22c55e', bg: '#f0fdf4', darkBg: '#1a3d22' },
+        'cyan':   { border: '#06b6d4', bg: '#ecfeff', darkBg: '#153040' },
+        'blue':   { border: '#3b82f6', bg: '#eff6ff', darkBg: '#1a2a4a' },
+        'purple': { border: '#a855f7', bg: '#faf5ff', darkBg: '#2e1a4a' },
+      };
+      const c = map[color] || map[''];
+      const bg = this.theme === 'dark' ? c.darkBg : c.bg;
+      return `background:${bg}; border-left:3px solid ${c.border};`;
     },
 
     _firewallEndpointLabel(ep) {

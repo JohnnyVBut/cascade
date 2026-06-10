@@ -66,7 +66,8 @@ func createFirewallRule(c *fiber.Ctx) error {
 	}
 	if rt, _ := raw["ruleType"].(string); rt == "separator" {
 		name, _ := raw["name"].(string)
-		sep, err := firewall.Get().AddSeparator(name)
+		color, _ := raw["color"].(string)
+		sep, err := firewall.Get().AddSeparator(name, color)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
@@ -101,10 +102,11 @@ func updateFirewallRule(c *fiber.Ctx) error {
 		return c.JSON(r)
 	}
 
-	// Separator rename shortcut: { ruleType: "separator", name: "..." }
+	// Separator update: { ruleType: "separator", name: "...", color: "..." }
 	if rt, _ := raw["ruleType"].(string); rt == "separator" {
 		name, _ := raw["name"].(string)
-		sep, err := firewall.Get().UpdateSeparator(id, name)
+		color, _ := raw["color"].(string)
+		sep, err := firewall.Get().UpdateSeparator(id, name, color)
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}

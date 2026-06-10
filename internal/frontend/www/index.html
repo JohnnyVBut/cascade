@@ -5466,28 +5466,6 @@
           <!-- Header -->
           <div class="flex items-center justify-between">
             <h1 class="text-2xl font-bold dark:text-neutral-200">Firewall Rules</h1>
-            <div class="flex gap-2">
-              <button @click="discardFirewallChanges()" v-if="firewallPending"
-                class="text-white rounded-lg font-medium text-sm transition btn"
-                style="background:#ef4444;">
-                Discard
-              </button>
-              <button @click="applyFirewallRules()"
-                :disabled="!firewallPending || firewallApplying"
-                class="text-white rounded-lg font-medium text-sm transition btn"
-                :style="firewallPending ? 'background:#16a34a;' : 'background:#9ca3af; cursor:not-allowed;'">
-                {{ firewallApplying ? 'Applying...' : 'Apply ▶' }}
-              </button>
-              <button @click="addFirewallSeparator()"
-                class="text-white rounded-lg font-medium text-sm transition btn"
-                style="background:#6b7280;">
-                + Add Section
-              </button>
-              <button @click="openFirewallCreate()"
-                class="bg-blue-600 text-white rounded-lg font-medium text-sm transition btn">
-                + Add Rule
-              </button>
-            </div>
           </div>
 
           <!-- Pending changes banner -->
@@ -5537,7 +5515,7 @@
                 <tr v-if="rule.ruleType === 'separator'" :data-id="rule.id" class="dark:border-neutral-600" style="border-top-width:1px;">
                   <td class="drag-handle" style="cursor:grab; text-align:center; color:#9ca3af; user-select:none; padding:0 2px; width:24px;">⠿</td>
                   <td colspan="10" style="padding:0;">
-                    <div :style="theme === 'dark' ? 'background:#404040; border-left:3px solid #6b7280;' : 'background:#f3f4f6; border-left:3px solid #9ca3af;'"
+                    <div :style="_sepRowStyle(rule.separatorColor)"
                       style="padding:6px 10px; display:flex; align-items:center; gap:8px;">
                       <span style="font-size:0.7rem; opacity:0.5; user-select:none;">▸</span>
                       <span :style="theme === 'dark' ? 'color:#d1d5db;' : 'color:#374151;'"
@@ -5550,7 +5528,7 @@
                       <button @click="moveFirewallRule(rule, 'down')" title="Move down"
                         class="text-xs rounded"
                         :style="theme === 'dark' ? 'background:#525252;color:#d4d4d4;padding:2px 6px;' : 'background:#e5e7eb;color:#374151;padding:2px 6px;'">↓</button>
-                      <button @click="renameSeparator(rule)" title="Rename section"
+                      <button @click="openEditSeparator(rule)" title="Edit separator"
                         class="text-xs rounded"
                         :style="theme === 'dark' ? 'background:#525252;color:#d4d4d4;padding:2px 6px;' : 'background:#e5e7eb;color:#374151;padding:2px 6px;'">✎</button>
                       <button @click="deleteFirewallRule(rule)"
@@ -7258,6 +7236,100 @@
     </div>
 
     </div>
+
+    <!-- ================================================================ -->
+    <!-- Firewall floating toolbar (bottom-right, visible only on firewall -->
+    <!-- page). Below toasts (which are top-right) — no overlap.          -->
+    <!-- ================================================================ -->
+    <div v-if="activePage === 'firewall'"
+      style="position:fixed; bottom:24px; right:24px; z-index:50;
+             display:flex; align-items:center; gap:8px;
+             border-radius:12px; padding:8px 12px;
+             box-shadow:0 4px 24px rgba(0,0,0,0.18);"
+      :style="theme === 'dark' ? 'background:#262626; border:1px solid #404040;' : 'background:#fff; border:1px solid #e5e7eb;'">
+      <!-- Add buttons -->
+      <button @click="openAddSeparator()"
+        class="text-white rounded-lg font-medium text-sm btn"
+        style="background:#6b7280; padding:6px 12px;">
+        + Separator
+      </button>
+      <button @click="openFirewallCreate()"
+        class="text-white rounded-lg font-medium text-sm btn"
+        style="background:#2563eb; padding:6px 12px;">
+        + Add Rule
+      </button>
+      <!-- Divider -->
+      <div :style="theme === 'dark' ? 'background:#525252;' : 'background:#e5e7eb;'"
+        style="width:1px; height:24px; margin:0 4px;"></div>
+      <!-- Apply / Discard -->
+      <button @click="discardFirewallChanges()" v-if="firewallPending"
+        class="text-white rounded-lg font-medium text-sm btn"
+        style="background:#ef4444; padding:6px 12px;">
+        Discard
+      </button>
+      <button @click="applyFirewallRules()"
+        :disabled="!firewallPending || firewallApplying"
+        class="text-white rounded-lg font-medium text-sm btn"
+        :style="(firewallPending && !firewallApplying) ? 'background:#16a34a; padding:6px 14px;' : 'background:#9ca3af; cursor:not-allowed; padding:6px 14px;'">
+        {{ firewallApplying ? 'Applying…' : 'Apply ▶' }}
+      </button>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- Separator add/edit modal                                          -->
+    <!-- ================================================================ -->
+    <div v-if="showSeparatorModal"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+      style="padding:40px 24px;" @click.self="showSeparatorModal = false">
+      <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto; padding:24px;">
+        <h2 class="text-lg font-bold dark:text-neutral-200" style="margin-bottom:16px;">
+          {{ separatorEditId ? 'Edit Separator' : 'Add Separator' }}
+        </h2>
+        <!-- Name -->
+        <div style="margin-bottom:16px;">
+          <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">Name</label>
+          <input v-model="separatorEdit.name" type="text" placeholder="Separator name"
+            class="w-full rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-200"
+            style="border:1px solid #d1d5db; padding:8px 10px;"
+            @keyup.enter="saveSeparator()" />
+        </div>
+        <!-- Color palette -->
+        <div style="margin-bottom:20px;">
+          <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:8px;">Color</label>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button v-for="c in separatorColors" :key="c.value"
+              @click="separatorEdit.color = c.value"
+              :title="c.label"
+              style="width:28px; height:28px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:transform 0.1s;"
+              :style="{
+                background: c.swatch,
+                borderColor: separatorEdit.color === c.value ? '#1d4ed8' : 'transparent',
+                transform: separatorEdit.color === c.value ? 'scale(1.25)' : 'scale(1)',
+              }">
+            </button>
+          </div>
+          <!-- Preview -->
+          <div style="margin-top:12px; border-radius:6px; padding:7px 12px; font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em;"
+            :style="_sepRowStyle(separatorEdit.color)">
+            {{ separatorEdit.name || 'Separator' }}
+          </div>
+        </div>
+        <!-- Actions -->
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button @click="showSeparatorModal = false"
+            class="text-sm rounded-lg dark:text-neutral-300"
+            style="padding:7px 16px; border:1px solid #d1d5db;">
+            Cancel
+          </button>
+          <button @click="saveSeparator()"
+            class="text-white text-sm rounded-lg font-medium"
+            style="padding:7px 16px; background:#2563eb;">
+            {{ separatorEditId ? 'Save' : 'Add' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>
