@@ -3045,13 +3045,15 @@ new Vue({
         ]);
         this.firewallRules = Array.isArray(rulesRes) ? rulesRes : (rulesRes.rules || []);
         this.firewallPending = pendingRes.hasPendingChanges || false;
-        this.$nextTick(() => this._initSortable());
       } catch (err) {
         console.error('loadFirewallRules error:', err);
         this.firewallRules = [];
       } finally {
         this.firewallRulesLoading = false;
       }
+      // $nextTick must be AFTER finally so firewallRulesLoading=false is already
+      // flushed to DOM before we look for tbody#fw-rules-tbody.
+      this.$nextTick(() => this._initSortable());
     },
 
     // Initialise (or re-initialise) Sortable.js on the firewall rules tbody.
