@@ -892,7 +892,7 @@ class API {
   }
 
   async reorderFirewallRules(ids) {
-    return this.call({ method: 'post', path: '/firewall/reorder', data: { ids } });
+    return this.call({ method: 'post', path: '/firewall/reorder', body: { ids } });
   }
 
   async getFirewallPending() {
