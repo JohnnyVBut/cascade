@@ -168,11 +168,68 @@
     to { transform: rotate(360deg); }
   }
 
-  /* ── Page background — same palette as splash ── */
+  /* ── Page background — light mode: soft tint of logo palette ── */
   html, body {
-    background: linear-gradient(135deg, #14532d 0%, #0f172a 50%, #1e3a8a 100%) !important;
+    background: linear-gradient(135deg, #f0fdf4 0%, #f8fafc 55%, #eff6ff 100%) !important;
     background-attachment: fixed !important;
     min-height: 100vh;
+  }
+  /* ── Page background — dark mode: deep logo-gradient ── */
+  html.dark, html.dark body {
+    background: linear-gradient(135deg, #14532d 0%, #0f172a 50%, #1e3a8a 100%) !important;
+  }
+
+  /* ── Sidebar & main area — light mode ── */
+  .app-nav {
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(0,0,0,0.08);
+  }
+  .app-main {
+    background: rgba(255,255,255,0.45);
+    backdrop-filter: blur(8px);
+  }
+  /* ── Sidebar & main area — dark mode ── */
+  .dark .app-nav {
+    background: rgba(15,23,42,0.72);
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+  .dark .app-main {
+    background: rgba(15,23,42,0.55);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ── Light mode: subtle glass panels ── */
+  .shadow-md {
+    background: rgba(255,255,255,0.80) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0,0,0,0.06) !important;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.08) !important;
+  }
+  .shadow-lg {
+    background: rgba(255,255,255,0.88) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0,0,0,0.07) !important;
+  }
+  .dash-card {
+    background: rgba(255,255,255,0.80) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  }
+
+  /* Light mode modals */
+  .modal-panel {
+    background: rgba(255,255,255,0.92) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .shadow-xl, .shadow-2xl {
+    background: rgba(255,255,255,0.92) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0,0,0,0.08) !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.15) !important;
   }
 
   /* ── Dark mode: glassmorphism for all content panels ── */
@@ -301,7 +358,7 @@
 
         <!-- ==================== Sidebar ==================== -->
         <nav class="w-64 flex-shrink-0 overflow-y-auto flex flex-col"
-             style="background: rgba(15,23,42,0.72); backdrop-filter: blur(12px); border-right: 1px solid rgba(255,255,255,0.08); min-height: 100vh;">
+             class="app-nav" style="min-height: 100vh;">
           <!-- Logo -->
           <div style="padding: 20px 16px 14px;">
             <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:216px; height:auto; display:block;" alt="Cascade" />
@@ -487,7 +544,7 @@
         </nav>
 
         <!-- ==================== Content Area ==================== -->
-        <main class="flex-grow overflow-y-auto" style="height: 100vh; padding: 24px 32px; background: rgba(15,23,42,0.55); backdrop-filter: blur(8px);">
+        <main class="flex-grow overflow-y-auto app-main" style="height: 100vh; padding: 24px 32px;">
 
         <!-- Firewall pending changes global banner -->
         <div v-if="firewallPending && activePage !== 'firewall'"
