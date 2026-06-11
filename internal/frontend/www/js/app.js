@@ -1873,15 +1873,17 @@ new Vue({
     async switchToRemote(remote) {
       this.api.setRemote(remote.id);
       this.activeRemoteId = remote.id;
-      // Reset current page data and reload from remote.
+      // Reset current page data so stale local data isn't shown.
       this.tunnelInterfaces = [];
       this.allPeers = [];
       this.gateways = [];
-      this.setPage('interfaces');
-      await this.loadTunnelInterfaces().catch(err => {
+      this.switchPage('interfaces');
+      try {
+        await this.loadTunnelInterfaces();
+      } catch (err) {
         this.showToast(`Failed to connect to ${remote.name}: ${err.message}`, 'error');
         this.switchToLocal();
-      });
+      }
     },
 
     switchToLocal() {
@@ -1890,8 +1892,7 @@ new Vue({
       this.tunnelInterfaces = [];
       this.allPeers = [];
       this.gateways = [];
-      this.setPage('interfaces');
-      this.loadTunnelInterfaces();
+      this.switchPage('interfaces');
     },
 
     async addRemote() {

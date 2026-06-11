@@ -110,7 +110,9 @@ func proxyRemote(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "remote not found")
 	}
 
-	// Build target URL: remote base + everything after /proxy
+	// Build target URL: remote base + /api/ + everything after /proxy
+	// The local api.js strips the /api prefix from paths (e.g. "/tunnel-interfaces"),
+	// so we must re-add /api/ when forwarding to the remote server.
 	subPath := c.Params("*")
 	if subPath == "" {
 		subPath = "/"
@@ -118,7 +120,7 @@ func proxyRemote(c *fiber.Ctx) error {
 	if !strings.HasPrefix(subPath, "/") {
 		subPath = "/" + subPath
 	}
-	targetURL := strings.TrimRight(r.URL, "/") + subPath
+	targetURL := strings.TrimRight(r.URL, "/") + "/api" + subPath
 	if qs := string(c.Request().URI().QueryString()); qs != "" {
 		targetURL += "?" + qs
 	}
