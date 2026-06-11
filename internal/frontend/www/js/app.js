@@ -4425,7 +4425,7 @@ new Vue({
       setTimeout(() => {
         splash.classList.add('splash-hide');
         setTimeout(() => { if (splash.parentNode) splash.parentNode.removeChild(splash); }, 400);
-      }, 2000);
+      }, 1000);
     }
 
     this.prefersDarkScheme.addListener(this.handlePrefersChange);
