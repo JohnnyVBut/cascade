@@ -1026,9 +1026,7 @@ new Vue({
 
     async loadTunnelInterfaces() {
       try {
-        const res = await fetch('./api/tunnel-interfaces', { credentials: 'include' });
-        if (!res.ok) throw new Error(res.statusText);
-        const data = await res.json();
+        const data = await this.api.getTunnelInterfaces();
         this.tunnelInterfaces = data.interfaces || [];
       } catch (err) {
         console.error('Failed to load tunnel interfaces:', err);
