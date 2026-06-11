@@ -161,10 +161,17 @@
   @keyframes splash-spin {
     to { transform: rotate(360deg); }
   }
+
+  /* ── Page background — same palette as splash ── */
+  html, body {
+    background: linear-gradient(135deg, #14532d 0%, #0f172a 50%, #1e3a8a 100%) !important;
+    background-attachment: fixed !important;
+    min-height: 100vh;
+  }
 </style>
 </head>
 
-<body class="bg-gray-50 dark:bg-neutral-800">
+<body>
   <!-- Splash screen: hides raw {{ }} templates until Vue mounts -->
   <div id="app-splash">
     <img src="./img/logo.svg" alt="Cascade" style="width:240px; max-width:80vw; opacity:0.95;">
@@ -177,7 +184,6 @@
       <!-- The main UI (sidebar + content) is NOT rendered — no DOM to reach via   -->
       <!-- devtools, no background content accessible behind an overlay.           -->
       <div v-if="authenticated === true && showFirstRunSetup"
-        class="bg-gray-50 dark:bg-neutral-900"
         style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
         <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl"
              role="dialog" aria-modal="true" aria-labelledby="setup-title"
@@ -244,8 +250,8 @@
       <div v-else-if="authenticated === true" class="flex h-screen">
 
         <!-- ==================== Sidebar ==================== -->
-        <nav class="w-64 flex-shrink-0 bg-gray-50 dark:bg-neutral-800 overflow-y-auto flex flex-col"
-             style="border-right: 1px solid #e5e7eb; min-height: 100vh;">
+        <nav class="w-64 flex-shrink-0 overflow-y-auto flex flex-col"
+             style="background: rgba(15,23,42,0.72); backdrop-filter: blur(12px); border-right: 1px solid rgba(255,255,255,0.08); min-height: 100vh;">
           <!-- Logo -->
           <div style="padding: 20px 16px 14px;">
             <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:216px; height:auto; display:block;" alt="Cascade" />
@@ -431,7 +437,7 @@
         </nav>
 
         <!-- ==================== Content Area ==================== -->
-        <main class="flex-grow overflow-y-auto" style="height: 100vh; padding: 24px 32px;">
+        <main class="flex-grow overflow-y-auto" style="height: 100vh; padding: 24px 32px; background: rgba(15,23,42,0.55); backdrop-filter: blur(8px);">
 
         <!-- Firewall pending changes global banner -->
         <div v-if="firewallPending && activePage !== 'firewall'"
