@@ -151,6 +151,7 @@ func main() {
 	api.RegisterAliases(apiGroup)
 	api.RegisterFirewall(apiGroup)
 	api.RegisterGateways(apiGroup)
+	api.RegisterRemotes(apiGroup)
 
 	// Legacy shims that require auth (old wireguard/client list → empty array).
 	api.RegisterCompatAuth(apiGroup)

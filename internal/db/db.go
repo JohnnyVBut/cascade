@@ -626,6 +626,21 @@ ALTER TABLE firewall_rules         ADD COLUMN separator_color TEXT NOT NULL DEFA
 ALTER TABLE firewall_rules_applied ADD COLUMN separator_color TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 30,
+		sql: `
+-- Remote Cascade servers for multi-server management.
+-- token: API token (ws_...) obtained at add-time via login→create token→logout.
+-- Password is never stored — only the resulting API token.
+CREATE TABLE IF NOT EXISTS remotes (
+	id         TEXT PRIMARY KEY,
+	name       TEXT NOT NULL,
+	url        TEXT NOT NULL,
+	token      TEXT NOT NULL,
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
