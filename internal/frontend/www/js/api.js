@@ -5,6 +5,22 @@
 
 class API {
 
+  constructor() {
+    // When set, all calls are transparently proxied through the local server
+    // to a remote Cascade instance. The browser never communicates directly
+    // with the remote — the token stays on the backend.
+    this._remoteId = null;
+  }
+
+  /** Switch all subsequent calls to go through a remote server proxy. */
+  setRemote(id) { this._remoteId = id; }
+
+  /** Switch back to the local server. */
+  clearRemote() { this._remoteId = null; }
+
+  /** Returns the active remote id, or null if local. */
+  getRemoteId() { return this._remoteId; }
+
   async call({ method, path, body }) {
     // Compute API base URL from the first path segment of the current page.
     // Works correctly whether the page was loaded with or without a trailing slash,
@@ -18,7 +34,13 @@ class API {
       ? `${window.location.origin}/${segs[0]}/api`
       : `${window.location.origin}/api`;
 
-    const res = await fetch(`${apiBase}${path}`, {
+    // If a remote is active, route through the proxy endpoint.
+    // Remotes-management calls (/remotes/*) always go to local.
+    const effectivePath = (this._remoteId && !path.startsWith('/remotes'))
+      ? `/remotes/${this._remoteId}/proxy${path}`
+      : path;
+
+    const res = await fetch(`${apiBase}${effectivePath}`, {
       method: method.toUpperCase(), // Node.js 22 llhttp: HTTP method must be uppercase
       headers: {
         'Content-Type': 'application/json',

@@ -332,6 +332,7 @@ new Vue({
 
     // ── Remote servers ──────────────────────────────────────────────────────
     remotes: [],
+    activeRemoteId: null,   // null = local server; string = remote id
     showRemoteAdd: false,
     remoteAddForm: { name: '', url: '', username: '', password: '' },
     remoteAddError: '',
@@ -1867,6 +1868,30 @@ new Vue({
       } catch (err) {
         this.showToast(`Failed to load remotes: ${err.message}`, 'error');
       }
+    },
+
+    async switchToRemote(remote) {
+      this.api.setRemote(remote.id);
+      this.activeRemoteId = remote.id;
+      // Reset current page data and reload from remote.
+      this.tunnelInterfaces = [];
+      this.allPeers = [];
+      this.gateways = [];
+      this.setPage('interfaces');
+      await this.loadTunnelInterfaces().catch(err => {
+        this.showToast(`Failed to connect to ${remote.name}: ${err.message}`, 'error');
+        this.switchToLocal();
+      });
+    },
+
+    switchToLocal() {
+      this.api.clearRemote();
+      this.activeRemoteId = null;
+      this.tunnelInterfaces = [];
+      this.allPeers = [];
+      this.gateways = [];
+      this.setPage('interfaces');
+      this.loadTunnelInterfaces();
     },
 
     async addRemote() {
@@ -4556,6 +4581,17 @@ new Vue({
     // Browser tab title: routerName if set, otherwise hostname, otherwise 'Cascade'.
     pageTitle() {
       return this.globalSettings.routerName || this.globalSettings.hostname || 'Cascade';
+    },
+
+    // The currently active remote record, or null if we're on the local server.
+    activeRemote() {
+      if (!this.activeRemoteId) return null;
+      return this.remotes.find(r => r.id === this.activeRemoteId) || null;
+    },
+
+    // Label shown in the server switcher dropdown.
+    activeServerLabel() {
+      return this.activeRemote ? this.activeRemote.name : (this.pageTitle || 'Local');
     },
     // MSS clamping mode derived from the sentinel int value in interfaceEdit.mss.
     // Used to drive the select dropdown in Edit Interface modal.
