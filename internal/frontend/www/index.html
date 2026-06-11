@@ -4105,37 +4105,55 @@
               <button @click="showRemoteAdd = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
             </div>
             <div class="modal-body">
-              <p class="text-xs text-gray-500 dark:text-neutral-400">
-                Cascade will log in to the remote server, create an API token, then log out.
-                Your password is <strong>never stored</strong>.
-              </p>
+              <!-- Step 1: credentials -->
+              <template v-if="!remoteAddNeedsTOTP">
+                <p class="text-xs text-gray-500 dark:text-neutral-400">
+                  Cascade will log in to the remote server, create an API token, then log out.
+                  Your password is <strong>never stored</strong>.
+                </p>
+                <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Name</label>
+                  <input v-model="remoteAddForm.name" type="text" placeholder="e.g. Server Berlin"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px;" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">URL</label>
+                  <input v-model="remoteAddForm.url" type="url" placeholder="https://cascade.example.com"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px;" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Username</label>
+                  <input v-model="remoteAddForm.username" type="text" placeholder="admin"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px;" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Password</label>
+                  <input v-model="remoteAddForm.password" type="password"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px;" @keyup.enter="addRemote()" />
+                </div>
+              </template>
 
-              <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
-
-              <div>
-                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Name</label>
-                <input v-model="remoteAddForm.name" type="text" placeholder="e.g. Server Berlin"
-                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                  style="padding:8px 10px;" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">URL</label>
-                <input v-model="remoteAddForm.url" type="url" placeholder="https://cascade.example.com"
-                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                  style="padding:8px 10px;" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Username</label>
-                <input v-model="remoteAddForm.username" type="text" placeholder="admin"
-                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                  style="padding:8px 10px;" />
-              </div>
-              <div>
-                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Password</label>
-                <input v-model="remoteAddForm.password" type="password"
-                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                  style="padding:8px 10px;" @keyup.enter="addRemote()" />
-              </div>
+              <!-- Step 2: TOTP code -->
+              <template v-else>
+                <p class="text-xs text-gray-500 dark:text-neutral-400" style="margin-bottom:12px;">
+                  The remote server has <strong>two-factor authentication</strong> enabled.
+                  Enter the 6-digit code from your authenticator app.
+                </p>
+                <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Authenticator Code</label>
+                  <input v-model="remoteAddForm.totpCode" type="text" inputmode="numeric"
+                    pattern="[0-9]{6}" maxlength="6" placeholder="123456" autofocus
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px; letter-spacing:0.2em; font-size:1.1em;"
+                    @keyup.enter="addRemote()" />
+                </div>
+              </template>
             </div>
             <div class="modal-footer">
               <button @click="showRemoteAdd = false"
@@ -4144,7 +4162,7 @@
               <button @click="addRemote()" :disabled="remoteAddLoading"
                 class="text-white rounded-lg text-sm font-medium btn"
                 :style="remoteAddLoading ? 'background:#9ca3af; cursor:not-allowed;' : 'background:#2563eb;'">
-                {{ remoteAddLoading ? 'Connecting…' : 'Add Server' }}
+                {{ remoteAddLoading ? 'Connecting…' : (remoteAddNeedsTOTP ? 'Verify & Add' : 'Add Server') }}
               </button>
             </div>
           </div>

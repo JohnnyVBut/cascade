@@ -25,7 +25,7 @@ class API {
   /** Returns the active remote id, or null if local. */
   getRemoteId() { return this._remoteId; }
 
-  async call({ method, path, body }) {
+  async call({ method, path, body, allowStatus = [] }) {
     // Compute API base URL from the first path segment of the current page.
     // Works correctly whether the page was loaded with or without a trailing slash,
     // and whether there is a reverse-proxy prefix (e.g. Caddy ADMIN_PATH) or not.
@@ -77,7 +77,7 @@ class API {
       throw new Error(`Server error ${res.status}: ${res.statusText}`);
     }
 
-    if (!res.ok) {
+    if (!res.ok && !allowStatus.includes(res.status)) {
       throw new Error(json.message || json.error || res.statusText);
     }
 
@@ -1091,8 +1091,11 @@ class API {
    * token and store it. The password is never persisted.
    * @param {{ name: string, url: string, username: string, password: string }}
    */
-  async addRemote({ name, url, username, password }) {
-    return this.call({ method: 'post', path: '/remotes/', body: { name, url, username, password } });
+  async addRemote({ name, url, username, password, totpCode }) {
+    const body = { name, url, username, password };
+    if (totpCode) body.totpCode = totpCode;
+    // 422 = totp_required — not an error, returned as data to the caller.
+    return this.call({ method: 'post', path: '/remotes/', body, allowStatus: [422] });
   }
 
   async deleteRemote({ id }) {

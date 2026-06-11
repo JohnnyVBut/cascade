@@ -334,9 +334,10 @@ new Vue({
     remotes: [],
     activeRemoteId: null,   // null = local server; string = remote id
     showRemoteAdd: false,
-    remoteAddForm: { name: '', url: '', username: '', password: '' },
+    remoteAddForm: { name: '', url: '', username: '', password: '', totpCode: '' },
     remoteAddError: '',
     remoteAddLoading: false,
+    remoteAddNeedsTOTP: false,
     remoteTesting: {},   // { [id]: true } while test is in progress
     remoteTestResult: {}, // { [id]: 'ok' | 'error' }
 
@@ -1899,9 +1900,16 @@ new Vue({
       this.remoteAddLoading = true;
       try {
         const res = await this.api.addRemote(this.remoteAddForm);
+        // Server returned totp_required: true — show TOTP step.
+        if (res && res.totp_required) {
+          this.remoteAddNeedsTOTP = true;
+          this.remoteAddForm.totpCode = '';
+          return;
+        }
         this.remotes.push(res.remote);
         this.showRemoteAdd = false;
-        this.remoteAddForm = { name: '', url: '', username: '', password: '' };
+        this.remoteAddForm = { name: '', url: '', username: '', password: '', totpCode: '' };
+        this.remoteAddNeedsTOTP = false;
         this.showToast('Remote server added', 'success');
       } catch (err) {
         this.remoteAddError = err.message;
@@ -4577,6 +4585,13 @@ new Vue({
       handler(val) {
         document.title = val;
       },
+    },
+    showRemoteAdd(val) {
+      if (!val) {
+        this.remoteAddNeedsTOTP = false;
+        this.remoteAddError = '';
+        this.remoteAddForm = { name: '', url: '', username: '', password: '', totpCode: '' };
+      }
     },
     activeInterfaceId(newId) {
       if (newId) {

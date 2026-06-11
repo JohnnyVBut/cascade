@@ -1,14 +1,16 @@
 // Package remoteclient provides an HTTP client for interacting with a remote
 // Cascade server.
 //
-// ObtainToken performs the full login → create-token → logout flow against
-// the remote server and returns the raw API token (ws_...) to be stored locally.
-// The password is never persisted — only the resulting token is saved.
+// ObtainToken performs the full login → (TOTP verify) → create-token → logout
+// flow against the remote server and returns the raw API token (ws_...) to be
+// stored locally. The password is never persisted — only the resulting token is
+// saved.
 package remoteclient
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,12 +18,22 @@ import (
 	"time"
 )
 
+// ErrTOTPRequired is returned by ObtainToken when the remote server requires
+// a TOTP code but none was provided. The caller should ask the user for the
+// code and retry with it.
+var ErrTOTPRequired = errors.New("totp_required")
+
 // httpClient is shared across all calls with a reasonable timeout.
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
 // ObtainToken authenticates against a remote Cascade server using username and
-// password, creates an API token, logs out, and returns the raw token string.
-func ObtainToken(baseURL, username, password string) (string, error) {
+// password (and optionally a TOTP code), creates an API token, logs out, and
+// returns the raw token string.
+//
+// If the remote has 2FA enabled and totpCode is empty, ErrTOTPRequired is
+// returned so the caller can prompt the user. Retrying with the code completes
+// the flow.
+func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 	base := strings.TrimRight(baseURL, "/")
 
 	// ── Step 1: Login ──────────────────────────────────────────────────────
@@ -40,19 +52,12 @@ func ObtainToken(baseURL, username, password string) (string, error) {
 		return "", fmt.Errorf("login failed (%d): %s", loginResp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	// Parse login response — check for TOTP requirement.
 	var loginData map[string]any
 	if err := json.NewDecoder(loginResp.Body).Decode(&loginData); err != nil {
 		return "", fmt.Errorf("parse login response: %w", err)
 	}
-	if req, _ := loginData["totp_required"].(bool); req {
-		return "", fmt.Errorf("remote server requires TOTP — disable 2FA on the remote or use an existing API token")
-	}
-	if auth, _ := loginData["authenticated"].(bool); !auth {
-		return "", fmt.Errorf("login did not return authenticated=true")
-	}
 
-	// Extract session cookie for subsequent requests.
+	// Extract session cookie — needed for TOTP verify and token creation.
 	var sessionCookie string
 	for _, c := range loginResp.Cookies() {
 		if c.Name == "session_id" {
@@ -64,7 +69,41 @@ func ObtainToken(baseURL, username, password string) (string, error) {
 		return "", fmt.Errorf("no session_id cookie in login response")
 	}
 
-	// ── Step 2: Create API token ───────────────────────────────────────────
+	// ── Step 2 (optional): TOTP verification ──────────────────────────────
+	if req, _ := loginData["totp_required"].(bool); req {
+		if totpCode == "" {
+			// Signal the caller to ask for the TOTP code.
+			// Log out the pending session to avoid dangling sessions.
+			logoutReq, _ := http.NewRequest(http.MethodDelete, base+"/api/session", nil)
+			logoutReq.Header.Set("Cookie", sessionCookie)
+			if r, e := httpClient.Do(logoutReq); e == nil {
+				r.Body.Close()
+			}
+			return "", ErrTOTPRequired
+		}
+
+		verifyBody, _ := json.Marshal(map[string]string{"code": totpCode})
+		verifyReq, _ := http.NewRequest(http.MethodPost, base+"/api/auth/totp/verify", bytes.NewReader(verifyBody))
+		verifyReq.Header.Set("Content-Type", "application/json")
+		verifyReq.Header.Set("Cookie", sessionCookie)
+
+		verifyResp, err := httpClient.Do(verifyReq)
+		if err != nil {
+			return "", fmt.Errorf("totp verify request: %w", err)
+		}
+		defer verifyResp.Body.Close()
+
+		if verifyResp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(verifyResp.Body)
+			return "", fmt.Errorf("totp verify failed (%d): %s", verifyResp.StatusCode, strings.TrimSpace(string(body)))
+		}
+	} else {
+		if auth, _ := loginData["authenticated"].(bool); !auth {
+			return "", fmt.Errorf("login did not return authenticated=true")
+		}
+	}
+
+	// ── Step 3: Create API token ───────────────────────────────────────────
 	tokenBody, _ := json.Marshal(map[string]string{
 		"name": "cascade-remote",
 	})
@@ -92,12 +131,11 @@ func ObtainToken(baseURL, username, password string) (string, error) {
 		return "", fmt.Errorf("raw_token missing in token creation response")
 	}
 
-	// ── Step 3: Logout ─────────────────────────────────────────────────────
+	// ── Step 4: Logout ─────────────────────────────────────────────────────
 	logoutReq, _ := http.NewRequest(http.MethodDelete, base+"/api/session", nil)
 	logoutReq.Header.Set("Cookie", sessionCookie)
-	resp, err := httpClient.Do(logoutReq)
-	if err == nil {
-		resp.Body.Close()
+	if r, e := httpClient.Do(logoutReq); e == nil {
+		r.Body.Close()
 	}
 
 	return rawToken, nil
