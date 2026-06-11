@@ -19,6 +19,7 @@
 package api
 
 import (
+	"log"
 	"strings"
 	"time"
 
@@ -101,6 +102,13 @@ func AuthMiddleware(c *fiber.Ctx) error {
 		sess, err := authStore.Get(c)
 		if err == nil && sess.Get(sessKeyAuthenticated) == true {
 			return c.Next()
+		}
+		// DIAG: log why session check failed — cookie missing vs session not found.
+		cookieVal := c.Cookies("session_id")
+		if cookieVal == "" {
+			log.Printf("[auth] 401 %s %s — no session cookie", c.Method(), c.Path())
+		} else {
+			log.Printf("[auth] 401 %s %s — cookie present (%.8s…) but session invalid/not found", c.Method(), c.Path(), cookieVal)
 		}
 	}
 
