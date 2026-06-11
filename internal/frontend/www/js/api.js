@@ -10,6 +10,10 @@ class API {
     // to a remote Cascade instance. The browser never communicates directly
     // with the remote — the token stays on the backend.
     this._remoteId = null;
+    // Optional callback invoked when a proxy call fails with an unrecoverable
+    // error (401 Unauthorized or 5xx server error). The app registers this to
+    // auto-switch back to local mode when the remote becomes unavailable.
+    this._onRemoteError = null;
   }
 
   /** Switch all subsequent calls to go through a remote server proxy. */
@@ -50,14 +54,15 @@ class API {
         : undefined,
     });
 
-    // TEMP DEBUG: log all non-200 responses to diagnose remote auth issues
-    if (res.status !== 200 && res.status !== 204 && res.status !== 201) {
-      console.warn(`[API DEBUG] ${method.toUpperCase()} ${effectivePath} → ${res.status} (remote: ${this._remoteId || 'local'})`);
-    }
-    // TEMP DEBUG: log all Set-Cookie headers received
-    const setCookie = res.headers.get('set-cookie');
-    if (setCookie) {
-      console.warn(`[API DEBUG] Set-Cookie received from ${effectivePath}:`, setCookie);
+    // If a proxy call fails with an unrecoverable status (401 or 5xx),
+    // notify the app so it can switch back to local mode gracefully.
+    // This prevents the user from seeing a confusing "login window" when
+    // the remote becomes temporarily unreachable.
+    const isProxyCall = this._remoteId && effectivePath.startsWith(`/remotes/${this._remoteId}/proxy`);
+    if (isProxyCall && (res.status === 401 || res.status >= 500)) {
+      if (typeof this._onRemoteError === 'function') {
+        this._onRemoteError(res.status, effectivePath);
+      }
     }
 
     if (res.status === 204) {

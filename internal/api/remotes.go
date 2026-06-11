@@ -12,6 +12,7 @@ package api
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,8 +24,11 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/remotes"
 )
 
-// proxyClient is a shared HTTP client for proxy requests with a reasonable timeout.
-var proxyClient = &http.Client{Timeout: 30 * time.Second}
+// proxyClient is a shared HTTP client for proxy requests.
+// Timeout is intentionally short (5 s) to prevent goroutine pile-up when the
+// remote is temporarily unreachable. The browser polls every second, so a 30 s
+// timeout would accumulate dozens of blocked goroutines before the first one fails.
+var proxyClient = &http.Client{Timeout: 5 * time.Second}
 
 // RegisterRemotes registers all /api/remotes/* routes.
 func RegisterRemotes(api fiber.Router) {
@@ -145,6 +149,7 @@ func proxyRemote(c *fiber.Ctx) error {
 
 	resp, err := proxyClient.Do(req)
 	if err != nil {
+		log.Printf("[proxy] %s %s → remote error: %v", c.Method(), targetURL, err)
 		return fiber.NewError(fiber.StatusBadGateway, "proxy request failed: "+err.Error())
 	}
 	defer resp.Body.Close()

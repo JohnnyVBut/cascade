@@ -4412,6 +4412,19 @@ new Vue({
     this.setTheme(this.uiTheme);
 
     this.api = new API();
+
+    // Auto-switch back to local when the remote becomes unreachable.
+    // This fires when a proxy call returns 401 (token revoked/expired) or
+    // 5xx (remote server or network error), preventing a confusing login
+    // window after a remote goes down.
+    this.api._onRemoteError = (status, path) => {
+      if (!this.activeRemoteId) return; // already local, ignore
+      const remoteName = (this.activeRemote && this.activeRemote.name) || 'Remote server';
+      this.switchToLocal();
+      const reason = status === 401 ? 'authentication failed' : `error ${status}`;
+      this.showToast(`${remoteName} disconnected (${reason}). Switched back to local.`, 'error');
+    };
+
     this.api.getSession()
       .then((session) => {
         this.authenticated = session.authenticated;
