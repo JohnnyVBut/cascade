@@ -4003,6 +4003,132 @@
         </div><!-- /gateways page -->
 
         <!-- ============================================================== -->
+        <!-- Remotes Page                                                   -->
+        <!-- ============================================================== -->
+        <div v-if="activePage === 'remotes'" style="display:flex; flex-direction:column; gap:24px; padding-bottom:32px;">
+
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-2xl font-bold dark:text-neutral-200">Remote Servers</h1>
+              <p class="text-sm text-gray-500 dark:text-neutral-400" style="margin-top:4px;">
+                Manage other Cascade instances from this UI. Requests are proxied through this server — credentials never leave the backend.
+              </p>
+            </div>
+            <button @click="showRemoteAdd = true"
+              class="text-white rounded-lg font-medium text-sm btn"
+              style="background:#2563eb; padding:8px 16px; white-space:nowrap;">
+              + Add Server
+            </button>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="!remotes.length" class="bg-white dark:bg-neutral-700 rounded-lg text-center"
+            style="border:1px solid #e5e7eb; padding:48px 24px;">
+            <div style="font-size:2rem; margin-bottom:12px;">🌐</div>
+            <p class="text-gray-500 dark:text-neutral-400 text-sm">No remote servers yet.</p>
+            <p class="text-gray-400 dark:text-neutral-500 text-xs" style="margin-top:4px;">Add another Cascade instance to manage it from here.</p>
+          </div>
+
+          <!-- Remotes table -->
+          <div v-else class="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden" style="border:1px solid #e5e7eb;">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50 dark:bg-neutral-600 text-gray-500 dark:text-neutral-400 text-xs uppercase">
+                  <th class="text-left font-medium tc">Name</th>
+                  <th class="text-left font-medium tc">URL</th>
+                  <th class="text-left font-medium tc">Added</th>
+                  <th class="text-right font-medium tc">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="remote in remotes" :key="remote.id"
+                  class="border-t dark:border-neutral-600"
+                  :style="{ 'border-top-color': theme === 'dark' ? '#525252' : '#f3f4f6' }">
+                  <td class="tc font-medium dark:text-neutral-200">{{ remote.name }}</td>
+                  <td class="tc text-gray-500 dark:text-neutral-400">
+                    <a :href="remote.url" target="_blank" class="hover:underline" style="color:#2563eb;">{{ remote.url }}</a>
+                  </td>
+                  <td class="tc text-gray-500 dark:text-neutral-400 text-xs">{{ remote.createdAt ? new Date(remote.createdAt).toLocaleDateString() : '—' }}</td>
+                  <td class="tc text-right" style="white-space:nowrap;">
+                    <!-- Test button -->
+                    <button @click="testRemote(remote)"
+                      :disabled="remoteTesting[remote.id]"
+                      class="rounded text-xs font-medium"
+                      style="padding:4px 10px; margin-right:6px;"
+                      :style="remoteTesting[remote.id] ? 'background:#e5e7eb; color:#9ca3af; cursor:not-allowed;' :
+                              remoteTestResult[remote.id] === 'ok' ? 'background:#dcfce7; color:#16a34a;' :
+                              remoteTestResult[remote.id] === 'error' ? 'background:#fee2e2; color:#dc2626;' :
+                              'background:#f3f4f6; color:#374151;'">
+                      {{ remoteTesting[remote.id] ? '…' : remoteTestResult[remote.id] === 'ok' ? '✓ OK' : remoteTestResult[remote.id] === 'error' ? '✗ Error' : 'Test' }}
+                    </button>
+                    <!-- Delete button -->
+                    <button @click="deleteRemote(remote)"
+                      class="rounded text-xs font-medium"
+                      style="padding:4px 10px; background:#fee2e2; color:#dc2626;">
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- Add Remote Modal                                                -->
+        <!-- ============================================================== -->
+        <div v-if="showRemoteAdd" class="modal-overlay" @click.self="showRemoteAdd = false">
+          <div class="bg-white dark:bg-neutral-700 rounded-lg modal-panel modal-panel-md">
+            <div class="modal-header flex items-center justify-between">
+              <h2 class="text-lg font-semibold dark:text-neutral-200">Add Remote Server</h2>
+              <button @click="showRemoteAdd = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+            </div>
+            <div class="modal-body">
+              <p class="text-xs text-gray-500 dark:text-neutral-400">
+                Cascade will log in to the remote server, create an API token, then log out.
+                Your password is <strong>never stored</strong>.
+              </p>
+
+              <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
+
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Name</label>
+                <input v-model="remoteAddForm.name" type="text" placeholder="e.g. Server Berlin"
+                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                  style="padding:8px 10px;" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">URL</label>
+                <input v-model="remoteAddForm.url" type="url" placeholder="https://cascade.example.com"
+                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                  style="padding:8px 10px;" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Username</label>
+                <input v-model="remoteAddForm.username" type="text" placeholder="admin"
+                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                  style="padding:8px 10px;" />
+              </div>
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Password</label>
+                <input v-model="remoteAddForm.password" type="password"
+                  class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                  style="padding:8px 10px;" @keyup.enter="addRemote()" />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button @click="showRemoteAdd = false"
+                class="rounded-lg text-sm font-medium btn dark:text-neutral-300"
+                style="background:#f3f4f6;">Cancel</button>
+              <button @click="addRemote()" :disabled="remoteAddLoading"
+                class="text-white rounded-lg text-sm font-medium btn"
+                :style="remoteAddLoading ? 'background:#9ca3af; cursor:not-allowed;' : 'background:#2563eb;'">
+                {{ remoteAddLoading ? 'Connecting…' : 'Add Server' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============================================================== -->
         <!-- Routing Page                                                   -->
         <!-- ============================================================== -->

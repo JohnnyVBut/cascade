@@ -1043,4 +1043,35 @@ class API {
     return res.json();
   }
 
+  // ── Remote servers ──────────────────────────────────────────────────────────
+
+  async getRemotes() {
+    return this.call({ method: 'get', path: '/remotes/' });
+  }
+
+  /**
+   * Add a remote server. Cascade will login with the credentials, obtain an API
+   * token and store it. The password is never persisted.
+   * @param {{ name: string, url: string, username: string, password: string }}
+   */
+  async addRemote({ name, url, username, password }) {
+    return this.call({ method: 'post', path: '/remotes/', body: { name, url, username, password } });
+  }
+
+  async deleteRemote({ id }) {
+    return this.call({ method: 'delete', path: `/remotes/${id}` });
+  }
+
+  async testRemote({ id }) {
+    return this.call({ method: 'post', path: `/remotes/${id}/test` });
+  }
+
+  /**
+   * Call an API endpoint on a remote server via the proxy.
+   * @param {{ remoteId: string, method: string, path: string, body?: any }}
+   */
+  async remoteCall({ remoteId, method, path, body }) {
+    return this.call({ method, path: `/remotes/${remoteId}/proxy${path}`, body });
+  }
+
 }

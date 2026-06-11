@@ -152,6 +152,7 @@ new Vue({
       { id: '_header_firewall', label: 'Firewall', type: 'header' },
       { id: 'firewall-aliases', label: 'Aliases' },
       { id: 'firewall',         label: 'Rules' },
+      { id: 'remotes',          label: 'Remotes' },
       { id: 'settings',         label: 'Settings' },
       { id: 'administration',   label: 'Administration' },
     ],
@@ -328,6 +329,16 @@ new Vue({
     gateways: [],
     gatewayGroups: [],
     systemInterfaces: [],
+
+    // ── Remote servers ──────────────────────────────────────────────────────
+    remotes: [],
+    showRemoteAdd: false,
+    remoteAddForm: { name: '', url: '', username: '', password: '' },
+    remoteAddError: '',
+    remoteAddLoading: false,
+    remoteTesting: {},   // { [id]: true } while test is in progress
+    remoteTestResult: {}, // { [id]: 'ok' | 'error' }
+
     showGatewayCreate: false,
     showGatewayEdit:   false,
     showGroupCreate:   false,
@@ -842,6 +853,7 @@ new Vue({
       this.loadClientGroups();
       this.loadUsers();
       this.loadCurrentUser();
+      this.loadRemotes();
       // Re-load dashboard after login: loadDashboard() in mounted() ran before
       // the dashboard DOM existed (authenticated=false → v-if removed the div),
       // so dashInitGrid() silently returned without initialising GridStack.
@@ -975,6 +987,7 @@ new Vue({
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
       if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
+      if (pageId === 'remotes') this.loadRemotes();
       if (pageId === 'gateways') {
         this.loadGateways();
         this.loadGatewayGroups();
@@ -1842,6 +1855,57 @@ new Vue({
         this.gatewayGroups = res.groups || [];
       } catch (err) {
         this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    // ── Remote servers ────────────────────────────────────────────────────────
+
+    async loadRemotes() {
+      try {
+        const res = await this.api.getRemotes();
+        this.remotes = res.remotes || [];
+      } catch (err) {
+        this.showToast(`Failed to load remotes: ${err.message}`, 'error');
+      }
+    },
+
+    async addRemote() {
+      this.remoteAddError = '';
+      this.remoteAddLoading = true;
+      try {
+        const res = await this.api.addRemote(this.remoteAddForm);
+        this.remotes.push(res.remote);
+        this.showRemoteAdd = false;
+        this.remoteAddForm = { name: '', url: '', username: '', password: '' };
+        this.showToast('Remote server added', 'success');
+      } catch (err) {
+        this.remoteAddError = err.message;
+      } finally {
+        this.remoteAddLoading = false;
+      }
+    },
+
+    async deleteRemote(remote) {
+      if (!confirm(`Remove remote server "${remote.name}"?`)) return;
+      try {
+        await this.api.deleteRemote({ id: remote.id });
+        this.remotes = this.remotes.filter(r => r.id !== remote.id);
+        this.showToast('Remote server removed', 'success');
+      } catch (err) {
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    async testRemote(remote) {
+      this.$set(this.remoteTesting, remote.id, true);
+      this.$set(this.remoteTestResult, remote.id, null);
+      try {
+        await this.api.testRemote({ id: remote.id });
+        this.$set(this.remoteTestResult, remote.id, 'ok');
+      } catch (err) {
+        this.$set(this.remoteTestResult, remote.id, 'error');
+      } finally {
+        this.$set(this.remoteTesting, remote.id, false);
       }
     },
 
@@ -4344,6 +4408,8 @@ new Vue({
         // Load users and current user for the Users section in Settings.
         this.loadUsers();
         this.loadCurrentUser();
+        // Load registered remote servers.
+        this.loadRemotes();
         // Load dashboard layout.
         this.loadDashboard();
       })
