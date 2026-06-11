@@ -1907,6 +1907,9 @@ new Vue({
       this.firewallRules = [];
       this.aliases = [];
       this.switchPage('dashboard');
+      // Must reload interfaces explicitly: refreshAllPeers() iterates
+      // tunnelInterfaces, so it returns nothing until they are populated.
+      this.loadTunnelInterfaces();
     },
 
     async addRemote() {
