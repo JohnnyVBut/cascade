@@ -10,6 +10,7 @@
 package api
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
@@ -25,10 +26,18 @@ import (
 )
 
 // proxyClient is a shared HTTP client for proxy requests.
-// Timeout is intentionally short (5 s) to prevent goroutine pile-up when the
-// remote is temporarily unreachable. The browser polls every second, so a 30 s
-// timeout would accumulate dozens of blocked goroutines before the first one fails.
-var proxyClient = &http.Client{Timeout: 5 * time.Second}
+// HTTP/2 is explicitly disabled: concurrent requests through a shared HTTP/2
+// ClientConn trigger a panic in Go's hpack encoder (id <= evictCount race),
+// crashing the process and clearing in-memory sessions. HTTP/1.1 uses a
+// separate connection per request, avoiding the shared mutable state.
+// Timeout is 5 s to prevent goroutine pile-up when the remote is unreachable.
+var proxyClient = &http.Client{
+	Timeout: 5 * time.Second,
+	Transport: &http.Transport{
+		// Disable HTTP/2 upgrade — forces HTTP/1.1 for all proxy connections.
+		TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
+	},
+}
 
 // RegisterRemotes registers all /api/remotes/* routes.
 func RegisterRemotes(api fiber.Router) {
