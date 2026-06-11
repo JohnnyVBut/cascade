@@ -149,9 +149,25 @@ func proxyRemote(c *fiber.Ctx) error {
 	}
 	defer resp.Body.Close()
 
-	// Copy response status + headers + body.
+	// Copy response status + safe headers + body.
+	// IMPORTANT: never forward Set-Cookie from the remote — it would overwrite
+	// the browser's local session cookie, causing immediate auth loss on the
+	// local server. Also skip hop-by-hop headers that must not be forwarded.
+	skipHeaders := map[string]bool{
+		"Set-Cookie":          true,
+		"Connection":          true,
+		"Transfer-Encoding":   true,
+		"Upgrade":             true,
+		"Proxy-Authenticate":  true,
+		"Proxy-Authorization": true,
+		"Te":                  true,
+		"Trailer":             true,
+	}
 	c.Status(resp.StatusCode)
 	for k, vals := range resp.Header {
+		if skipHeaders[k] {
+			continue
+		}
 		for _, v := range vals {
 			c.Set(k, v)
 		}

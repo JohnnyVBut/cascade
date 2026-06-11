@@ -1862,6 +1862,7 @@ new Vue({
     // ── Remote servers ────────────────────────────────────────────────────────
 
     async loadRemotes() {
+      if (!this.authenticated) return;
       try {
         const res = await this.api.getRemotes();
         this.remotes = res.remotes || [];
