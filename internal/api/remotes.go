@@ -179,7 +179,12 @@ func proxyRemote(c *fiber.Ctx) error {
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("[proxy] %s %s → read error (status %d): %v", c.Method(), targetURL, resp.StatusCode, err)
 		return fiber.NewError(fiber.StatusBadGateway, "proxy read response: "+err.Error())
+	}
+	// Log non-2xx responses from the remote for diagnostics.
+	if resp.StatusCode >= 400 {
+		log.Printf("[proxy] %s %s → remote status %d", c.Method(), targetURL, resp.StatusCode)
 	}
 	return c.Send(body)
 }
