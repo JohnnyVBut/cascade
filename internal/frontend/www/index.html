@@ -56,12 +56,12 @@
   .modal-footer { padding: 16px 24px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; }
 
   /* Dark mode borders for modal sections */
-  .dark .modal-header { border-bottom-color: #525252; }
-  .dark .modal-footer { border-top-color: #525252; }
+  .dark .modal-header { border-bottom-color: rgba(255,255,255,0.08); }
+  .dark .modal-footer { border-top-color: rgba(255,255,255,0.08); }
   .modal-section        { padding: 16px 24px 24px; border-top: 1px solid #e5e7eb; }
-  .dark .modal-section  { border-top-color: #525252; }
+  .dark .modal-section  { border-top-color: rgba(255,255,255,0.08); }
   .modal-footer-compact { padding: 12px 24px 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; justify-content: flex-end; }
-  .dark .modal-footer-compact { border-top-color: #525252; }
+  .dark .modal-footer-compact { border-top-color: rgba(255,255,255,0.08); }
 
   /* Button base padding (combine with Tailwind color classes) */
   .btn { padding: 8px 16px; }
@@ -105,7 +105,13 @@
     border-radius: 12px;
   }
   .dark .dash-card {
-    background: #404040;
+    background: rgba(15,23,42,0.55);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  }
+  .dark .grid-stack-item-content {
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
   .dash-card-header {
     padding: 12px 16px 8px;
@@ -122,7 +128,7 @@
   }
   .dark .dash-card-header {
     color: #9ca3af;
-    border-bottom-color: #525252;
+    border-bottom-color: rgba(255,255,255,0.07);
   }
   .dash-card-body {
     padding: 12px 16px;
@@ -167,6 +173,50 @@
     background: linear-gradient(135deg, #14532d 0%, #0f172a 50%, #1e3a8a 100%) !important;
     background-attachment: fixed !important;
     min-height: 100vh;
+  }
+
+  /* ── Dark mode: glassmorphism for all content panels ── */
+  /* Main content panels: peer tables, routing, firewall, NAT, etc. */
+  .dark .shadow-md {
+    background: rgba(15,23,42,0.60) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.35) !important;
+  }
+  /* Sub-panels: server info dropdowns, chart wrappers */
+  .dark .shadow-lg {
+    background: rgba(15,23,42,0.75) !important;
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+  }
+  /* Modal dialogs */
+  .dark .modal-panel {
+    background: rgba(10,18,36,0.88) !important;
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  /* First-run & delete confirm modals (shadow-2xl) */
+  .dark .shadow-2xl,
+  .dark .shadow-xl {
+    background: rgba(10,18,36,0.88) !important;
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5) !important;
+  }
+  /* Table header rows inside panels */
+  .dark .shadow-md thead tr,
+  .dark .shadow-md .tc-header {
+    background: rgba(255,255,255,0.04) !important;
+  }
+  /* Alternate row hover */
+  .dark .shadow-md tr:hover {
+    background: rgba(255,255,255,0.04) !important;
+  }
+  /* Inner dividers */
+  .dark .shadow-md [class*="border-b"],
+  .dark .shadow-md [class*="border-t"] {
+    border-color: rgba(255,255,255,0.07) !important;
   }
 </style>
 </head>
