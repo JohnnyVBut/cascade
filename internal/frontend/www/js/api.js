@@ -50,6 +50,16 @@ class API {
         : undefined,
     });
 
+    // TEMP DEBUG: log all non-200 responses to diagnose remote auth issues
+    if (res.status !== 200 && res.status !== 204 && res.status !== 201) {
+      console.warn(`[API DEBUG] ${method.toUpperCase()} ${effectivePath} → ${res.status} (remote: ${this._remoteId || 'local'})`);
+    }
+    // TEMP DEBUG: log all Set-Cookie headers received
+    const setCookie = res.headers.get('set-cookie');
+    if (setCookie) {
+      console.warn(`[API DEBUG] Set-Cookie received from ${effectivePath}:`, setCookie);
+    }
+
     if (res.status === 204) {
       return undefined;
     }
