@@ -1877,7 +1877,7 @@ new Vue({
       this.tunnelInterfaces = [];
       this.allPeers = [];
       this.gateways = [];
-      this.switchPage('interfaces');
+      this.switchPage('dashboard');
       try {
         await this.loadTunnelInterfaces();
       } catch (err) {
@@ -1892,7 +1892,7 @@ new Vue({
       this.tunnelInterfaces = [];
       this.allPeers = [];
       this.gateways = [];
-      this.switchPage('interfaces');
+      this.switchPage('dashboard');
     },
 
     async addRemote() {
