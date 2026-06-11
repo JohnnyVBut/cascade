@@ -1877,6 +1877,13 @@ new Vue({
       this.tunnelInterfaces = [];
       this.allPeers = [];
       this.gateways = [];
+      this.natRules = [];
+      this.dnatRules = [];
+      this.natInterfaces = [];
+      this.staticRoutes = [];
+      this.kernelRoutes = [];
+      this.firewallRules = [];
+      this.aliases = [];
       this.switchPage('dashboard');
       try {
         await this.loadTunnelInterfaces();
@@ -1892,6 +1899,13 @@ new Vue({
       this.tunnelInterfaces = [];
       this.allPeers = [];
       this.gateways = [];
+      this.natRules = [];
+      this.dnatRules = [];
+      this.natInterfaces = [];
+      this.staticRoutes = [];
+      this.kernelRoutes = [];
+      this.firewallRules = [];
+      this.aliases = [];
       this.switchPage('dashboard');
     },
 
