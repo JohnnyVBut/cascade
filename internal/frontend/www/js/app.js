@@ -334,7 +334,7 @@ new Vue({
     remotes: [],
     activeRemoteId: null,   // null = local server; string = remote id
     showRemoteAdd: false,
-    remoteAddForm: { name: '', url: '', username: '', password: '', totpCode: '' },
+    remoteAddForm: { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' },
     remoteAddError: '',
     remoteAddLoading: false,
     remoteAddNeedsTOTP: false,
@@ -1925,7 +1925,7 @@ new Vue({
         }
         this.remotes.push(res.remote);
         this.showRemoteAdd = false;
-        this.remoteAddForm = { name: '', url: '', username: '', password: '', totpCode: '' };
+        this.remoteAddForm = { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' };
         this.remoteAddNeedsTOTP = false;
         this.showToast('Remote server added', 'success');
       } catch (err) {
@@ -4606,7 +4606,7 @@ new Vue({
       if (!val) {
         this.remoteAddNeedsTOTP = false;
         this.remoteAddError = '';
-        this.remoteAddForm = { name: '', url: '', username: '', password: '', totpCode: '' };
+        this.remoteAddForm = { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' };
       }
     },
     activeInterfaceId(newId) {

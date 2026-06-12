@@ -1091,9 +1091,17 @@ class API {
    * token and store it. The password is never persisted.
    * @param {{ name: string, url: string, username: string, password: string }}
    */
-  async addRemote({ name, url, username, password, totpCode }) {
-    const body = { name, url, username, password };
-    if (totpCode) body.totpCode = totpCode;
+  async addRemote({ name, url, username, password, totpCode, token }) {
+    const body = { name, url };
+    if (token) {
+      // Explicit-token mode — server validates and stores the token directly.
+      body.token = token;
+    } else {
+      // Login mode — server logs in to obtain a token.
+      body.username = username;
+      body.password = password;
+      if (totpCode) body.totpCode = totpCode;
+    }
     // 422 = totp_required — not an error, returned as data to the caller.
     return this.call({ method: 'post', path: '/remotes/', body, allowStatus: [422] });
   }

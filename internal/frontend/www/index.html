@@ -4220,9 +4220,24 @@
             <div class="modal-body">
               <!-- Step 1: credentials -->
               <template v-if="!remoteAddNeedsTOTP">
-                <p class="text-xs text-gray-500 dark:text-neutral-400">
+                <!-- Mode selector -->
+                <div style="display:flex; gap:18px; margin-bottom:4px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" class="text-sm dark:text-neutral-300">
+                    <input type="radio" value="login" v-model="remoteAddForm.mode" />
+                    Log in automatically
+                  </label>
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" class="text-sm dark:text-neutral-300">
+                    <input type="radio" value="token" v-model="remoteAddForm.mode" />
+                    Provide API token
+                  </label>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-neutral-400" v-if="remoteAddForm.mode === 'login'">
                   Cascade will log in to the remote server, create an API token, then log out.
                   Your password is <strong>never stored</strong>.
+                </p>
+                <p class="text-xs text-gray-500 dark:text-neutral-400" v-else>
+                  Provide an existing API token (<code>ws_…</code>) from the remote server.
+                  It will be validated and stored as-is.
                 </p>
                 <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
                 <div>
@@ -4237,18 +4252,31 @@
                     class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
                     style="padding:8px 10px;" />
                 </div>
-                <div>
-                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Username</label>
-                  <input v-model="remoteAddForm.username" type="text" placeholder="admin"
-                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                    style="padding:8px 10px;" />
-                </div>
-                <div>
-                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Password</label>
-                  <input v-model="remoteAddForm.password" type="password"
-                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                    style="padding:8px 10px;" @keyup.enter="addRemote()" />
-                </div>
+                <!-- Login-mode fields -->
+                <template v-if="remoteAddForm.mode === 'login'">
+                  <div>
+                    <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Username</label>
+                    <input v-model="remoteAddForm.username" type="text" placeholder="admin"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:8px 10px;" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Password</label>
+                    <input v-model="remoteAddForm.password" type="password"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:8px 10px;" @keyup.enter="addRemote()" />
+                  </div>
+                </template>
+                <!-- Token-mode field -->
+                <template v-else>
+                  <div>
+                    <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">API Token</label>
+                    <input v-model="remoteAddForm.token" type="password" placeholder="ws_…"
+                      autocomplete="off"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:8px 10px;" @keyup.enter="addRemote()" />
+                  </div>
+                </template>
               </template>
 
               <!-- Step 2: TOTP code -->
