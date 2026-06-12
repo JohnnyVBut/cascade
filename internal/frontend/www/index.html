@@ -7565,7 +7565,7 @@
         <div v-for="toast in toasts" :key="toast.id"
           class="rounded-lg text-sm"
           style="pointer-events:auto; padding:14px 16px; display:flex; align-items:flex-start; gap:10px; color:#fff; box-shadow:0 4px 16px rgba(0,0,0,0.35);"
-          :style="{ background: toast.type === 'error' ? 'rgba(220,38,38,1)' : 'rgba(22,163,74,1)' }">
+          :style="{ background: toast.type === 'error' ? 'rgba(220,38,38,0.88)' : 'rgba(22,163,74,0.88)' }">
           <!-- Icon -->
           <svg v-if="toast.type !== 'error'" style="flex-shrink:0; margin-top:1px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
