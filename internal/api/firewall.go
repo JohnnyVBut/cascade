@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/firewall"
+	"github.com/JohnnyVBut/cascade/internal/tunnel"
 )
 
 // RegisterFirewall registers all /api/firewall/* routes.
@@ -34,12 +35,37 @@ func RegisterFirewall(api fiber.Router) {
 
 // GET /api/firewall/interfaces
 // Returns host network interfaces for the rule's "interface" dropdown.
+// WireGuard/AmneziaWG interfaces are enriched with a human-readable label
+// by concatenating the interface ID and the tunnel name, e.g. "wg10-s2s Finland".
 func getFirewallInterfaces(c *fiber.Ctx) error {
 	ifaces, err := firewall.Get().GetNetworkInterfaces()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(ifaces)
+	// Build a name lookup from tunnel manager: id → tunnel name.
+	nameByID := make(map[string]string)
+	if tm := tunnel.Get(); tm != nil {
+		for _, t := range tm.GetAllInterfaces() {
+			if t.Name != "" && t.Name != t.ID {
+				nameByID[t.ID] = t.Name
+			}
+		}
+	}
+	// Attach label to each interface. For WG interfaces that have a tunnel name
+	// the label is "<id> <name>"; for everything else label == name.
+	type ifaceWithLabel struct {
+		Name  string `json:"name"`
+		Label string `json:"label"`
+	}
+	result := make([]ifaceWithLabel, 0, len(ifaces))
+	for _, iface := range ifaces {
+		label := iface.Name
+		if tunnelName, ok := nameByID[iface.Name]; ok {
+			label = iface.Name + " " + tunnelName
+		}
+		result = append(result, ifaceWithLabel{Name: iface.Name, Label: label})
+	}
+	return c.JSON(result)
 }
 
 // GET /api/firewall/rules
