@@ -187,7 +187,8 @@
   }
   .app-main {
     background: rgba(255,255,255,0.45);
-    backdrop-filter: blur(8px);
+    /* no backdrop-filter — it creates a stacking context that traps
+       position:fixed children (toasts), making their background invisible */
   }
   /* ── Sidebar & main area — dark mode ── */
   .dark .app-nav {
@@ -197,7 +198,7 @@
   }
   .dark .app-main {
     background: rgba(15,23,42,0.78);
-    backdrop-filter: blur(8px);
+    /* no backdrop-filter — same reason as light mode */
   }
 
   /* ── Light mode: subtle glass panels ── */
