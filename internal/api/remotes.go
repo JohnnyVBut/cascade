@@ -16,7 +16,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -37,7 +36,13 @@ var proxyClient = &http.Client{
 	Transport: &http.Transport{
 		// Disable HTTP/2 upgrade — forces HTTP/1.1 for all proxy connections.
 		TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
+		// SSRF guard: re-check the resolved IP at dial time so a proxied request
+		// cannot reach an internal address via DNS rebinding.
+		DialContext: remoteclient.SafeDialContext,
 	},
+	// Redirects are allowed: SafeDialContext (via Dialer.Control) re-checks the
+	// resolved IP on every new connection, including redirect destinations, so an
+	// internal address in a Location header is still blocked.
 }
 
 // RegisterRemotes registers all /api/remotes/* routes.
@@ -86,8 +91,9 @@ func addRemote(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "name and url are required")
 	}
 
-	// Validate URL — must be http:// or https://, no localhost/link-local (SSRF guard).
-	if err := validateRemoteURL(body.URL); err != nil {
+	// Validate URL — must be http/https and resolve only to public addresses
+	// (SSRF guard; see remoteclient/ssrf.go).
+	if err := remoteclient.ValidateRemoteURL(body.URL); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 
@@ -227,24 +233,4 @@ func proxyRemote(c *fiber.Ctx) error {
 		log.Printf("[proxy] %s %s → remote status %d", c.Method(), targetURL, resp.StatusCode)
 	}
 	return c.Send(body)
-}
-
-// validateRemoteURL ensures the URL is a valid http/https address and rejects
-// localhost / link-local targets to prevent SSRF.
-func validateRemoteURL(raw string) error {
-	u, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return fmt.Errorf("URL must start with http:// or https://")
-	}
-	host := strings.ToLower(u.Hostname())
-	blocked := []string{"localhost", "127.", "::1", "0.0.0.0", "169.254."}
-	for _, b := range blocked {
-		if strings.HasPrefix(host, b) || host == b {
-			return fmt.Errorf("remote URL must not point to localhost or link-local addresses")
-		}
-	}
-	return nil
 }

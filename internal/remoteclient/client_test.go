@@ -1,9 +1,11 @@
 // Package remoteclient — tests for the remote-server HTTP client.
 //
 // These exercise the real network logic of Ping and ObtainToken against
-// httptest servers (which bind to 127.0.0.1). The api package's SSRF guard
-// rejects loopback addresses, so this layer — which has no such guard — is the
-// correct place to test the login / token-validation flows end to end.
+// httptest servers (which bind to 127.0.0.1). The production httpClient installs
+// SafeDialContext, which blocks loopback — so TestMain swaps in a vanilla client
+// for the duration of these flow tests. The dialer's SSRF behaviour itself is
+// covered separately in ssrf_test.go (which calls SafeDialContext directly and
+// is unaffected by the swap).
 package remoteclient
 
 import (
@@ -11,9 +13,22 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestMain replaces the SSRF-guarded httpClient with a plain client so the
+// httptest-based flow tests below can reach 127.0.0.1. Production code is
+// unaffected — this runs only in the package test binary.
+func TestMain(m *testing.M) {
+	orig := httpClient
+	httpClient = &http.Client{Timeout: 15 * time.Second}
+	code := m.Run()
+	httpClient = orig
+	os.Exit(code)
+}
 
 // ── Ping ────────────────────────────────────────────────────────────────────
 

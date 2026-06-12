@@ -157,7 +157,10 @@ func TestAddRemote_URLLoopbackIP_Returns400(t *testing.T) {
 func TestAddRemote_LoginMode_MissingUsername_Returns400(t *testing.T) {
 	rta := newRemotesTestApp(t)
 
-	resp := rta.post(t, map[string]any{"name": "x", "url": "https://r.example.com", "password": "p"})
+	// 198.51.100.1 is TEST-NET-2 (RFC 5737): public (not blocked by the SSRF
+	// guard) so URL validation passes and the credential check is reached, but
+	// no real connection is made because the handler returns 400 before Ping.
+	resp := rta.post(t, map[string]any{"name": "x", "url": "https://198.51.100.1", "password": "p"})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("login mode missing username: expected 400, got %d", resp.StatusCode)
 	}
@@ -166,7 +169,7 @@ func TestAddRemote_LoginMode_MissingUsername_Returns400(t *testing.T) {
 func TestAddRemote_LoginMode_MissingPassword_Returns400(t *testing.T) {
 	rta := newRemotesTestApp(t)
 
-	resp := rta.post(t, map[string]any{"name": "x", "url": "https://r.example.com", "username": "u"})
+	resp := rta.post(t, map[string]any{"name": "x", "url": "https://198.51.100.1", "username": "u"})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("login mode missing password: expected 400, got %d", resp.StatusCode)
 	}
@@ -176,7 +179,7 @@ func TestAddRemote_LoginMode_NoCredentials_Returns400(t *testing.T) {
 	rta := newRemotesTestApp(t)
 
 	// Neither token nor username/password — login mode requires credentials.
-	resp := rta.post(t, map[string]any{"name": "x", "url": "https://r.example.com"})
+	resp := rta.post(t, map[string]any{"name": "x", "url": "https://198.51.100.1"})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Errorf("login mode no credentials: expected 400, got %d", resp.StatusCode)
 	}
