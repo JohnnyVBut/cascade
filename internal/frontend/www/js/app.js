@@ -2055,27 +2055,19 @@ new Vue({
       return data.peers || [];
     },
 
-    // _findTunnelIP finds the first S2S connection between two servers.
-    // Strategy: look for an S2S peer on server "to" whose allowedIPs contains
-    // the IP address of any interface on server "from".
-    // Returns the "from" interface IP, or null if no S2S found.
+    // _findTunnelIP finds a common subnet between interfaces on two servers.
+    // If server A has 10.0.1.1/30 and server B has 10.0.1.2/30 — same subnet → S2S.
+    // Returns the "from" interface IP, or null if no match found.
     async _findTunnelIP(fromId, toId) {
       try {
         const [fromIfaces, toIfaces] = await Promise.all([
           this._getIfacesFor(fromId),
           this._getIfacesFor(toId),
         ]);
-        const fromIPs = fromIfaces.map(i => i.address.split('/')[0]);
-
-        for (const iface of toIfaces) {
-          const peers = await this._getPeersFor(toId, iface.id);
-          const s2sPeers = peers.filter(p => p.peerType === 'interconnect');
-          for (const peer of s2sPeers) {
-            const allowedIPs = peer.allowedIPs || peer.allowedIps || '';
-            for (const ip of fromIPs) {
-              if (allowedIPs.split(',').some(cidr => this._ipInCIDR(ip, cidr.trim()))) {
-                return ip;
-              }
+        for (const fi of fromIfaces) {
+          for (const ti of toIfaces) {
+            if (this._sameSubnet(fi.address, ti.address)) {
+              return fi.address.split('/')[0];
             }
           }
         }
