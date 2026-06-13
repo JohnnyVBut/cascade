@@ -705,6 +705,14 @@ class API {
     });
   }
 
+  async updateStaticRoute({ routeId, data }) {
+    return this.call({
+      method: 'patch',
+      path: `/routing/routes/${routeId}`,
+      body: data,
+    });
+  }
+
   async deleteStaticRoute({ routeId }) {
     return this.call({
       method: 'delete',

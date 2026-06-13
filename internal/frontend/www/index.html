@@ -4555,6 +4555,16 @@
                   {{ route.table || 'main' }}
                 </span>
 
+                <!-- Edit button -->
+                <button @click="openEditRoute(route)"
+                  class="shrink-0 text-gray-400 dark:text-neutral-500 rounded transition"
+                  style="background:none;border:none;cursor:pointer;padding:6px;"
+                  title="Edit route"
+                  onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color=''">
+                  <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
                 <!-- Delete button -->
                 <button @click="deleteRoute(route.id)"
                   class="shrink-0 text-gray-400 dark:text-neutral-500 rounded transition"
@@ -4712,6 +4722,130 @@
                 <button @click="createRoute"
                   class="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium transition">
                   Add Route
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit Static Route modal -->
+        <div v-if="showRouteEdit && activePage === 'routing'" class="modal-overlay" @click.self="showRouteEdit = false">
+          <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-480">
+            <div class="modal-header dark:border-neutral-600">
+              <h2 class="text-xl font-medium dark:text-neutral-200">Edit Static Route</h2>
+            </div>
+            <div class="modal-body">
+
+              <!-- Destination -->
+              <div>
+                <label class="text-sm font-medium dark:text-neutral-300">Destination (CIDR) *</label>
+                <input v-model="routeEdit.destination" type="text" placeholder="e.g. 10.0.0.0/8 or default"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+              </div>
+
+              <!-- Next-hop mode -->
+              <div>
+                <label class="text-sm font-medium dark:text-neutral-300">Next-hop</label>
+                <div class="flex gap-1 mt-1">
+                  <button @click="routeEdit.viaMode = 'manual'"
+                    :style="routeEdit.viaMode === 'manual'
+                      ? 'background:#2563eb;color:#fff;border:1px solid #2563eb;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    Manual IP
+                  </button>
+                  <button @click="routeEdit.viaMode = 'gateway'"
+                    :style="routeEdit.viaMode === 'gateway'
+                      ? 'background:#059669;color:#fff;border:1px solid #059669;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    Gateway
+                  </button>
+                  <button @click="routeEdit.viaMode = 'group'"
+                    :style="routeEdit.viaMode === 'group'
+                      ? 'background:#d97706;color:#fff;border:1px solid #d97706;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    GW Group
+                  </button>
+                </div>
+              </div>
+
+              <!-- Manual IP + dev -->
+              <template v-if="routeEdit.viaMode === 'manual'">
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Gateway IP (via)</label>
+                  <input v-model="routeEdit.gateway" type="text" placeholder="e.g. 10.255.255.1"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Interface (dev, optional)</label>
+                  <select v-model="routeEdit.dev"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                    <option value="">— not specified —</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
+                  </select>
+                </div>
+              </template>
+
+              <!-- Gateway selector -->
+              <div v-if="routeEdit.viaMode === 'gateway'">
+                <label class="text-sm font-medium dark:text-neutral-300">Gateway *</label>
+                <select v-model="routeEdit.gatewayId"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <option value="">— select gateway —</option>
+                  <option v-for="gw in gateways" :key="gw.id" :value="gw.id">
+                    {{ gw.name }} ({{ gw.interface }} → {{ gw.gatewayIP }})
+                  </option>
+                </select>
+              </div>
+
+              <!-- Gateway Group selector -->
+              <div v-if="routeEdit.viaMode === 'group'">
+                <label class="text-sm font-medium dark:text-neutral-300">Gateway Group * <span class="text-yellow-600 dark:text-yellow-400">(failover)</span></label>
+                <select v-model="routeEdit.gatewayGroupId"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <option value="">— select group —</option>
+                  <option v-for="grp in gatewayGroups" :key="grp.id" :value="grp.id">{{ grp.name }}</option>
+                </select>
+              </div>
+
+              <!-- Metric + Table -->
+              <div class="flex gap-3">
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Metric</label>
+                  <input v-model="routeEdit.metric" type="number" placeholder="optional"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Table</label>
+                  <select v-if="routingTables.length > 0" v-model="routeEdit.table"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                    <option v-for="t in routingTables.filter(t => t.name !== 'all')" :key="t.name" :value="t.name">
+                      {{ t.name }}{{ t.id !== null ? ' (' + t.id + ')' : '' }}
+                    </option>
+                  </select>
+                  <input v-else v-model="routeEdit.table" type="text" placeholder="main"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div>
+                <label class="text-sm font-medium dark:text-neutral-300">Description</label>
+                <input v-model="routeEdit.description" type="text" placeholder="optional"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+              </div>
+
+              <!-- Buttons -->
+              <div class="flex gap-2" style="justify-content:flex-end;">
+                <button @click="showRouteEdit = false"
+                  class="px-4 py-2 bg-gray-200 dark:bg-neutral-600 dark:text-neutral-200 rounded text-sm font-medium transition">
+                  Cancel
+                </button>
+                <button @click="saveEditRoute"
+                  class="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium transition">
+                  Save Changes
                 </button>
               </div>
             </div>

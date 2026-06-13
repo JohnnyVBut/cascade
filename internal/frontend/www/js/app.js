@@ -402,6 +402,19 @@ new Vue({
       metric: '',
       table: 'main',
     },
+    showRouteEdit: false,
+    routeEdit: {
+      id: '',
+      description: '',
+      destination: '',
+      viaMode: 'manual',
+      gateway: '',
+      dev: '',
+      gatewayId: '',
+      gatewayGroupId: '',
+      metric: '',
+      table: 'main',
+    },
 
     // NAT page
     activeNatTab: 'outbound',     // 'outbound' | 'portforward'
@@ -2117,6 +2130,47 @@ new Vue({
       if (route.gatewayGroupId) return 'group';
       if (route.gatewayId) return 'gateway';
       return 'manual';
+    },
+
+    openEditRoute(route) {
+      this.routeEdit = {
+        id:            route.id,
+        description:   route.description || '',
+        destination:   route.destination || '',
+        viaMode:       this._routeViaMode(route),
+        gateway:       route.gateway || '',
+        dev:           route.dev || '',
+        gatewayId:     route.gatewayId || '',
+        gatewayGroupId: route.gatewayGroupId || '',
+        metric:        route.metric != null ? String(route.metric) : '',
+        table:         route.table || 'main',
+      };
+      this.showRouteEdit = true;
+    },
+
+    async saveEditRoute() {
+      try {
+        const data = {
+          description: this.routeEdit.description,
+          destination: this.routeEdit.destination,
+          metric: this.routeEdit.metric !== '' ? Number(this.routeEdit.metric) : null,
+          table: this.routeEdit.table || 'main',
+        };
+        if (this.routeEdit.viaMode === 'gateway') {
+          data.gatewayId = this.routeEdit.gatewayId;
+        } else if (this.routeEdit.viaMode === 'group') {
+          data.gatewayGroupId = this.routeEdit.gatewayGroupId;
+        } else {
+          data.gateway = this.routeEdit.gateway;
+          data.dev = this.routeEdit.dev;
+        }
+        await this.api.updateStaticRoute({ routeId: this.routeEdit.id, data });
+        this.showRouteEdit = false;
+        await this.loadStaticRoutes();
+        this.showToast('Route updated');
+      } catch (err) {
+        this.showToast(err.message || 'Failed to update route', 'error');
+      }
     },
 
     async toggleRoute(id, enabled) {
