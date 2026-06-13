@@ -575,10 +575,15 @@ func mapToAWG2(v any) (*peer.AWG2Settings, error) {
 		a.S4 = int(n)
 	}
 	strField := func(key string) string {
-		if s, ok := m[key].(string); ok {
-			return s
+		s, ok := m[key].(string)
+		if !ok {
+			return ""
 		}
-		return ""
+		// Reject newlines to prevent PostUp/PostDown injection into wg-quick config.
+		if strings.ContainsAny(s, "\n\r") {
+			return ""
+		}
+		return s
 	}
 	a.H1 = strField("h1")
 	a.H2 = strField("h2")

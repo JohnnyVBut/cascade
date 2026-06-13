@@ -1443,6 +1443,9 @@ func (m *Manager) buildMatchParts(dir string, ep *Endpoint) ([]string, error) {
 	}
 
 	if ep.Type == "cidr" {
+		if err := validateCIDROrIP(ep.Value); err != nil {
+			return nil, fmt.Errorf("buildMatchParts cidr: %w", err)
+		}
 		return []string{fmt.Sprintf("%s%s %s", invert, flag, ep.Value)}, nil
 	}
 
@@ -1938,13 +1941,36 @@ func validateInput(inp RuleInput) error {
 			return fmt.Errorf("protocol must be any, tcp, udp, tcp/udp, or icmp")
 		}
 	}
-	if inp.Source.Type == "cidr" && strings.TrimSpace(inp.Source.Value) == "" {
-		return fmt.Errorf("source CIDR value is required")
+	if inp.Source.Type == "cidr" {
+		if strings.TrimSpace(inp.Source.Value) == "" {
+			return fmt.Errorf("source CIDR value is required")
+		}
+		if err := validateCIDROrIP(inp.Source.Value); err != nil {
+			return fmt.Errorf("source: %w", err)
+		}
 	}
-	if inp.Destination.Type == "cidr" && strings.TrimSpace(inp.Destination.Value) == "" {
-		return fmt.Errorf("destination CIDR value is required")
+	if inp.Destination.Type == "cidr" {
+		if strings.TrimSpace(inp.Destination.Value) == "" {
+			return fmt.Errorf("destination CIDR value is required")
+		}
+		if err := validateCIDROrIP(inp.Destination.Value); err != nil {
+			return fmt.Errorf("destination: %w", err)
+		}
 	}
 	return nil
+}
+
+// validateCIDROrIP rejects any value that is not a valid IP address or CIDR notation.
+// This prevents command injection when the value is interpolated into iptables commands.
+func validateCIDROrIP(s string) error {
+	s = strings.TrimSpace(s)
+	if net.ParseIP(s) != nil {
+		return nil
+	}
+	if _, _, err := net.ParseCIDR(s); err == nil {
+		return nil
+	}
+	return fmt.Errorf("invalid IP/CIDR value %q", s)
 }
 
 // normalizeEndpoint sanitises and fills defaults for an endpoint.
