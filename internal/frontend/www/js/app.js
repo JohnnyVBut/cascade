@@ -2064,8 +2064,10 @@ new Vue({
           this._getIfacesFor(fromId),
           this._getIfacesFor(toId),
         ]);
-        for (const fi of fromIfaces) {
-          for (const ti of toIfaces) {
+        const fromS2S = fromIfaces.filter(i => i.disableRoutes);
+        const toS2S = toIfaces.filter(i => i.disableRoutes);
+        for (const fi of fromS2S) {
+          for (const ti of toS2S) {
             if (this._sameSubnet(fi.address, ti.address)) {
               return fi.address.split('/')[0];
             }
