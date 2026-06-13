@@ -2030,7 +2030,7 @@ new Vue({
       const data = serverId === '__local__'
         ? await this.api.getTunnelInterfaces()
         : await this.api.remoteCall({ remoteId: serverId, method: 'get', path: '/tunnel-interfaces' });
-      return (data.interfaces || []).filter(i => i.isRunning && i.address);
+      return (data.interfaces || []).filter(i => i.enabled && i.address);
     },
 
     // _getPeersFor loads peers for one interface on a server.
@@ -2056,7 +2056,7 @@ new Vue({
 
         for (const iface of toIfaces) {
           const peers = await this._getPeersFor(toId, iface.id);
-          const s2sPeers = peers.filter(p => p.type === 's2s');
+          const s2sPeers = peers.filter(p => p.peerType === 'interconnect');
           for (const peer of s2sPeers) {
             const allowedIPs = peer.allowedIPs || peer.allowedIps || '';
             for (const ip of fromIPs) {
