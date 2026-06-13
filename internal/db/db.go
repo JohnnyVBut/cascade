@@ -656,7 +656,6 @@ CREATE TABLE IF NOT EXISTS speedtest_results (
 	duration     INTEGER NOT NULL DEFAULT 10,
 	streams      INTEGER NOT NULL DEFAULT 4,
 	status       TEXT NOT NULL DEFAULT 'running',
-	via          TEXT NOT NULL DEFAULT 'internet',
 	send_mbps    REAL,
 	recv_mbps    REAL,
 	retransmits  INTEGER,
@@ -665,6 +664,13 @@ CREATE TABLE IF NOT EXISTS speedtest_results (
 	started_at   TEXT NOT NULL DEFAULT (datetime('now')),
 	finished_at  TEXT
 );
+`,
+	},
+	{
+		version: 32,
+		sql: `
+-- Add via column to speedtest_results (missed in v31 initial schema on live servers).
+ALTER TABLE speedtest_results ADD COLUMN via TEXT NOT NULL DEFAULT 'internet';
 `,
 	},
 }
