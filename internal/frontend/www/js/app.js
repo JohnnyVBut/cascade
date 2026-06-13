@@ -1002,6 +1002,7 @@ new Vue({
         this.loadStaticRoutes();
         if (!this.gateways.length) this.loadGateways();
         if (!this.gatewayGroups.length) this.loadGatewayGroups();
+        if (!this.natInterfaces.length) this.loadNatInterfaces();
       }
       if (pageId === 'nat') {
         this.loadNatInterfaces();

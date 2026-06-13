@@ -4638,8 +4638,11 @@
                 </div>
                 <div>
                   <label class="text-sm font-medium dark:text-neutral-300">Interface (dev, optional)</label>
-                  <input v-model="routeCreate.dev" type="text" placeholder="e.g. wg10"
-                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                  <select v-model="routeCreate.dev"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                    <option value="">— not specified —</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
+                  </select>
                 </div>
               </template>
 
