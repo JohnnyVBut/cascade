@@ -2132,6 +2132,13 @@ new Vue({
       return 'manual';
     },
 
+    // Helper: determine viaMode from a saved route object
+    _routeViaMode(route) {
+      if (route.gatewayGroupId) return 'group';
+      if (route.gatewayId) return 'gateway';
+      return 'manual';
+    },
+
     openEditRoute(route) {
       this.routeEdit = {
         id:            route.id,
