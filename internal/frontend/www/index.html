@@ -4292,21 +4292,39 @@
                   </div>
                 </div>
 
-                <!-- Manual: interface picker -->
-                <div v-if="speedtest.via === 'manual'" style="margin-top:8px;">
-                  <label class="text-xs text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">
-                    Source interface (on From server) — iperf3 will connect to its IP
-                  </label>
-                  <select v-model="speedtestFromIfaceId"
-                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                    style="padding:7px 10px;">
-                    <option value="" disabled>Select interface…</option>
-                    <option v-for="i in speedtestFromIfaces" :key="i.id" :value="i.id">
-                      {{ i.name || i.id }} — {{ i.address }}
-                    </option>
-                  </select>
-                  <div v-if="!speedtestFromIfaces.length" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
-                    No active interfaces found on source server
+                <!-- Manual: interface pickers -->
+                <div v-if="speedtest.via === 'manual'" style="margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <div>
+                    <label class="text-xs text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">
+                      Source interface (From) — iperf3 server IP
+                    </label>
+                    <select v-model="speedtestFromIfaceId"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:7px 10px;">
+                      <option value="" disabled>Select…</option>
+                      <option v-for="i in speedtestFromIfaces" :key="i.id" :value="i.id">
+                        {{ i.name || i.id }} — {{ i.address }}
+                      </option>
+                    </select>
+                    <div v-if="!speedtestFromIfaces.length" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
+                      No active interfaces
+                    </div>
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">
+                      Destination interface (To) — iperf3 client bind
+                    </label>
+                    <select v-model="speedtestToIfaceId"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:7px 10px;">
+                      <option value="">Any (no bind)</option>
+                      <option v-for="i in speedtestToIfaces" :key="i.id" :value="i.id">
+                        {{ i.name || i.id }} — {{ i.address }}
+                      </option>
+                    </select>
+                    <div v-if="!speedtestToIfaces.length" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
+                      No active interfaces
+                    </div>
                   </div>
                 </div>
               </div>

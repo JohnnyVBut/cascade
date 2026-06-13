@@ -190,6 +190,7 @@ type SpeedtestRunRequest struct {
 	FromRemoteId string `json:"fromRemoteId"` // "" = local, else remote id
 	ToRemoteId   string `json:"toRemoteId"`   // "" = local, else remote id
 	Host         string `json:"host"`         // IP/hostname for iperf3 client to connect to
+	BindAddr     string `json:"bindAddr"`     // optional: bind address for iperf3 client (to-interface IP)
 	Via          string `json:"via"`          // "tunnel" | "internet"
 	Duration     int    `json:"duration"`
 	Streams      int    `json:"streams"`
@@ -273,7 +274,7 @@ func stRunJob(jobId string, req SpeedtestRunRequest) {
 	time.Sleep(500 * time.Millisecond)
 
 	// 3. Run client.
-	result, err := stAPIRunClient(toId, req.Host, port, req.Duration, req.Streams)
+	result, err := stAPIRunClient(toId, req.Host, port, req.Duration, req.Streams, req.BindAddr)
 	if err != nil {
 		fail(err.Error())
 		return
@@ -360,6 +361,7 @@ type SpeedtestClientRequest struct {
 	Port     int    `json:"port"`
 	Duration int    `json:"duration"`
 	Streams  int    `json:"streams"`
+	BindAddr string `json:"bindAddr"` // optional: --bind address for iperf3 client
 }
 
 // POST /api/speedtest/client
@@ -379,7 +381,7 @@ func speedtestRunClient(c *fiber.Ctx) error {
 	if streams <= 0 {
 		streams = 4
 	}
-	result, err := runIperf3Client(req.Host, req.Port, duration, streams)
+	result, err := runIperf3Client(req.Host, req.Port, duration, streams, req.BindAddr)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
@@ -450,11 +452,11 @@ func stAPIStopServer(remoteId, sessionId string) error {
 	return err
 }
 
-func stAPIRunClient(remoteId, host string, port, duration, streams int) (*SpeedtestResult, error) {
+func stAPIRunClient(remoteId, host string, port, duration, streams int, bindAddr string) (*SpeedtestResult, error) {
 	if remoteId == "" {
-		return runIperf3Client(host, port, duration, streams)
+		return runIperf3Client(host, port, duration, streams, bindAddr)
 	}
-	body := map[string]any{"host": host, "port": port, "duration": duration, "streams": streams}
+	body := map[string]any{"host": host, "port": port, "duration": duration, "streams": streams, "bindAddr": bindAddr}
 	res, err := stProxyCall(remoteId, "POST", "/speedtest/client", body)
 	if err != nil {
 		return nil, err
@@ -548,6 +550,14 @@ func validateSpeedtestClientReq(req SpeedtestClientRequest) error {
 	if req.Streams < 0 || req.Streams > 16 {
 		return fmt.Errorf("streams must be between 1 and 16")
 	}
+	if req.BindAddr != "" {
+		for _, ch := range req.BindAddr {
+			if (ch >= '0' && ch <= '9') || ch == '.' {
+				continue
+			}
+			return fmt.Errorf("invalid bindAddr: %q", req.BindAddr)
+		}
+	}
 	return nil
 }
 
@@ -563,7 +573,7 @@ func randomFreePort() (int, error) {
 	return 0, fmt.Errorf("could not find a free port after 10 attempts")
 }
 
-func runIperf3Client(host string, port, duration, streams int) (*SpeedtestResult, error) {
+func runIperf3Client(host string, port, duration, streams int, bindAddr string) (*SpeedtestResult, error) {
 	timeout := time.Duration(duration+15) * time.Second
 	args := []string{
 		"-c", host,
@@ -571,6 +581,9 @@ func runIperf3Client(host string, port, duration, streams int) (*SpeedtestResult
 		"-t", fmt.Sprintf("%d", duration),
 		"-P", fmt.Sprintf("%d", streams),
 		"-J",
+	}
+	if bindAddr != "" {
+		args = append(args, "--bind", bindAddr)
 	}
 	cmd := exec.Command("iperf3", args...)
 

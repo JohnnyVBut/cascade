@@ -356,6 +356,7 @@ new Vue({
     speedtestFromIfaces: [],   // active interfaces on "from" server (manual mode)
     speedtestToIfaces: [],     // active interfaces on "to" server (manual mode)
     speedtestFromIfaceId: '',  // selected interface id on "from" (manual mode)
+    speedtestToIfaceId: '',    // selected interface id on "to" (manual mode, bind addr for iperf3 client)
     speedtestPingConfirm: false,     // show ping-failed confirmation
     speedtestPingConfirmMsg: '',     // message shown in confirmation
     speedtestPendingHost: '',        // host waiting for confirmation
@@ -1975,6 +1976,7 @@ new Vue({
       this.speedtestFromIfaces = [];
       this.speedtestToIfaces = [];
       this.speedtestFromIfaceId = '';
+      this.speedtestToIfaceId = '';
       if (this.speedtest.fromId === this.speedtest.toId) return;
       const [ip, fromIfaces, toIfaces] = await Promise.all([
         this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId),
@@ -1985,6 +1987,7 @@ new Vue({
       this.speedtestFromIfaces = fromIfaces;
       this.speedtestToIfaces = toIfaces;
       if (fromIfaces.length) this.speedtestFromIfaceId = fromIfaces[0].id;
+      if (toIfaces.length) this.speedtestToIfaceId = toIfaces[0].id;
     },
 
     _speedtestServerName(id) {
@@ -2000,6 +2003,16 @@ new Vue({
       const remote = this.remotes.find(r => r.id === fromId);
       if (!remote) return '';
       try { return new URL(remote.url).hostname; } catch (_) { return ''; }
+    },
+
+    // _ipInCIDR returns true if ip (string) falls within cidr (string), excluding /0.
+    _ipInCIDR(ip, cidr) {
+      const parts = ip.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(p => isNaN(p))) return false;
+      const ip32 = (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
+      const n = this._cidrNetwork(cidr);
+      if (!n || n.prefix === 0) return false; // exclude default route
+      return ((ip32 & n.mask) >>> 0) === n.net;
     },
 
     // _cidrNetwork returns the network address and prefix length for a CIDR string.
@@ -2060,7 +2073,7 @@ new Vue({
           for (const peer of s2sPeers) {
             const allowedIPs = peer.allowedIPs || peer.allowedIps || '';
             for (const ip of fromIPs) {
-              if (allowedIPs.split(',').some(cidr => cidr.trim().startsWith(ip))) {
+              if (allowedIPs.split(',').some(cidr => this._ipInCIDR(ip, cidr.trim()))) {
                 return ip;
               }
             }
@@ -2151,12 +2164,16 @@ new Vue({
           } catch (_) {}
         }
 
+        const toIface = this.speedtest.via === 'manual'
+          ? this.speedtestToIfaces.find(i => i.id === this.speedtestToIfaceId)
+          : null;
         const { jobId } = await this.api.speedtestRun({
           fromServer: this._speedtestServerName(fromId),
           toServer: this._speedtestServerName(toId),
           fromRemoteId: fromId === '__local__' ? '' : fromId,
           toRemoteId: toId === '__local__' ? '' : toId,
           host: resolvedHost,
+          bindAddr: toIface ? toIface.address.split('/')[0] : '',
           via,
           duration: Number(duration),
           streams: Number(streams),
@@ -2193,12 +2210,16 @@ new Vue({
       try {
         const resolvedHost = this.speedtestPendingHost;
         const via = this.speedtestPendingVia;
+        const toIface2 = via === 'manual'
+          ? this.speedtestToIfaces.find(i => i.id === this.speedtestToIfaceId)
+          : null;
         const { jobId } = await this.api.speedtestRun({
           fromServer: this._speedtestServerName(fromId),
           toServer: this._speedtestServerName(toId),
           fromRemoteId: fromId === '__local__' ? '' : fromId,
           toRemoteId: toId === '__local__' ? '' : toId,
           host: resolvedHost,
+          bindAddr: toIface2 ? toIface2.address.split('/')[0] : '',
           via,
           duration: Number(duration),
           streams: Number(streams),
