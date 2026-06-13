@@ -1967,8 +1967,13 @@ new Vue({
       this.speedtest.via = 'auto';
       this.speedtest.tunnelIp = '';
       this.speedtestDetectedTunnelIp = '';
+      this.speedtestFromIfaces = [];
+      this.speedtestToIfaces = [];
+      this.speedtestFromIfaceId = '';
+      this.speedtestToIfaceId = '';
       this.showSpeedtest = true;
       this.loadSpeedtestHistory();
+      this.onSpeedtestServersChange();
     },
 
     async onSpeedtestServersChange() {
@@ -1977,17 +1982,22 @@ new Vue({
       this.speedtestToIfaces = [];
       this.speedtestFromIfaceId = '';
       this.speedtestToIfaceId = '';
+      this.speedtestError = '';
       if (this.speedtest.fromId === this.speedtest.toId) return;
-      const [ip, fromIfaces, toIfaces] = await Promise.all([
-        this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId),
-        this._getIfacesFor(this.speedtest.fromId),
-        this._getIfacesFor(this.speedtest.toId),
-      ]);
-      this.speedtestDetectedTunnelIp = ip || '';
-      this.speedtestFromIfaces = fromIfaces;
-      this.speedtestToIfaces = toIfaces;
-      if (fromIfaces.length) this.speedtestFromIfaceId = fromIfaces[0].id;
-      if (toIfaces.length) this.speedtestToIfaceId = toIfaces[0].id;
+      try {
+        const [ip, fromIfaces, toIfaces] = await Promise.all([
+          this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId),
+          this._getIfacesFor(this.speedtest.fromId),
+          this._getIfacesFor(this.speedtest.toId),
+        ]);
+        this.speedtestDetectedTunnelIp = ip || '';
+        this.speedtestFromIfaces = fromIfaces;
+        this.speedtestToIfaces = toIfaces;
+        if (fromIfaces.length) this.speedtestFromIfaceId = fromIfaces[0].id;
+        if (toIfaces.length) this.speedtestToIfaceId = toIfaces[0].id;
+      } catch (e) {
+        this.speedtestError = 'Failed to load interfaces: ' + (e.message || e);
+      }
     },
 
     _speedtestServerName(id) {
