@@ -4260,8 +4260,8 @@
               <!-- Via -->
               <div style="margin-bottom:16px;">
                 <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:6px;">Via</label>
-                <div style="display:flex; gap:8px;">
-                  <button v-for="opt in [{v:'auto',l:'Auto'},{v:'internet',l:'🌐 Internet'},{v:'tunnel',l:'🔒 Tunnel'}]" :key="opt.v"
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button v-for="opt in [{v:'auto',l:'Auto'},{v:'internet',l:'🌐 Internet'},{v:'tunnel',l:'🔒 S2S Tunnel'},{v:'manual',l:'⚙️ Manual'}]" :key="opt.v"
                     @click="speedtest.via = opt.v"
                     class="text-xs font-medium rounded"
                     style="padding:5px 12px; border:1px solid;"
@@ -4271,21 +4271,43 @@
                     {{ opt.l }}
                   </button>
                 </div>
-                <!-- Tunnel IP input -->
+
+                <!-- Auto hint -->
+                <div v-if="speedtest.via === 'auto'" style="font-size:0.75rem; margin-top:4px;"
+                  :style="{ color: speedtestDetectedTunnelIp ? '#16a34a' : '#9ca3af' }">
+                  {{ speedtestDetectedTunnelIp ? '✓ S2S tunnel found — will use ' + speedtestDetectedTunnelIp : 'No S2S tunnel found — will use public IP' }}
+                </div>
+
+                <!-- Tunnel: S2S auto-detected IP with optional override -->
                 <div v-if="speedtest.via === 'tunnel'" style="margin-top:8px;">
                   <input v-model="speedtest.tunnelIp" type="text"
-                    :placeholder="speedtestDetectedTunnelIp ? 'Auto: ' + speedtestDetectedTunnelIp : 'e.g. 10.0.0.1'"
+                    :placeholder="speedtestDetectedTunnelIp ? 'Auto: ' + speedtestDetectedTunnelIp : 'No S2S detected — enter IP'"
                     class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
                     style="padding:7px 10px;" />
                   <div v-if="speedtestDetectedTunnelIp && !speedtest.tunnelIp" style="font-size:0.75rem; color:#16a34a; margin-top:3px;">
-                    ✓ S2S tunnel detected — will use {{ speedtestDetectedTunnelIp }}
+                    ✓ S2S peer found — will use {{ speedtestDetectedTunnelIp }}
                   </div>
-                  <div v-if="!speedtestDetectedTunnelIp" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
-                    No S2S tunnel detected — enter IP manually
+                  <div v-if="!speedtestDetectedTunnelIp && !speedtest.tunnelIp" style="font-size:0.75rem; color:#f59e0b; margin-top:3px;">
+                    No S2S peer detected between these servers
                   </div>
                 </div>
-                <div v-if="speedtest.via === 'auto'" style="font-size:0.75rem; color:#9ca3af; margin-top:4px;">
-                  {{ speedtestDetectedTunnelIp ? '✓ S2S tunnel found — will use ' + speedtestDetectedTunnelIp : 'No S2S tunnel found — will use public IP' }}
+
+                <!-- Manual: interface picker -->
+                <div v-if="speedtest.via === 'manual'" style="margin-top:8px;">
+                  <label class="text-xs text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">
+                    Source interface (on From server) — iperf3 will connect to its IP
+                  </label>
+                  <select v-model="speedtestFromIfaceId"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:7px 10px;">
+                    <option value="" disabled>Select interface…</option>
+                    <option v-for="i in speedtestFromIfaces" :key="i.id" :value="i.id">
+                      {{ i.name || i.id }} — {{ i.address }}
+                    </option>
+                  </select>
+                  <div v-if="!speedtestFromIfaces.length" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
+                    No active interfaces found on source server
+                  </div>
                 </div>
               </div>
 
@@ -4337,6 +4359,23 @@
               <!-- Progress -->
               <div v-if="speedtestRunning" style="text-align:center; padding:12px 0; color:#6b7280; font-size:0.875rem;">
                 <span>Running iperf3 ({{ speedtest.duration }}s)…</span>
+              </div>
+
+              <!-- Ping confirmation -->
+              <div v-if="speedtestPingConfirm" style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+                <div style="font-size:0.85rem; color:#92400e; margin-bottom:10px;">⚠️ {{ speedtestPingConfirmMsg }}</div>
+                <div style="display:flex; gap:8px;">
+                  <button @click="confirmAndRunSpeedtest()"
+                    class="text-sm font-medium rounded"
+                    style="padding:6px 14px; background:#2563eb; color:#fff;">
+                    Run anyway
+                  </button>
+                  <button @click="speedtestPingConfirm = false"
+                    class="text-sm font-medium rounded"
+                    style="padding:6px 14px; background:#e5e7eb; color:#374151;">
+                    Cancel
+                  </button>
+                </div>
               </div>
 
               <!-- Run button -->

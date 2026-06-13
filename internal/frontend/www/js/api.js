@@ -1144,6 +1144,17 @@ class API {
     return this.call({ method, path: `/remotes/${remoteId}/proxy${path}`, body });
   }
 
+  // ── Diagnostics ────────────────────────────────────────────────────────────
+
+  // Ping host from the server that receives this call (local or via proxy).
+  async ping({ host, count = 3, remoteId } = {}) {
+    const body = { host, count };
+    const path = '/diagnostics/ping';
+    return remoteId
+      ? this.remoteCall({ remoteId, method: 'post', path, body })
+      : this.call({ method: 'post', path, body });
+  }
+
   // ── Speed test ─────────────────────────────────────────────────────────────
 
   async speedtestRun(body) {

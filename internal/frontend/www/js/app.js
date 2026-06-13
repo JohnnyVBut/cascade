@@ -352,7 +352,14 @@ new Vue({
       duration: 10,
       streams: 4,
     },
-    speedtestDetectedTunnelIp: '', // auto-detected tunnel IP (shown as hint)
+    speedtestDetectedTunnelIp: '',
+    speedtestFromIfaces: [],   // active interfaces on "from" server (manual mode)
+    speedtestToIfaces: [],     // active interfaces on "to" server (manual mode)
+    speedtestFromIfaceId: '',  // selected interface id on "from" (manual mode)
+    speedtestPingConfirm: false,     // show ping-failed confirmation
+    speedtestPingConfirmMsg: '',     // message shown in confirmation
+    speedtestPendingHost: '',        // host waiting for confirmation
+    speedtestPendingVia: '',
     speedtestRunning: false,
     speedtestResult: null,
     speedtestError: '',
@@ -1965,9 +1972,19 @@ new Vue({
 
     async onSpeedtestServersChange() {
       this.speedtestDetectedTunnelIp = '';
+      this.speedtestFromIfaces = [];
+      this.speedtestToIfaces = [];
+      this.speedtestFromIfaceId = '';
       if (this.speedtest.fromId === this.speedtest.toId) return;
-      const ip = await this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId);
+      const [ip, fromIfaces, toIfaces] = await Promise.all([
+        this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId),
+        this._getIfacesFor(this.speedtest.fromId),
+        this._getIfacesFor(this.speedtest.toId),
+      ]);
       this.speedtestDetectedTunnelIp = ip || '';
+      this.speedtestFromIfaces = fromIfaces;
+      this.speedtestToIfaces = toIfaces;
+      if (fromIfaces.length) this.speedtestFromIfaceId = fromIfaces[0].id;
     },
 
     _speedtestServerName(id) {
@@ -2008,30 +2025,44 @@ new Vue({
       return ((a.ip32 & mask) >>> 0) === ((b.ip32 & mask) >>> 0);
     },
 
-    // _findTunnelIP loads interfaces from both servers and looks for a common subnet.
-    // Returns the "from" server's WireGuard IP in that subnet, or null if not found.
+    // _getIfacesFor loads active tunnel interfaces from a server (local or remote).
+    async _getIfacesFor(serverId) {
+      const data = serverId === '__local__'
+        ? await this.api.getTunnelInterfaces()
+        : await this.api.remoteCall({ remoteId: serverId, method: 'get', path: '/tunnel-interfaces' });
+      return (data.interfaces || []).filter(i => i.isRunning && i.address);
+    },
+
+    // _getPeersFor loads peers for one interface on a server.
+    async _getPeersFor(serverId, ifaceId) {
+      const path = `/tunnel-interfaces/${ifaceId}/peers`;
+      const data = serverId === '__local__'
+        ? await this.api.call({ method: 'get', path })
+        : await this.api.remoteCall({ remoteId: serverId, method: 'get', path });
+      return data.peers || [];
+    },
+
+    // _findTunnelIP finds the first S2S connection between two servers.
+    // Strategy: look for an S2S peer on server "to" whose allowedIPs contains
+    // the IP address of any interface on server "from".
+    // Returns the "from" interface IP, or null if no S2S found.
     async _findTunnelIP(fromId, toId) {
       try {
-        const fromRemoteId = fromId === '__local__' ? null : fromId;
-        const toRemoteId   = toId   === '__local__' ? null : toId;
-
-        const [fromData, toData] = await Promise.all([
-          fromRemoteId
-            ? this.api.remoteCall({ remoteId: fromRemoteId, method: 'get', path: '/tunnel-interfaces' })
-            : this.api.getTunnelInterfaces(),
-          toRemoteId
-            ? this.api.remoteCall({ remoteId: toRemoteId, method: 'get', path: '/tunnel-interfaces' })
-            : this.api.getTunnelInterfaces(),
+        const [fromIfaces, toIfaces] = await Promise.all([
+          this._getIfacesFor(fromId),
+          this._getIfacesFor(toId),
         ]);
+        const fromIPs = fromIfaces.map(i => i.address.split('/')[0]);
 
-        const fromIfaces = (fromData.interfaces || []).filter(i => i.address);
-        const toIfaces   = (toData.interfaces   || []).filter(i => i.address);
-
-        for (const fi of fromIfaces) {
-          for (const ti of toIfaces) {
-            if (this._sameSubnet(fi.address, ti.address)) {
-              // Return just the IP part (strip /prefix).
-              return fi.address.split('/')[0];
+        for (const iface of toIfaces) {
+          const peers = await this._getPeersFor(toId, iface.id);
+          const s2sPeers = peers.filter(p => p.type === 's2s');
+          for (const peer of s2sPeers) {
+            const allowedIPs = peer.allowedIPs || peer.allowedIps || '';
+            for (const ip of fromIPs) {
+              if (allowedIPs.split(',').some(cidr => cidr.trim().startsWith(ip))) {
+                return ip;
+              }
             }
           }
         }
@@ -2055,15 +2086,25 @@ new Vue({
       this.speedtestRunning = true;
       this.speedtestResult = null;
       this.speedtestError = '';
+      this.speedtestPingConfirm = false;
 
       try {
         let resolvedHost = host;
         let via = 'internet';
 
-        if (this.speedtest.via === 'tunnel') {
+        if (this.speedtest.via === 'manual') {
+          const iface = this.speedtestFromIfaces.find(i => i.id === this.speedtestFromIfaceId);
+          if (!iface) {
+            this.speedtestError = 'Select a source interface.';
+            this.speedtestRunning = false;
+            return;
+          }
+          resolvedHost = iface.address.split('/')[0];
+          via = 'manual';
+        } else if (this.speedtest.via === 'tunnel') {
           const ip = this.speedtest.tunnelIp.trim() || this.speedtestDetectedTunnelIp;
           if (!ip) {
-            this.speedtestError = 'No tunnel IP found. Enter it manually or check S2S interfaces.';
+            this.speedtestError = 'No S2S tunnel found. Switch to Manual or Internet mode.';
             this.speedtestRunning = false;
             return;
           }
@@ -2077,6 +2118,37 @@ new Vue({
           const tunnelIP = await this._findTunnelIP(fromId, toId);
           resolvedHost = tunnelIP || host;
           via = tunnelIP ? 'tunnel' : 'internet';
+        }
+
+        // Ping check: from server pings the resolved host.
+        // For internet mode warn softly (ICMP may be blocked), others warn harder.
+        if (via !== 'internet') {
+          const fromRemoteId = fromId === '__local__' ? null : fromId;
+          try {
+            const pingRes = await this.api.ping({ host: resolvedHost, count: 3, remoteId: fromRemoteId });
+            if (!pingRes.reachable) {
+              this.speedtestPendingHost = resolvedHost;
+              this.speedtestPendingVia = via;
+              this.speedtestPingConfirmMsg = `${resolvedHost} is not reachable from the source server (ICMP). The speed test may fail.`;
+              this.speedtestPingConfirm = true;
+              this.speedtestRunning = false;
+              return;
+            }
+          } catch (_) { /* ping endpoint unavailable — proceed */ }
+        } else {
+          // Internet mode: soft check
+          const fromRemoteId = fromId === '__local__' ? null : fromId;
+          try {
+            const pingRes = await this.api.ping({ host: resolvedHost, count: 2, remoteId: fromRemoteId });
+            if (!pingRes.reachable) {
+              this.speedtestPendingHost = resolvedHost;
+              this.speedtestPendingVia = via;
+              this.speedtestPingConfirmMsg = `${resolvedHost} does not respond to ICMP — it may be blocked by firewall. The test may still work.`;
+              this.speedtestPingConfirm = true;
+              this.speedtestRunning = false;
+              return;
+            }
+          } catch (_) {}
         }
 
         const { jobId } = await this.api.speedtestRun({
@@ -2100,6 +2172,43 @@ new Vue({
           } else {
             this.speedtestResult = rec;
           }
+          break;
+        }
+      } catch (err) {
+        this.speedtestError = err.message || 'Speed test failed.';
+      } finally {
+        this.speedtestRunning = false;
+        this.loadSpeedtestHistory();
+      }
+    },
+
+    async confirmAndRunSpeedtest() {
+      this.speedtestPingConfirm = false;
+      // Re-enter runSpeedtest but skip ping check by temporarily overriding flag.
+      const { fromId, toId, duration, streams } = this.speedtest;
+      const host = this._speedtestPublicHost(fromId);
+      this.speedtestRunning = true;
+      this.speedtestResult = null;
+      this.speedtestError = '';
+      try {
+        const resolvedHost = this.speedtestPendingHost;
+        const via = this.speedtestPendingVia;
+        const { jobId } = await this.api.speedtestRun({
+          fromServer: this._speedtestServerName(fromId),
+          toServer: this._speedtestServerName(toId),
+          fromRemoteId: fromId === '__local__' ? '' : fromId,
+          toRemoteId: toId === '__local__' ? '' : toId,
+          host: resolvedHost,
+          via,
+          duration: Number(duration),
+          streams: Number(streams),
+        });
+        for (;;) {
+          await new Promise(r => setTimeout(r, 2000));
+          const rec = await this.api.speedtestGetResult(jobId);
+          if (rec.status === 'running') continue;
+          if (rec.status === 'error') this.speedtestError = rec.error || 'Speed test failed.';
+          else this.speedtestResult = rec;
           break;
         }
       } catch (err) {
