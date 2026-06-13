@@ -1081,19 +1081,7 @@ new Vue({
           payload.settings = this.interfaceCreate.settings;
         }
 
-        const res = await fetch('./api/tunnel-interfaces', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || res.statusText);
-        }
-
-        const newIface = await res.json();
+        const newIface = await this.api.createTunnelInterface(payload);
         this.showInterfaceCreate = false;
         this._resetInterfaceCreate();
 
@@ -1123,19 +1111,7 @@ new Vue({
           body.name = trimmedName;
         }
 
-        const res = await fetch('./api/tunnel-interfaces/quick-create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}));
-          throw new Error(error.message || res.statusText);
-        }
-
-        const data = await res.json();
+        const data = await this.api.call({ method: 'post', path: '/tunnel-interfaces/quick-create', body });
         this.showInterfaceCreate = false;
         this._resetInterfaceCreate();
         await this.loadTunnelInterfaces();
@@ -1263,17 +1239,7 @@ new Vue({
     // by generating a random profile via the /templates/generate endpoint.
     async generateAndFillInterfaceParams() {
       try {
-        const res = await fetch('./api/templates/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ profile: 'random', intensity: 'medium' }),
-        });
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}));
-          throw new Error(error.message || res.statusText);
-        }
-        const { params } = await res.json();
+        const { params } = await this.api.generateTemplate({ profile: 'random', intensity: 'medium' });
         // Merge generated params into interfaceCreate.settings.
         Object.assign(this.interfaceCreate.settings, {
           jc:   params.jc   ?? this.interfaceCreate.settings.jc,
@@ -1597,15 +1563,7 @@ new Vue({
 
     async downloadPeerConfig(peer) {
       try {
-        const segs = window.location.pathname.split('/').filter(Boolean);
-        const apiBase = segs.length > 0
-          ? `${window.location.origin}/${segs[0]}/api`
-          : `${window.location.origin}/api`;
-        const res = await fetch(`${apiBase}/tunnel-interfaces/${this._peerIfaceId(peer)}/peers/${peer.id}/config`, {
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error(res.statusText);
-        const config = await res.text();
+        const config = await this.api.getPeerConfig({ interfaceId: this._peerIfaceId(peer), peerId: peer.id });
         const blob = new Blob([config], { type: 'text/plain' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');

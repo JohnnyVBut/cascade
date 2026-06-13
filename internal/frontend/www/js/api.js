@@ -467,6 +467,20 @@ class API {
     });
   }
 
+  async getPeerConfig({ interfaceId, peerId }) {
+    const segs = window.location.pathname.split('/').filter(Boolean);
+    const apiBase = segs.length > 0
+      ? `${window.location.origin}/${segs[0]}/api`
+      : `${window.location.origin}/api`;
+    const path = `/tunnel-interfaces/${interfaceId}/peers/${peerId}/config`;
+    const effectivePath = (this._remoteId && !path.startsWith('/remotes'))
+      ? `/remotes/${this._remoteId}/proxy${path}`
+      : path;
+    const res = await fetch(`${apiBase}${effectivePath}`);
+    if (!res.ok) throw new Error(res.statusText);
+    return res.text();
+  }
+
   async enablePeer({ interfaceId, peerId }) {
     return this.call({
       method: 'post',
