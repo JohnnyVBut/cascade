@@ -87,6 +87,7 @@ type SpeedtestRecord struct {
 	Duration    int      `json:"duration"`
 	Streams     int      `json:"streams"`
 	Status      string   `json:"status"`
+	Via         string   `json:"via"` // "tunnel" | "internet"
 	SendMbps    *float64 `json:"sendMbps"`
 	RecvMbps    *float64 `json:"recvMbps"`
 	Retransmits *int     `json:"retransmits"`
@@ -97,11 +98,15 @@ type SpeedtestRecord struct {
 }
 
 func stDBInsert(r SpeedtestRecord) error {
+	via := r.Via
+	if via == "" {
+		via = "internet"
+	}
 	_, err := db.DB().Exec(`
 		INSERT INTO speedtest_results
-		  (id, from_server, to_server, host, port, duration, streams, status, started_at)
-		VALUES (?,?,?,?,?,?,?,'running', datetime('now'))`,
-		r.ID, r.FromServer, r.ToServer, r.Host, r.Port, r.Duration, r.Streams,
+		  (id, from_server, to_server, host, port, duration, streams, status, via, started_at)
+		VALUES (?,?,?,?,?,?,?,'running',?,datetime('now'))`,
+		r.ID, r.FromServer, r.ToServer, r.Host, r.Port, r.Duration, r.Streams, via,
 	)
 	return err
 }
@@ -119,14 +124,14 @@ func stDBComplete(id string, res *SpeedtestResult, errMsg string) {
 
 func stDBGet(id string) (*SpeedtestRecord, error) {
 	row := db.DB().QueryRow(`SELECT id, from_server, to_server, host, port, duration, streams,
-		status, send_mbps, recv_mbps, retransmits, latency_ms, error, started_at, finished_at
+		status, via, send_mbps, recv_mbps, retransmits, latency_ms, error, started_at, finished_at
 		FROM speedtest_results WHERE id=?`, id)
 	return stDBScan(row)
 }
 
 func stDBList() ([]SpeedtestRecord, error) {
 	rows, err := db.DB().Query(`SELECT id, from_server, to_server, host, port, duration, streams,
-		status, send_mbps, recv_mbps, retransmits, latency_ms, error, started_at, finished_at
+		status, via, send_mbps, recv_mbps, retransmits, latency_ms, error, started_at, finished_at
 		FROM speedtest_results ORDER BY started_at DESC LIMIT 100`)
 	if err != nil {
 		return nil, err
@@ -155,7 +160,7 @@ func stDBScan(row rowScanner) (*SpeedtestRecord, error) {
 	var finishedAt sql.NullString
 	err := row.Scan(
 		&r.ID, &r.FromServer, &r.ToServer, &r.Host, &r.Port, &r.Duration, &r.Streams,
-		&r.Status, &r.SendMbps, &r.RecvMbps, &r.Retransmits, &r.LatencyMs, &r.Error,
+		&r.Status, &r.Via, &r.SendMbps, &r.RecvMbps, &r.Retransmits, &r.LatencyMs, &r.Error,
 		&r.StartedAt, &finishedAt,
 	)
 	if err != nil {
@@ -185,6 +190,7 @@ type SpeedtestRunRequest struct {
 	FromRemoteId string `json:"fromRemoteId"` // "" = local, else remote id
 	ToRemoteId   string `json:"toRemoteId"`   // "" = local, else remote id
 	Host         string `json:"host"`         // IP/hostname for iperf3 client to connect to
+	Via          string `json:"via"`          // "tunnel" | "internet"
 	Duration     int    `json:"duration"`
 	Streams      int    `json:"streams"`
 }
@@ -213,6 +219,7 @@ func speedtestRun(c *fiber.Ctx) error {
 		FromServer: req.FromServer,
 		ToServer:   req.ToServer,
 		Host:       req.Host,
+		Via:        req.Via,
 		Duration:   req.Duration,
 		Streams:    req.Streams,
 	}

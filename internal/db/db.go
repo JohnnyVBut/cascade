@@ -656,6 +656,7 @@ CREATE TABLE IF NOT EXISTS speedtest_results (
 	duration     INTEGER NOT NULL DEFAULT 10,
 	streams      INTEGER NOT NULL DEFAULT 4,
 	status       TEXT NOT NULL DEFAULT 'running',
+	via          TEXT NOT NULL DEFAULT 'internet',
 	send_mbps    REAL,
 	recv_mbps    REAL,
 	retransmits  INTEGER,

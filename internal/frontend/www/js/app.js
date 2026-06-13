@@ -1963,13 +1963,67 @@ new Vue({
       return r ? r.name : id;
     },
 
-    _speedtestHost(fromId) {
+    _speedtestPublicHost(fromId) {
       if (fromId === '__local__') {
         return this.globalSettings.resolvedPublicIP || this.globalSettings.publicIP || '';
       }
       const remote = this.remotes.find(r => r.id === fromId);
       if (!remote) return '';
       try { return new URL(remote.url).hostname; } catch (_) { return ''; }
+    },
+
+    // _cidrNetwork returns the network address and prefix length for a CIDR string.
+    _cidrNetwork(cidr) {
+      const [addr, bits] = cidr.split('/');
+      if (!addr || bits === undefined) return null;
+      const prefix = parseInt(bits, 10);
+      if (isNaN(prefix)) return null;
+      const parts = addr.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(p => isNaN(p))) return null;
+      const ip32 = (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
+      const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+      return { net: (ip32 & mask) >>> 0, mask, ip32, prefix };
+    },
+
+    // _sameSubnet returns true if ipA/prefixA and ipB/prefixB share a subnet.
+    _sameSubnet(cidrA, cidrB) {
+      const a = this._cidrNetwork(cidrA);
+      const b = this._cidrNetwork(cidrB);
+      if (!a || !b) return false;
+      const mask = Math.min(a.prefix, b.prefix) === 0 ? 0
+        : (0xffffffff << (32 - Math.min(a.prefix, b.prefix))) >>> 0;
+      return ((a.ip32 & mask) >>> 0) === ((b.ip32 & mask) >>> 0);
+    },
+
+    // _findTunnelIP loads interfaces from both servers and looks for a common subnet.
+    // Returns the "from" server's WireGuard IP in that subnet, or null if not found.
+    async _findTunnelIP(fromId, toId) {
+      try {
+        const fromRemoteId = fromId === '__local__' ? null : fromId;
+        const toRemoteId   = toId   === '__local__' ? null : toId;
+
+        const [fromData, toData] = await Promise.all([
+          fromRemoteId
+            ? this.api.remoteCall({ remoteId: fromRemoteId, method: 'get', path: '/tunnel-interfaces' })
+            : this.api.getTunnelInterfaces(),
+          toRemoteId
+            ? this.api.remoteCall({ remoteId: toRemoteId, method: 'get', path: '/tunnel-interfaces' })
+            : this.api.getTunnelInterfaces(),
+        ]);
+
+        const fromIfaces = (fromData.interfaces || []).filter(i => i.address);
+        const toIfaces   = (toData.interfaces   || []).filter(i => i.address);
+
+        for (const fi of fromIfaces) {
+          for (const ti of toIfaces) {
+            if (this._sameSubnet(fi.address, ti.address)) {
+              // Return just the IP part (strip /prefix).
+              return fi.address.split('/')[0];
+            }
+          }
+        }
+      } catch (_) {}
+      return null;
     },
 
     async runSpeedtest() {
@@ -1979,7 +2033,7 @@ new Vue({
         this.speedtestError = 'Source and destination must be different servers.';
         return;
       }
-      const host = this._speedtestHost(fromId);
+      const host = this._speedtestPublicHost(fromId);
       if (!host) {
         this.speedtestError = 'Cannot determine IP address of source server. Set Public IP in Settings.';
         return;
@@ -1990,12 +2044,18 @@ new Vue({
       this.speedtestError = '';
 
       try {
+        // Try to find a common WireGuard subnet (S2S tunnel) — fall back to public IP.
+        const tunnelIP = await this._findTunnelIP(fromId, toId);
+        const resolvedHost = tunnelIP || host;
+        const via = tunnelIP ? 'tunnel' : 'internet';
+
         const { jobId } = await this.api.speedtestRun({
           fromServer: this._speedtestServerName(fromId),
           toServer: this._speedtestServerName(toId),
           fromRemoteId: fromId === '__local__' ? '' : fromId,
           toRemoteId: toId === '__local__' ? '' : toId,
-          host,
+          host: resolvedHost,
+          via,
           duration: Number(duration),
           streams: Number(streams),
         });

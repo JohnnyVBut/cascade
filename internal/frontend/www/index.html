@@ -4341,6 +4341,7 @@
                           <div :style="{ color: theme === 'dark' ? '#737373' : '#9ca3af' }">
                             {{ r.startedAt ? new Date(r.startedAt).toLocaleString() : '' }}
                             · {{ r.duration }}s · {{ r.streams }}×
+                            · <span :style="{ color: r.via === 'tunnel' ? '#8b5cf6' : '#6b7280' }">{{ r.via === 'tunnel' ? '🔒 tunnel' : '🌐 internet' }}</span>
                           </div>
                           <div v-if="r.status === 'error'" style="color:#dc2626;">{{ r.error }}</div>
                           <div v-if="r.status === 'running'" style="color:#f59e0b;">running…</div>
