@@ -1859,7 +1859,7 @@ new Vue({
       this.aliases = [];
       this.switchPage('dashboard');
       try {
-        await this.loadTunnelInterfaces();
+        await Promise.all([this.loadTunnelInterfaces(), this.loadSettings()]);
       } catch (err) {
         this.showToast(`Failed to connect to ${remote.name}: ${err.message}`, 'error');
         this.switchToLocal();
@@ -1883,6 +1883,7 @@ new Vue({
       // Must reload interfaces explicitly: refreshAllPeers() iterates
       // tunnelInterfaces, so it returns nothing until they are populated.
       this.loadTunnelInterfaces();
+      this.loadSettings();
     },
 
     async addRemote() {
