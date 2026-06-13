@@ -351,8 +351,9 @@ new Vue({
       streams: 4,
     },
     speedtestRunning: false,
-    speedtestResult: null,  // { sendMbps, recvMbps, retransmits, latencyMs } or null
+    speedtestResult: null,
     speedtestError: '',
+    speedtestHistory: [],
 
     showGatewayCreate: false,
     showGatewayEdit:   false,
@@ -1950,31 +1951,25 @@ new Vue({
     openSpeedtest() {
       this.speedtestResult = null;
       this.speedtestError = '';
-      // Pre-select: from local, to first remote if available.
       this.speedtest.fromId = '__local__';
       this.speedtest.toId = this.remotes.length > 0 ? this.remotes[0].id : '__local__';
       this.showSpeedtest = true;
+      this.loadSpeedtestHistory();
     },
 
-    // _speedtestRemoteId returns remoteId (or null for local) from a picker value.
-    _speedtestRemoteId(id) {
-      return id === '__local__' ? null : id;
+    _speedtestServerName(id) {
+      if (id === '__local__') return this.localServerName || this.pageTitle || 'Local';
+      const r = this.remotes.find(r => r.id === id);
+      return r ? r.name : id;
     },
 
-    // _speedtestHost returns the IP/hostname that the "to" server will use to
-    // connect to the "from" server. Uses the hostname from the remote URL.
     _speedtestHost(fromId) {
       if (fromId === '__local__') {
-        // Local server — use the stored publicIP from settings, or fall back to hostname.
         return this.globalSettings.resolvedPublicIP || this.globalSettings.publicIP || '';
       }
       const remote = this.remotes.find(r => r.id === fromId);
       if (!remote) return '';
-      try {
-        return new URL(remote.url).hostname;
-      } catch (_) {
-        return '';
-      }
+      try { return new URL(remote.url).hostname; } catch (_) { return ''; }
     },
 
     async runSpeedtest() {
@@ -1986,7 +1981,7 @@ new Vue({
       }
       const host = this._speedtestHost(fromId);
       if (!host) {
-        this.speedtestError = 'Cannot determine IP address of the source server. Set Public IP in Settings.';
+        this.speedtestError = 'Cannot determine IP address of source server. Set Public IP in Settings.';
         return;
       }
 
@@ -1994,42 +1989,50 @@ new Vue({
       this.speedtestResult = null;
       this.speedtestError = '';
 
-      const fromRemoteId = this._speedtestRemoteId(fromId);
-      const toRemoteId = this._speedtestRemoteId(toId);
-      let sessionId = null;
-
       try {
-        // 1. Check iperf3 on both sides.
-        const [chkFrom, chkTo] = await Promise.all([
-          this.api.speedtestCheck({ remoteId: fromRemoteId }),
-          this.api.speedtestCheck({ remoteId: toRemoteId }),
-        ]);
-        if (!chkFrom.installed) throw new Error('iperf3 is not installed on the source server.');
-        if (!chkTo.installed) throw new Error('iperf3 is not installed on the destination server.');
-
-        // 2. Start iperf3 server on the "from" side.
-        const srv = await this.api.speedtestStartServer({ remoteId: fromRemoteId });
-        sessionId = srv.sessionId;
-        const port = srv.port;
-
-        // 3. Run iperf3 client on the "to" side toward "from".
-        const result = await this.api.speedtestRunClient({
-          remoteId: toRemoteId,
+        const { jobId } = await this.api.speedtestRun({
+          fromServer: this._speedtestServerName(fromId),
+          toServer: this._speedtestServerName(toId),
+          fromRemoteId: fromId === '__local__' ? '' : fromId,
+          toRemoteId: toId === '__local__' ? '' : toId,
           host,
-          port,
           duration: Number(duration),
           streams: Number(streams),
         });
 
-        this.speedtestResult = result;
+        // Poll until done or error.
+        for (;;) {
+          await new Promise(r => setTimeout(r, 2000));
+          const rec = await this.api.speedtestGetResult(jobId);
+          if (rec.status === 'running') continue;
+          if (rec.status === 'error') {
+            this.speedtestError = rec.error || 'Speed test failed.';
+          } else {
+            this.speedtestResult = rec;
+          }
+          break;
+        }
       } catch (err) {
         this.speedtestError = err.message || 'Speed test failed.';
       } finally {
-        // 4. Always clean up the iperf3 server process.
-        if (sessionId) {
-          this.api.speedtestStopServer({ remoteId: fromRemoteId, sessionId }).catch(() => {});
-        }
         this.speedtestRunning = false;
+        this.loadSpeedtestHistory();
+      }
+    },
+
+    async loadSpeedtestHistory() {
+      try {
+        const { results } = await this.api.speedtestListResults();
+        this.speedtestHistory = results || [];
+      } catch (_) {}
+    },
+
+    async clearSpeedtestHistory() {
+      try {
+        await this.api.speedtestClearResults();
+        this.speedtestHistory = [];
+      } catch (err) {
+        this.showToast(err.message, 'error');
       }
     },
 

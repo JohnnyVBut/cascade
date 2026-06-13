@@ -1146,33 +1146,20 @@ class API {
 
   // ── Speed test ─────────────────────────────────────────────────────────────
 
-  async speedtestCheck({ remoteId } = {}) {
-    const path = '/speedtest/check';
-    return remoteId
-      ? this.remoteCall({ remoteId, method: 'get', path })
-      : this.call({ method: 'get', path });
+  async speedtestRun(body) {
+    return this.call({ method: 'post', path: '/speedtest/run', body });
   }
 
-  async speedtestStartServer({ remoteId } = {}) {
-    const path = '/speedtest/server';
-    return remoteId
-      ? this.remoteCall({ remoteId, method: 'post', path })
-      : this.call({ method: 'post', path });
+  async speedtestGetResult(jobId) {
+    return this.call({ method: 'get', path: `/speedtest/result/${jobId}` });
   }
 
-  async speedtestStopServer({ remoteId, sessionId }) {
-    const path = `/speedtest/server/${sessionId}`;
-    return remoteId
-      ? this.remoteCall({ remoteId, method: 'delete', path })
-      : this.call({ method: 'delete', path });
+  async speedtestListResults() {
+    return this.call({ method: 'get', path: '/speedtest/results' });
   }
 
-  async speedtestRunClient({ remoteId, host, port, duration, streams }) {
-    const body = { host, port, duration, streams };
-    const path = '/speedtest/client';
-    return remoteId
-      ? this.remoteCall({ remoteId, method: 'post', path, body })
-      : this.call({ method: 'post', path, body });
+  async speedtestClearResults() {
+    return this.call({ method: 'delete', path: '/speedtest/results' });
   }
 
 }

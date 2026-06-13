@@ -4316,6 +4316,49 @@
                   : 'background:#2563eb; cursor:pointer; padding:10px;'">
                 {{ speedtestRunning ? 'Running…' : 'Run Speed Test' }}
               </button>
+
+              <!-- History -->
+              <div v-if="speedtestHistory.length" style="margin-top:20px;">
+                <div class="flex items-center justify-between" style="margin-bottom:8px;">
+                  <span class="text-xs font-medium text-gray-500 dark:text-neutral-400">History</span>
+                  <button @click="clearSpeedtestHistory()" class="text-xs" style="color:#dc2626;">Clear</button>
+                </div>
+                <div style="max-height:220px; overflow-y:auto;">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr :style="{ color: theme === 'dark' ? '#a3a3a3' : '#6b7280' }">
+                        <th class="text-left" style="padding:3px 6px 3px 0;">Route</th>
+                        <th class="text-right" style="padding:3px 4px;">↑ Mbps</th>
+                        <th class="text-right" style="padding:3px 4px;">↓ Mbps</th>
+                        <th class="text-right" style="padding:3px 0;">RTT ms</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="r in speedtestHistory" :key="r.id"
+                        :style="{ borderTop: theme === 'dark' ? '1px solid #404040' : '1px solid #f3f4f6' }">
+                        <td style="padding:4px 6px 4px 0;">
+                          <div :style="{ color: theme === 'dark' ? '#e5e5e5' : '#111827' }">{{ r.fromServer }} → {{ r.toServer }}</div>
+                          <div :style="{ color: theme === 'dark' ? '#737373' : '#9ca3af' }">
+                            {{ r.startedAt ? new Date(r.startedAt).toLocaleString() : '' }}
+                            · {{ r.duration }}s · {{ r.streams }}×
+                          </div>
+                          <div v-if="r.status === 'error'" style="color:#dc2626;">{{ r.error }}</div>
+                          <div v-if="r.status === 'running'" style="color:#f59e0b;">running…</div>
+                        </td>
+                        <td class="text-right" style="padding:4px;" :style="{ color: r.sendMbps ? '#16a34a' : '#9ca3af' }">
+                          {{ r.sendMbps ? r.sendMbps.toFixed(1) : '—' }}
+                        </td>
+                        <td class="text-right" style="padding:4px;" :style="{ color: r.recvMbps ? '#2563eb' : '#9ca3af' }">
+                          {{ r.recvMbps ? r.recvMbps.toFixed(1) : '—' }}
+                        </td>
+                        <td class="text-right" style="padding:4px 0;" :style="{ color: theme === 'dark' ? '#a3a3a3' : '#6b7280' }">
+                          {{ r.latencyMs ? r.latencyMs.toFixed(1) : '—' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>

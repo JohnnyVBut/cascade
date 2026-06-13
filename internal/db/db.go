@@ -641,6 +641,31 @@ CREATE TABLE IF NOT EXISTS remotes (
 );
 `,
 	},
+	{
+		version: 31,
+		sql: `
+-- Speed test results: persisted history of iperf3 runs between servers.
+-- from_server / to_server: display name (local server name or remote.name).
+-- status: 'running' | 'done' | 'error'.
+CREATE TABLE IF NOT EXISTS speedtest_results (
+	id           TEXT PRIMARY KEY,
+	from_server  TEXT NOT NULL DEFAULT '',
+	to_server    TEXT NOT NULL DEFAULT '',
+	host         TEXT NOT NULL DEFAULT '',
+	port         INTEGER NOT NULL DEFAULT 0,
+	duration     INTEGER NOT NULL DEFAULT 10,
+	streams      INTEGER NOT NULL DEFAULT 4,
+	status       TEXT NOT NULL DEFAULT 'running',
+	send_mbps    REAL,
+	recv_mbps    REAL,
+	retransmits  INTEGER,
+	latency_ms   REAL,
+	error        TEXT,
+	started_at   TEXT NOT NULL DEFAULT (datetime('now')),
+	finished_at  TEXT
+);
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
