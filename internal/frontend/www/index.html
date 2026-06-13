@@ -3691,7 +3691,7 @@
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
                     <option value="">— select interface —</option>
                     <option v-for="iface in systemInterfaces" :key="iface.name" :value="iface.name">
-                      {{iface.name}} ({{iface.operstate}})
+                      {{ iface.label || iface.name }}{{ iface.operstate ? ' (' + iface.operstate + ')' : '' }}
                     </option>
                   </select>
                 </div>
@@ -3843,7 +3843,7 @@
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
                     <option value="">— select interface —</option>
                     <option v-for="iface in systemInterfaces" :key="iface.name" :value="iface.name">
-                      {{iface.name}} ({{iface.operstate}})
+                      {{ iface.label || iface.name }}{{ iface.operstate ? ' (' + iface.operstate + ')' : '' }}
                     </option>
                   </select>
                 </div>
@@ -5040,7 +5040,7 @@
                     class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
                     style="padding:8px 12px;">
                     <option value="">— any interface —</option>
-                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
                   </select>
                 </div>
 
@@ -5190,7 +5190,7 @@
                 <select v-model="natRuleCreate.outInterface"
                   class="w-full mt-1 border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm">
                   <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">
-                    {{ iface.name }}
+                    {{ iface.label || iface.name }}
                   </option>
                 </select>
               </div>
@@ -5311,7 +5311,7 @@
                 <select v-model="natRuleEdit.outInterface"
                   class="w-full mt-1 border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm">
                   <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">
-                    {{ iface.name }}
+                    {{ iface.label || iface.name }}
                   </option>
                 </select>
               </div>
