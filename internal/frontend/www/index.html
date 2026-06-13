@@ -4243,17 +4243,49 @@
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
                 <div>
                   <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">From (server)</label>
-                  <select v-model="speedtest.fromId" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                  <select v-model="speedtest.fromId" @change="onSpeedtestServersChange()" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
                     <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
                     <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
                   </select>
                 </div>
                 <div>
                   <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">To (server)</label>
-                  <select v-model="speedtest.toId" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                  <select v-model="speedtest.toId" @change="onSpeedtestServersChange()" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
                     <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
                     <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
                   </select>
+                </div>
+              </div>
+
+              <!-- Via -->
+              <div style="margin-bottom:16px;">
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:6px;">Via</label>
+                <div style="display:flex; gap:8px;">
+                  <button v-for="opt in [{v:'auto',l:'Auto'},{v:'internet',l:'🌐 Internet'},{v:'tunnel',l:'🔒 Tunnel'}]" :key="opt.v"
+                    @click="speedtest.via = opt.v"
+                    class="text-xs font-medium rounded"
+                    style="padding:5px 12px; border:1px solid;"
+                    :style="speedtest.via === opt.v
+                      ? 'background:#2563eb; color:#fff; border-color:#2563eb;'
+                      : (theme==='dark' ? 'background:#404040; color:#d4d4d4; border-color:#525252;' : 'background:#f9fafb; color:#374151; border-color:#d1d5db;')">
+                    {{ opt.l }}
+                  </button>
+                </div>
+                <!-- Tunnel IP input -->
+                <div v-if="speedtest.via === 'tunnel'" style="margin-top:8px;">
+                  <input v-model="speedtest.tunnelIp" type="text"
+                    :placeholder="speedtestDetectedTunnelIp ? 'Auto: ' + speedtestDetectedTunnelIp : 'e.g. 10.0.0.1'"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:7px 10px;" />
+                  <div v-if="speedtestDetectedTunnelIp && !speedtest.tunnelIp" style="font-size:0.75rem; color:#16a34a; margin-top:3px;">
+                    ✓ S2S tunnel detected — will use {{ speedtestDetectedTunnelIp }}
+                  </div>
+                  <div v-if="!speedtestDetectedTunnelIp" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
+                    No S2S tunnel detected — enter IP manually
+                  </div>
+                </div>
+                <div v-if="speedtest.via === 'auto'" style="font-size:0.75rem; color:#9ca3af; margin-top:4px;">
+                  {{ speedtestDetectedTunnelIp ? '✓ S2S tunnel found — will use ' + speedtestDetectedTunnelIp : 'No S2S tunnel found — will use public IP' }}
                 </div>
               </div>
 

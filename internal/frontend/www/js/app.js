@@ -345,11 +345,14 @@ new Vue({
     // ── Speed test ────────────────────────────────────────────────────────────
     showSpeedtest: false,
     speedtest: {
-      fromId: '__local__',  // '__local__' or remote id
+      fromId: '__local__',
       toId: '__local__',
+      via: 'auto',      // 'auto' | 'internet' | 'tunnel'
+      tunnelIp: '',     // manual override when via='tunnel'
       duration: 10,
       streams: 4,
     },
+    speedtestDetectedTunnelIp: '', // auto-detected tunnel IP (shown as hint)
     speedtestRunning: false,
     speedtestResult: null,
     speedtestError: '',
@@ -1953,8 +1956,18 @@ new Vue({
       this.speedtestError = '';
       this.speedtest.fromId = '__local__';
       this.speedtest.toId = this.remotes.length > 0 ? this.remotes[0].id : '__local__';
+      this.speedtest.via = 'auto';
+      this.speedtest.tunnelIp = '';
+      this.speedtestDetectedTunnelIp = '';
       this.showSpeedtest = true;
       this.loadSpeedtestHistory();
+    },
+
+    async onSpeedtestServersChange() {
+      this.speedtestDetectedTunnelIp = '';
+      if (this.speedtest.fromId === this.speedtest.toId) return;
+      const ip = await this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId);
+      this.speedtestDetectedTunnelIp = ip || '';
     },
 
     _speedtestServerName(id) {
@@ -2044,10 +2057,27 @@ new Vue({
       this.speedtestError = '';
 
       try {
-        // Try to find a common WireGuard subnet (S2S tunnel) — fall back to public IP.
-        const tunnelIP = await this._findTunnelIP(fromId, toId);
-        const resolvedHost = tunnelIP || host;
-        const via = tunnelIP ? 'tunnel' : 'internet';
+        let resolvedHost = host;
+        let via = 'internet';
+
+        if (this.speedtest.via === 'tunnel') {
+          const ip = this.speedtest.tunnelIp.trim() || this.speedtestDetectedTunnelIp;
+          if (!ip) {
+            this.speedtestError = 'No tunnel IP found. Enter it manually or check S2S interfaces.';
+            this.speedtestRunning = false;
+            return;
+          }
+          resolvedHost = ip;
+          via = 'tunnel';
+        } else if (this.speedtest.via === 'internet') {
+          resolvedHost = host;
+          via = 'internet';
+        } else {
+          // auto
+          const tunnelIP = await this._findTunnelIP(fromId, toId);
+          resolvedHost = tunnelIP || host;
+          via = tunnelIP ? 'tunnel' : 'internet';
+        }
 
         const { jobId } = await this.api.speedtestRun({
           fromServer: this._speedtestServerName(fromId),
