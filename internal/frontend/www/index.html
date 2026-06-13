@@ -455,7 +455,7 @@
                 class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
                 style="padding:5px 8px; appearance:none; cursor:pointer; width:100%;"
                 :value="activeRemoteId || '__local__'">
-                <option value="__local__">🏠 {{ pageTitle || 'Local' }}</option>
+                <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
                 <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
               </select>
             </div>

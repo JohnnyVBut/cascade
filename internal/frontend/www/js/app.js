@@ -333,6 +333,7 @@ new Vue({
     // ── Remote servers ──────────────────────────────────────────────────────
     remotes: [],
     activeRemoteId: null,   // null = local server; string = remote id
+    localServerName: '',    // name of the local server, set once on login and never overwritten by remote settings
     showRemoteAdd: false,
     remoteAddForm: { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' },
     remoteAddError: '',
@@ -3970,6 +3971,10 @@ new Vue({
           i18n.locale = this.globalSettings.lang;
           localStorage.setItem('lang', this.globalSettings.lang);
         }
+        // Capture local server name once — never overwrite with remote settings.
+        if (!this.activeRemoteId) {
+          this.localServerName = this.globalSettings.routerName || this.globalSettings.hostname || '';
+        }
         const { templates } = await this.api.getTemplates();
         this.templates = templates;
       } catch (err) {
@@ -4655,7 +4660,7 @@ new Vue({
 
     // Label shown in the server switcher dropdown.
     activeServerLabel() {
-      return this.activeRemote ? this.activeRemote.name : (this.pageTitle || 'Local');
+      return this.activeRemote ? this.activeRemote.name : (this.localServerName || this.pageTitle || 'Local');
     },
     // MSS clamping mode derived from the sentinel int value in interfaceEdit.mss.
     // Used to drive the select dropdown in Edit Interface modal.
