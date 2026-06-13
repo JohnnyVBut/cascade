@@ -342,6 +342,18 @@ new Vue({
     remoteTesting: {},   // { [id]: true } while test is in progress
     remoteTestResult: {}, // { [id]: 'ok' | 'error' }
 
+    // ── Speed test ────────────────────────────────────────────────────────────
+    showSpeedtest: false,
+    speedtest: {
+      fromId: '__local__',  // '__local__' or remote id
+      toId: '__local__',
+      duration: 10,
+      streams: 4,
+    },
+    speedtestRunning: false,
+    speedtestResult: null,  // { sendMbps, recvMbps, retransmits, latencyMs } or null
+    speedtestError: '',
+
     showGatewayCreate: false,
     showGatewayEdit:   false,
     showGroupCreate:   false,
@@ -1930,6 +1942,94 @@ new Vue({
         this.$set(this.remoteTestResult, remote.id, 'error');
       } finally {
         this.$set(this.remoteTesting, remote.id, false);
+      }
+    },
+
+    // ── Speed test ────────────────────────────────────────────────────────────
+
+    openSpeedtest() {
+      this.speedtestResult = null;
+      this.speedtestError = '';
+      // Pre-select: from local, to first remote if available.
+      this.speedtest.fromId = '__local__';
+      this.speedtest.toId = this.remotes.length > 0 ? this.remotes[0].id : '__local__';
+      this.showSpeedtest = true;
+    },
+
+    // _speedtestRemoteId returns remoteId (or null for local) from a picker value.
+    _speedtestRemoteId(id) {
+      return id === '__local__' ? null : id;
+    },
+
+    // _speedtestHost returns the IP/hostname that the "to" server will use to
+    // connect to the "from" server. Uses the hostname from the remote URL.
+    _speedtestHost(fromId) {
+      if (fromId === '__local__') {
+        // Local server — use the stored publicIP from settings, or fall back to hostname.
+        return this.globalSettings.resolvedPublicIP || this.globalSettings.publicIP || '';
+      }
+      const remote = this.remotes.find(r => r.id === fromId);
+      if (!remote) return '';
+      try {
+        return new URL(remote.url).hostname;
+      } catch (_) {
+        return '';
+      }
+    },
+
+    async runSpeedtest() {
+      if (this.speedtestRunning) return;
+      const { fromId, toId, duration, streams } = this.speedtest;
+      if (fromId === toId) {
+        this.speedtestError = 'Source and destination must be different servers.';
+        return;
+      }
+      const host = this._speedtestHost(fromId);
+      if (!host) {
+        this.speedtestError = 'Cannot determine IP address of the source server. Set Public IP in Settings.';
+        return;
+      }
+
+      this.speedtestRunning = true;
+      this.speedtestResult = null;
+      this.speedtestError = '';
+
+      const fromRemoteId = this._speedtestRemoteId(fromId);
+      const toRemoteId = this._speedtestRemoteId(toId);
+      let sessionId = null;
+
+      try {
+        // 1. Check iperf3 on both sides.
+        const [chkFrom, chkTo] = await Promise.all([
+          this.api.speedtestCheck({ remoteId: fromRemoteId }),
+          this.api.speedtestCheck({ remoteId: toRemoteId }),
+        ]);
+        if (!chkFrom.installed) throw new Error('iperf3 is not installed on the source server.');
+        if (!chkTo.installed) throw new Error('iperf3 is not installed on the destination server.');
+
+        // 2. Start iperf3 server on the "from" side.
+        const srv = await this.api.speedtestStartServer({ remoteId: fromRemoteId });
+        sessionId = srv.sessionId;
+        const port = srv.port;
+
+        // 3. Run iperf3 client on the "to" side toward "from".
+        const result = await this.api.speedtestRunClient({
+          remoteId: toRemoteId,
+          host,
+          port,
+          duration: Number(duration),
+          streams: Number(streams),
+        });
+
+        this.speedtestResult = result;
+      } catch (err) {
+        this.speedtestError = err.message || 'Speed test failed.';
+      } finally {
+        // 4. Always clean up the iperf3 server process.
+        if (sessionId) {
+          this.api.speedtestStopServer({ remoteId: fromRemoteId, sessionId }).catch(() => {});
+        }
+        this.speedtestRunning = false;
       }
     },
 

@@ -4158,11 +4158,18 @@
                 Manage other Cascade instances from this UI. Requests are proxied through this server — credentials never leave the backend.
               </p>
             </div>
-            <button @click="showRemoteAdd = true"
-              class="text-white rounded-lg font-medium text-sm btn"
-              style="background:#2563eb; padding:8px 16px; white-space:nowrap;">
-              + Add Server
-            </button>
+            <div style="display:flex; gap:8px;">
+              <button @click="openSpeedtest()" :disabled="remotes.length === 0"
+                class="rounded-lg font-medium text-sm btn"
+                :style="remotes.length === 0 ? 'background:#e5e7eb; color:#9ca3af; cursor:not-allowed; padding:8px 16px;' : 'background:#f3f4f6; color:#374151; padding:8px 16px;'">
+                ⚡ Speed Test
+              </button>
+              <button @click="showRemoteAdd = true"
+                class="text-white rounded-lg font-medium text-sm btn"
+                style="background:#2563eb; padding:8px 16px; white-space:nowrap;">
+                + Add Server
+              </button>
+            </div>
           </div>
 
           <!-- Empty state -->
@@ -4215,6 +4222,101 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- Speed Test Modal                                               -->
+        <!-- ============================================================== -->
+        <div v-if="showSpeedtest" class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+          style="padding:40px 24px;" @click.self="showSpeedtest = false">
+          <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:480px; margin:0 auto;">
+
+            <div class="flex items-center justify-between" style="padding:20px 24px 0;">
+              <h2 class="text-lg font-semibold dark:text-neutral-200">⚡ Speed Test</h2>
+              <button @click="showSpeedtest = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+            </div>
+
+            <div style="padding:20px 24px;">
+
+              <!-- From / To pickers -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">From (server)</label>
+                  <select v-model="speedtest.fromId" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
+                    <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">To (server)</label>
+                  <select v-model="speedtest.toId" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
+                    <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Duration / Streams -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">Duration (sec)</label>
+                  <select v-model="speedtest.duration" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option :value="5">5</option>
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                    <option :value="30">30</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">Parallel streams</label>
+                  <select v-model="speedtest.streams" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option :value="1">1</option>
+                    <option :value="4">4</option>
+                    <option :value="8">8</option>
+                    <option :value="16">16</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Error -->
+              <div v-if="speedtestError" style="background:#fee2e2; border-radius:6px; padding:10px 14px; margin-bottom:16px; color:#dc2626; font-size:0.85rem;">
+                {{ speedtestError }}
+              </div>
+
+              <!-- Result -->
+              <div v-if="speedtestResult" style="background:#f0fdf4; border-radius:8px; padding:16px 20px; margin-bottom:16px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; text-align:center;">
+                  <div>
+                    <div style="font-size:1.75rem; font-weight:700; color:#16a34a;">{{ speedtestResult.sendMbps.toFixed(1) }}</div>
+                    <div style="font-size:0.75rem; color:#6b7280; margin-top:2px;">Mbps ↑ Upload</div>
+                  </div>
+                  <div>
+                    <div style="font-size:1.75rem; font-weight:700; color:#2563eb;">{{ speedtestResult.recvMbps.toFixed(1) }}</div>
+                    <div style="font-size:0.75rem; color:#6b7280; margin-top:2px;">Mbps ↓ Download</div>
+                  </div>
+                </div>
+                <div style="display:flex; justify-content:center; gap:24px; margin-top:12px; font-size:0.8rem; color:#6b7280;">
+                  <span v-if="speedtestResult.latencyMs">⏱ {{ speedtestResult.latencyMs.toFixed(1) }} ms RTT</span>
+                  <span v-if="speedtestResult.retransmits">↩ {{ speedtestResult.retransmits }} retransmits</span>
+                </div>
+              </div>
+
+              <!-- Progress -->
+              <div v-if="speedtestRunning" style="text-align:center; padding:12px 0; color:#6b7280; font-size:0.875rem;">
+                <span>Running iperf3 ({{ speedtest.duration }}s)…</span>
+              </div>
+
+              <!-- Run button -->
+              <button @click="runSpeedtest()"
+                :disabled="speedtestRunning || speedtest.fromId === speedtest.toId"
+                class="w-full text-white rounded-lg font-medium text-sm"
+                :style="(speedtestRunning || speedtest.fromId === speedtest.toId)
+                  ? 'background:#9ca3af; cursor:not-allowed; padding:10px;'
+                  : 'background:#2563eb; cursor:pointer; padding:10px;'">
+                {{ speedtestRunning ? 'Running…' : 'Run Speed Test' }}
+              </button>
+            </div>
           </div>
         </div>
 

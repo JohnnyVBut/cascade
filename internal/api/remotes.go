@@ -45,6 +45,17 @@ var proxyClient = &http.Client{
 	// internal address in a Location header is still blocked.
 }
 
+// speedtestProxyClient is used for /speedtest/client proxy calls which can take
+// up to 30 s (test duration) + overhead. The standard 5 s proxyClient would
+// cancel the request before the iperf3 run completes.
+var speedtestProxyClient = &http.Client{
+	Timeout: 120 * time.Second,
+	Transport: &http.Transport{
+		TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
+		DialContext:  remoteclient.SafeDialContext,
+	},
+}
+
 // RegisterRemotes registers all /api/remotes/* routes.
 func RegisterRemotes(api fiber.Router) {
 	g := api.Group("/remotes")
@@ -193,7 +204,12 @@ func proxyRemote(c *fiber.Ctx) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+r.Token)
 
-	resp, err := proxyClient.Do(req)
+	// Use a longer timeout for speedtest/client — iperf3 runs can take up to 30 s.
+	client := proxyClient
+	if strings.HasSuffix(subPath, "/speedtest/client") {
+		client = speedtestProxyClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("[proxy] %s %s → remote error: %v", c.Method(), targetURL, err)
 		return fiber.NewError(fiber.StatusBadGateway, "proxy request failed: "+err.Error())

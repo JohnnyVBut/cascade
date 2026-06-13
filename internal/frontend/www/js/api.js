@@ -1144,4 +1144,35 @@ class API {
     return this.call({ method, path: `/remotes/${remoteId}/proxy${path}`, body });
   }
 
+  // ── Speed test ─────────────────────────────────────────────────────────────
+
+  async speedtestCheck({ remoteId } = {}) {
+    const path = '/speedtest/check';
+    return remoteId
+      ? this.remoteCall({ remoteId, method: 'get', path })
+      : this.call({ method: 'get', path });
+  }
+
+  async speedtestStartServer({ remoteId } = {}) {
+    const path = '/speedtest/server';
+    return remoteId
+      ? this.remoteCall({ remoteId, method: 'post', path })
+      : this.call({ method: 'post', path });
+  }
+
+  async speedtestStopServer({ remoteId, sessionId }) {
+    const path = `/speedtest/server/${sessionId}`;
+    return remoteId
+      ? this.remoteCall({ remoteId, method: 'delete', path })
+      : this.call({ method: 'delete', path });
+  }
+
+  async speedtestRunClient({ remoteId, host, port, duration, streams }) {
+    const body = { host, port, duration, streams };
+    const path = '/speedtest/client';
+    return remoteId
+      ? this.remoteCall({ remoteId, method: 'post', path, body })
+      : this.call({ method: 'post', path, body });
+  }
+
 }
