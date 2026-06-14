@@ -3023,6 +3023,7 @@ new Vue({
       this.metricsTick(); // immediate first tick
       // Also start history refresh poller (30s) for non-realtime widgets
       if (this._metricsHistoryPoller) clearInterval(this._metricsHistoryPoller);
+      this._metricsRefreshHistory(); // immediate first load for saved non-5m periods
       this._metricsHistoryPoller = setInterval(() => this._metricsRefreshHistory(), 30000);
     },
 
