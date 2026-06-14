@@ -3055,14 +3055,22 @@ new Vue({
         const snap = await this.api.getMetrics();
         this.metricsSnapshot = snap;
 
-        // Build available keys list from first snapshot
-        if (!this.metricsAvailableKeys.length && snap) {
-          const keys = ['cpu', 'mem'];
-          for (const iface of (snap.interfaces || [])) {
-            keys.push(`net:${iface}:rx`);
-            keys.push(`net:${iface}:tx`);
+        // Build available keys list; rebuild static keys on first snapshot,
+        // but always sync gateway keys so newly added/removed gateways appear.
+        if (snap) {
+          if (!this.metricsAvailableKeys.length) {
+            const keys = ['cpu', 'mem'];
+            for (const iface of (snap.interfaces || [])) {
+              keys.push(`net:${iface}:rx`);
+              keys.push(`net:${iface}:tx`);
+            }
+            this.metricsAvailableKeys = keys;
           }
-          this.metricsAvailableKeys = keys;
+          // Gateway keys: add new, remove stale on every tick
+          const gwIds = new Set(Object.keys(snap.gateways || {}));
+          const gwKeys = [...gwIds].map(id => `gateway:${id}`);
+          const withoutGw = this.metricsAvailableKeys.filter(k => !k.startsWith('gateway:'));
+          this.metricsAvailableKeys = [...withoutGw, ...gwKeys];
         }
 
         // Append to rolling buffers for realtime (5m) widgets — both dashboard and diagnostics
@@ -3096,6 +3104,10 @@ new Vue({
         const [, iface, dir] = key.split(':');
         return snap.net?.[iface]?.[dir === 'rx' ? 'rxMbps' : 'txMbps'] ?? null;
       }
+      if (key.startsWith('gateway:')) {
+        const id = key.slice(8);
+        return snap.gateways?.[id] ?? null;
+      }
       return null;
     },
 
@@ -3106,7 +3118,20 @@ new Vue({
         const [, iface, dir] = key.split(':');
         return `${iface} ${dir.toUpperCase()} Mbps`;
       }
+      if (key.startsWith('gateway:')) {
+        const id = key.slice(8);
+        const gw = (this.gateways || []).find(g => g.id === id);
+        return gw ? gw.name : id;
+      }
       return key;
+    },
+
+    // Returns fill color for a gateway status value (3=healthy, 2=degraded, 1=down, 0=admin_down)
+    _gatewayStatusColor(val) {
+      if (val >= 3) return '#22c55e'; // healthy — green
+      if (val >= 2) return '#eab308'; // degraded — yellow
+      if (val >= 1) return '#ef4444'; // down — red
+      return '#9ca3af';               // admin_down / unknown — gray
     },
 
     metricsYAxisTitle(key) {

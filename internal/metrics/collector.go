@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
@@ -39,7 +40,18 @@ type Snapshot struct {
 	MemTotalMB int64
 	Net        map[string]NetStat // key = interface name
 	Interfaces []string           // sorted list of interface names
+	Gateways   map[string]int     // key = gateway ID, value: 3=healthy 2=degraded 1=down 0=admin_down
 }
+
+// GatewayStatusFn is a callback that returns current gateway statuses.
+// Registered from main.go after gateway manager is initialised to avoid import cycle.
+type GatewayStatusFn func() map[string]int
+
+var gatewayFnAtom atomic.Value // stores GatewayStatusFn
+
+// RegisterGatewaySource sets the callback used to collect gateway statuses each tick.
+// Safe to call concurrently with the collector goroutine.
+func RegisterGatewaySource(fn GatewayStatusFn) { gatewayFnAtom.Store(fn) }
 
 // NetStat holds instantaneous RX/TX rates for one interface.
 type NetStat struct {
@@ -177,7 +189,7 @@ func (c *collector) initReadings() {
 }
 
 func (c *collector) collect() *Snapshot {
-	snap := &Snapshot{Net: make(map[string]NetStat)}
+	snap := &Snapshot{Net: make(map[string]NetStat), Gateways: make(map[string]int)}
 
 	// CPU
 	idle, total, err := readCPUStat()
@@ -216,6 +228,12 @@ func (c *collector) collect() *Snapshot {
 	}
 
 	sort.Strings(snap.Interfaces)
+
+	// Gateways — collected via registered callback to avoid import cycle
+	if fn, ok := gatewayFnAtom.Load().(GatewayStatusFn); ok && fn != nil {
+		snap.Gateways = fn()
+	}
+
 	return snap
 }
 
@@ -241,6 +259,12 @@ func (c *collector) persist(snap *Snapshot) {
 				val float64
 			}{fmt.Sprintf("net:%s:tx", iface), ns.TxMbps},
 		)
+	}
+	for id, status := range snap.Gateways {
+		rows = append(rows, struct {
+			key string
+			val float64
+		}{fmt.Sprintf("gateway:%s", id), float64(status)})
 	}
 
 	tx, err := database.Begin()

@@ -1071,7 +1071,26 @@
                       <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
                         <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
                           :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
-                        <apexchart
+                        <!-- Gateway: bar chart with per-bar color by status -->
+                        <apexchart v-if="key.startsWith('gateway:')"
+                          type="bar"
+                          height="90"
+                          :options="{
+                            chart: { id: w.id+'_'+key, type:'bar', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                            plotOptions: { bar: { columnWidth:'95%', borderRadius:1 } },
+                            dataLabels: { enabled: false },
+                            legend: { show: false },
+                            fill: { colors: [function(opts){ var v=opts.value; return v>=3?'#22c55e':v>=2?'#eab308':v>=1?'#ef4444':'#9ca3af'; }] },
+                            xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                            yaxis:  { min:0, max:3, labels:{ show:false } },
+                            grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                            tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: v => ['Admin Down','Down','Degraded','Healthy'][Math.round(v)]||'' }, theme: theme==='dark'?'dark':'light' },
+                            theme:  { mode: theme==='dark'?'dark':'light' },
+                          }"
+                          :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                        ></apexchart>
+                        <!-- Area chart for all other metrics -->
+                        <apexchart v-else
                           type="area"
                           height="90"
                           :options="{
@@ -1161,7 +1180,26 @@
                     <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
                       <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
                         :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
-                      <apexchart
+                      <!-- Gateway: bar chart with per-bar color by status -->
+                      <apexchart v-if="key.startsWith('gateway:')"
+                        type="bar"
+                        height="120"
+                        :options="{
+                          chart: { id: w.id+'_'+key, type:'bar', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                          plotOptions: { bar: { columnWidth:'95%', borderRadius:1 } },
+                          dataLabels: { enabled: false },
+                          legend: { show: false },
+                          fill: { colors: [function(opts){ var v=opts.value; return v>=3?'#22c55e':v>=2?'#eab308':v>=1?'#ef4444':'#9ca3af'; }] },
+                          xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                          yaxis:  { min:0, max:3, labels:{ show:false } },
+                          grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: v => ['Admin Down','Down','Degraded','Healthy'][Math.round(v)]||'' }, theme: theme==='dark'?'dark':'light' },
+                          theme:  { mode: theme==='dark'?'dark':'light' },
+                        }"
+                        :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                      ></apexchart>
+                      <!-- Area chart for all other metrics -->
+                      <apexchart v-else
                         type="area"
                         height="120"
                         :options="{
@@ -8091,7 +8129,7 @@
           </div>
 
           <!-- Network interfaces -->
-          <div v-if="metricsSnapshot && metricsSnapshot.interfaces && metricsSnapshot.interfaces.length">
+          <div v-if="metricsSnapshot && metricsSnapshot.interfaces && metricsSnapshot.interfaces.length" style="margin-bottom:12px;">
             <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Network Interfaces</div>
             <template v-for="iface in (metricsSnapshot.interfaces || [])">
               <label v-for="dir in ['rx','tx']" :key="iface+':'+dir" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
@@ -8102,6 +8140,16 @@
             </template>
           </div>
           <div v-else class="text-xs text-gray-400 dark:text-neutral-500" style="margin-bottom:12px;">No metrics data yet — wait a few seconds</div>
+
+          <!-- Gateways -->
+          <div v-if="metricsSnapshot && metricsSnapshot.gateways && Object.keys(metricsSnapshot.gateways).length">
+            <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Gateways</div>
+            <div class="text-xs text-gray-400 dark:text-neutral-500" style="margin-bottom:6px;">Color: 🟢 healthy · 🟡 degraded · 🔴 down · ⚫ admin down</div>
+            <label v-for="(status, id) in (metricsSnapshot.gateways || {})" :key="id" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
+              <input type="checkbox" :checked="metricsConfigDraft.includes('gateway:'+id)" @change="metricsToggleGraph('gateway:'+id)" style="width:15px; height:15px; cursor:pointer;">
+              <span class="text-sm dark:text-neutral-200" style="flex:1;">{{ metricsKeyLabel('gateway:'+id) }}</span>
+            </label>
+          </div>
         </div>
         <div style="padding:12px 24px 20px; display:flex; justify-content:flex-end; gap:10px;">
           <button @click="metricsConfigWidget = null"

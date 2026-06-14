@@ -39,6 +39,11 @@ func metricsSnapshot(c *fiber.Ctx) error {
 		}
 	}
 
+	gwMap := fiber.Map{}
+	for id, status := range snap.Gateways {
+		gwMap[id] = status
+	}
+
 	return c.JSON(fiber.Map{
 		"cpu":        snap.CPU,
 		"mem":        snap.MemUsedPct,
@@ -46,6 +51,7 @@ func metricsSnapshot(c *fiber.Ctx) error {
 		"memTotalMb": snap.MemTotalMB,
 		"net":        netMap,
 		"interfaces": snap.Interfaces,
+		"gateways":   gwMap,
 	})
 }
 
