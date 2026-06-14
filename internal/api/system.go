@@ -128,7 +128,9 @@ func systemBackup(c *fiber.Ctx) error {
 	gz := gzip.NewWriter(&tarBuf)
 	tw := tar.NewWriter(gz)
 
-	for _, dbName := range []string{"awg.db", "wireguard.db"} {
+	// cascade.db is the current name; awg.db/wireguard.db are legacy fallbacks.
+	// metrics.db is intentionally excluded — large, regenerates over time.
+	for _, dbName := range []string{"cascade.db", "awg.db", "wireguard.db"} {
 		if err := addFileToTar(tw, filepath.Join(systemDataDir, dbName), dbName); err == nil {
 			break
 		}
