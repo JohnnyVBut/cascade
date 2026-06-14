@@ -1077,7 +1077,7 @@
                           height="90"
                           :options="{
                             chart: { id: w.id+'_'+key, type:'bar', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
-                            plotOptions: { bar: { columnWidth:'95%', borderRadius:1 } },
+                            plotOptions: { bar: { columnWidth:'95%', borderRadius:1, minHeight: 4 } },
                             dataLabels: { enabled: false },
                             legend: { show: false },
                             fill: { colors: [function(opts){ var v=opts.value; return v>=3?'#22c55e':v>=2?'#eab308':v>=1?'#ef4444':'#9ca3af'; }] },
@@ -1186,7 +1186,7 @@
                         height="120"
                         :options="{
                           chart: { id: w.id+'_'+key, type:'bar', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
-                          plotOptions: { bar: { columnWidth:'95%', borderRadius:1 } },
+                          plotOptions: { bar: { columnWidth:'95%', borderRadius:1, minHeight: 4 } },
                           dataLabels: { enabled: false },
                           legend: { show: false },
                           fill: { colors: [function(opts){ var v=opts.value; return v>=3?'#22c55e':v>=2?'#eab308':v>=1?'#ef4444':'#9ca3af'; }] },
