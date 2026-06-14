@@ -3521,6 +3521,15 @@
                   </p>
                 </div>
               </div>
+              <div style="padding:0 20px 4px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                  <input type="checkbox" v-model="backupIncludeMetrics" style="width:16px; height:16px; cursor:pointer;">
+                  <span class="text-sm dark:text-neutral-300">Include metrics history</span>
+                </label>
+                <p v-if="backupIncludeMetrics" class="text-xs" style="color:#d97706; margin-top:4px; margin-left:24px;">
+                  ⚠ metrics.db can be large (several hundred MB for 30 days). Use for server migration only.
+                </p>
+              </div>
               <div class="modal-footer dark:border-neutral-600">
                 <button @click="showBackupModal = false"
                   class="bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded-lg font-medium text-sm btn">

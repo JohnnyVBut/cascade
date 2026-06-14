@@ -119,7 +119,8 @@ func decryptBytes(data []byte, password string) ([]byte, error) {
 // Non-empty password  → AES-256-GCM encrypted .tar.gz.enc
 func systemBackup(c *fiber.Ctx) error {
 	var body struct {
-		Password string `json:"password"`
+		Password       string `json:"password"`
+		IncludeMetrics bool   `json:"includeMetrics"`
 	}
 	_ = c.BodyParser(&body)
 
@@ -129,11 +130,15 @@ func systemBackup(c *fiber.Ctx) error {
 	tw := tar.NewWriter(gz)
 
 	// cascade.db is the current name; awg.db/wireguard.db are legacy fallbacks.
-	// metrics.db is intentionally excluded — large, regenerates over time.
+	// metrics.db is excluded by default — large, regenerates over time.
 	for _, dbName := range []string{"cascade.db", "awg.db", "wireguard.db"} {
 		if err := addFileToTar(tw, filepath.Join(systemDataDir, dbName), dbName); err == nil {
 			break
 		}
+	}
+
+	if body.IncludeMetrics {
+		_ = addFileToTar(tw, filepath.Join(systemDataDir, "metrics.db"), "metrics.db")
 	}
 
 	entries, _ := os.ReadDir(systemDataDir)

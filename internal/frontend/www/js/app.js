@@ -541,6 +541,7 @@ new Vue({
     showBackupModal: false,     // password prompt for backup download
     backupPassword: '',
     backupPasswordConfirm: '',
+    backupIncludeMetrics: false,
     backupDownloading: false,
     showRestorePasswordModal: false, // password prompt for encrypted restore
     restorePassword: '',
@@ -3040,6 +3041,7 @@ new Vue({
     },
 
     async _metricsRefreshHistory() {
+      if (this.metricsConfigWidget) return;
       const allWidgets = [
         ...this.dashWidgets.filter(w => w.type === 'monitoring'),
         ...this.diagWidgets.filter(w => w.type === 'monitoring'),
@@ -3058,6 +3060,7 @@ new Vue({
     },
 
     async metricsTick() {
+      if (this.metricsConfigWidget) return;
       try {
         const snap = await this.api.getMetrics();
         this.metricsSnapshot = snap;
@@ -3878,7 +3881,7 @@ new Vue({
       }
       try {
         this.backupDownloading = true;
-        const { blob, filename } = await this.api.downloadSystemBackup({ password: this.backupPassword });
+        const { blob, filename } = await this.api.downloadSystemBackup({ password: this.backupPassword, includeMetrics: this.backupIncludeMetrics });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

@@ -1068,11 +1068,11 @@ class API {
    * Returns a Blob so the caller can trigger a file download.
    * @param {{ password?: string }}
    */
-  async downloadSystemBackup({ password = '' } = {}) {
+  async downloadSystemBackup({ password = '', includeMetrics = false } = {}) {
     const res = await fetch(`${this._systemApiBase()}/backup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, includeMetrics }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
