@@ -1193,7 +1193,7 @@
                           xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
                           yaxis:  { min:0, max:100, labels:{ show:false } },
                           grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: function(v){ return v+'%'; } }, theme: theme==='dark'?'dark':'light' },
+                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: metricsGatewayTooltipFormatter(w.id) }, theme: theme==='dark'?'dark':'light' },
                           theme:  { mode: theme==='dark'?'dark':'light' },
                         }"
                         :series="metricsGetGatewayStackedSeries(w.id, key)"
