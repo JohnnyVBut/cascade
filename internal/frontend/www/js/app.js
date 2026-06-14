@@ -2807,6 +2807,16 @@ new Vue({
       if (this.natRules.length === 0) this.loadNatRules();
       if (this.dnatRules.length === 0) this.loadDnatRules();
       if (this.aliases.length === 0) this.loadAliases();
+      // Load history for monitoring widgets that are not in realtime mode
+      for (const w of this.dashWidgets) {
+        if (w.type !== 'monitoring') continue;
+        const period = this.metricsWidgetPeriod[w.id] || '5m';
+        if (period !== '5m') {
+          for (const key of (w.graphs || [])) {
+            this.metricsLoadHistory(w.id, key, period);
+          }
+        }
+      }
       await this.$nextTick();
       this.dashInitGrid();
     },
@@ -2990,12 +3000,30 @@ new Vue({
       if (this.metricsPoller) return;
       this.metricsPoller = setInterval(() => this.metricsTick(), 5000);
       this.metricsTick(); // immediate first tick
+      // Also start history refresh poller (30s) for non-realtime widgets
+      if (this._metricsHistoryPoller) clearInterval(this._metricsHistoryPoller);
+      this._metricsHistoryPoller = setInterval(() => this._metricsRefreshHistory(), 30000);
     },
 
     metricsStopPoller() {
       if (this.metricsPoller) {
         clearInterval(this.metricsPoller);
         this.metricsPoller = null;
+      }
+      if (this._metricsHistoryPoller) {
+        clearInterval(this._metricsHistoryPoller);
+        this._metricsHistoryPoller = null;
+      }
+    },
+
+    async _metricsRefreshHistory() {
+      for (const w of this.dashWidgets) {
+        if (w.type !== 'monitoring') continue;
+        const period = this.metricsWidgetPeriod[w.id] || '5m';
+        if (period === '5m') continue;
+        for (const key of (w.graphs || [])) {
+          await this.metricsLoadHistory(w.id, key, period);
+        }
       }
     },
 
@@ -3072,7 +3100,11 @@ new Vue({
       this.$set(this.metricsWidgetPeriod, widgetId, period);
       const w = this.dashWidgets.find(w => w.id === widgetId);
       if (!w) return;
-      if (period === '5m') return; // realtime — poller fills it
+      // Clear existing buffer so chart doesn't mix realtime and history points
+      for (const key of (w.graphs || [])) {
+        this.$set(this.metricsHistory, `${widgetId}:${key}`, []);
+      }
+      if (period === '5m') return; // realtime — poller fills it from next tick
       for (const key of (w.graphs || [])) {
         await this.metricsLoadHistory(widgetId, key, period);
       }
@@ -3096,12 +3128,20 @@ new Vue({
     },
 
     async metricsSaveConfig() {
-      const idx = this.dashWidgets.findIndex(w => w.id === this.metricsConfigWidget);
+      const widgetId = this.metricsConfigWidget;
+      const idx = this.dashWidgets.findIndex(w => w.id === widgetId);
       if (idx === -1) return;
       const w = { ...this.dashWidgets[idx], graphs: [...this.metricsConfigDraft] };
       this.dashWidgets.splice(idx, 1, w);
       this.metricsConfigWidget = null;
       this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
+      // Load history for newly added graphs if not in realtime mode
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      if (period !== '5m') {
+        for (const key of w.graphs) {
+          await this.metricsLoadHistory(widgetId, key, period);
+        }
+      }
     },
 
     // Compact elapsed time: "5s", "20m", "3h", "2d"
@@ -4957,8 +4997,9 @@ new Vue({
         this.loadCurrentUser();
         // Load registered remote servers.
         this.loadRemotes();
-        // Load dashboard layout.
+        // Load dashboard layout + start metrics poller.
         this.loadDashboard();
+        this.metricsStartPoller();
       })
       .catch((err) => {
         this.showToast(err.message || err.toString(), 'error');
