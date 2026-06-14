@@ -2926,11 +2926,12 @@ new Vue({
       const items = grid.save(false);
       const widgets = (items || []).map(item => {
         const existing = this.dashWidgets.find(w => w.id === item.id);
-        return {
+        // Preserve all extra fields (graphs, fontScale, etc.) alongside GridStack geometry
+        return Object.assign({}, existing || {}, {
           id: item.id,
           type: existing ? existing.type : item.id.replace('w-', ''),
           x: item.x, y: item.y, w: item.w, h: item.h,
-        };
+        });
       });
       this.dashWidgets = widgets;
       this.api.putDashboardWidgets(widgets).catch(console.error);
@@ -3053,8 +3054,8 @@ new Vue({
             const val = this.metricsValueFromSnap(snap, key);
             if (val === null) continue;
             const bufKey = `${w.id}:${key}`;
-            const buf = this.metricsHistory[bufKey] || [];
-            buf.push({ x: now, y: Math.round(val * 100) / 100 });
+            const prev = this.metricsHistory[bufKey] || [];
+            const buf = [...prev, { x: now, y: Math.round(val * 100) / 100 }];
             if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
             this.$set(this.metricsHistory, bufKey, buf);
           }
