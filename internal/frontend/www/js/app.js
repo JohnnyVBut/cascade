@@ -2833,7 +2833,8 @@ new Vue({
         const period = this.metricsWidgetPeriod[w.id] || '5m';
         if (period !== '5m') {
           for (const key of (w.graphs || [])) {
-            this.metricsLoadHistory(w.id, key, period);
+            if (key.startsWith('gateway:')) this.metricsLoadGatewayDist(w.id, key, period);
+            else this.metricsLoadHistory(w.id, key, period);
           }
         }
       }
@@ -3296,7 +3297,8 @@ new Vue({
       const period = this.metricsWidgetPeriod[widgetId] || '5m';
       if (period !== '5m') {
         for (const key of w.graphs) {
-          await this.metricsLoadHistory(widgetId, key, period);
+          if (key.startsWith('gateway:')) await this.metricsLoadGatewayDist(widgetId, key, period);
+          else await this.metricsLoadHistory(widgetId, key, period);
         }
       }
     },
@@ -3320,7 +3322,8 @@ new Vue({
         const period = this.metricsWidgetPeriod[w.id] || '5m';
         if (period !== '5m') {
           for (const key of (w.graphs || [])) {
-            this.metricsLoadHistory(w.id, key, period);
+            if (key.startsWith('gateway:')) this.metricsLoadGatewayDist(w.id, key, period);
+            else this.metricsLoadHistory(w.id, key, period);
           }
         }
       }
