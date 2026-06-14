@@ -1,7 +1,8 @@
 // Package db manages the SQLite database lifecycle.
 //
-// Single file: <dataDir>/cascade.db  (auto-renamed from wireguard.db on first run)
-// Backup: cp cascade.db cascade.db.bak
+// Two files:
+//   <dataDir>/cascade.db — config, users, peers, rules (included in backups)
+//   <dataDir>/metrics.db — metrics_history only (large, exclude from backups)
 //
 // Design decisions:
 //   - modernc.org/sqlite: pure Go, no CGO → static binary (CGO_ENABLED=0)
@@ -21,6 +22,7 @@ import (
 )
 
 var instance *sql.DB
+var metricsInstance *sql.DB
 
 // migrateDBName renames wireguard.db → cascade.db (and WAL/SHM siblings) when
 // upgrading from the old naming scheme. Runs unattended: logs what it does,
@@ -86,10 +88,16 @@ func Init(dataDir string) error {
 	}
 
 	log.Printf("db: opened %s", path)
+
+	// Open separate metrics DB — large, not included in config backups.
+	if err := initMetricsDB(dataDir); err != nil {
+		return fmt.Errorf("metrics db: %w", err)
+	}
+
 	return nil
 }
 
-// DB returns the global database handle.
+// DB returns the main config database handle.
 // Panics if Init() has not been called.
 func DB() *sql.DB {
 	if instance == nil {
@@ -98,12 +106,66 @@ func DB() *sql.DB {
 	return instance
 }
 
-// Close closes the database. Call on graceful shutdown.
+// MetricsDB returns the metrics-only database handle (metrics.db).
+// Panics if Init() has not been called.
+func MetricsDB() *sql.DB {
+	if metricsInstance == nil {
+		panic("db.Init() must be called before db.MetricsDB()")
+	}
+	return metricsInstance
+}
+
+// Close closes both databases. Call on graceful shutdown.
 func Close() {
+	if metricsInstance != nil {
+		metricsInstance.Close()
+		metricsInstance = nil
+	}
 	if instance != nil {
 		instance.Close()
 		instance = nil
 	}
+}
+
+// initMetricsDB opens (or creates) metrics.db and ensures the schema exists.
+func initMetricsDB(dataDir string) error {
+	path := filepath.Join(dataDir, "metrics.db")
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", path, err)
+	}
+
+	db.SetMaxOpenConns(1)
+
+	pragmas := []string{
+		`PRAGMA journal_mode=WAL`,
+		`PRAGMA busy_timeout=5000`,
+		`PRAGMA synchronous=NORMAL`,
+	}
+	for _, p := range pragmas {
+		if _, err := db.Exec(p); err != nil {
+			return fmt.Errorf("pragma %q: %w", p, err)
+		}
+	}
+
+	schema := []string{
+		`CREATE TABLE IF NOT EXISTS metrics_history (
+			ts  INTEGER NOT NULL,
+			key TEXT    NOT NULL,
+			val REAL    NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS metrics_history_key_ts ON metrics_history(key, ts)`,
+	}
+	for _, s := range schema {
+		if _, err := db.Exec(s); err != nil {
+			return fmt.Errorf("schema: %w", err)
+		}
+	}
+
+	metricsInstance = db
+	log.Printf("db: opened %s", path)
+	return nil
 }
 
 // ── Migrations ────────────────────────────────────────────────────────────────
@@ -697,6 +759,15 @@ INSERT INTO dashboard_widgets_new (user_id, page, widgets)
   SELECT user_id, 'dashboard', widgets FROM dashboard_widgets;
 DROP TABLE dashboard_widgets;
 ALTER TABLE dashboard_widgets_new RENAME TO dashboard_widgets;
+`,
+	},
+	{
+		version: 35,
+		sql: `
+-- metrics_history moved to separate metrics.db file.
+-- Drop from cascade.db to free space in config backups.
+DROP TABLE IF EXISTS metrics_history;
+DROP INDEX IF EXISTS metrics_history_key_ts;
 `,
 	},
 }

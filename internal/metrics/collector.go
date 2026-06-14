@@ -109,7 +109,7 @@ func Current() *Snapshot {
 // from/to: unix timestamps
 // stepSec: aggregation bucket size in seconds
 func History(key string, from, to int64, stepSec int) ([][2]float64, error) {
-	rows, err := db.DB().Query(`
+	rows, err := db.MetricsDB().Query(`
 		SELECT (ts / ?) * ? AS bucket, AVG(val)
 		FROM metrics_history
 		WHERE key = ? AND ts >= ? AND ts <= ?
@@ -138,7 +138,7 @@ func History(key string, from, to int64, stepSec int) ([][2]float64, error) {
 // Each element: [ts_ms, healthy_count, degraded_count, down_count, admin_down_count]
 // Uses MIN-friendly raw ticks so worst-case events are never hidden by averaging.
 func GatewayDistribution(key string, from, to int64, stepSec int) ([][5]float64, error) {
-	rows, err := db.DB().Query(`
+	rows, err := db.MetricsDB().Query(`
 		SELECT
 			(ts / ?) * ? AS bucket,
 			SUM(CASE WHEN ROUND(val) >= 3 THEN 1 ELSE 0 END),
@@ -170,7 +170,7 @@ func GatewayDistribution(key string, from, to int64, stepSec int) ([][5]float64,
 
 // AvailableKeys returns all distinct metric keys stored in the DB.
 func AvailableKeys() ([]string, error) {
-	rows, err := db.DB().Query(
+	rows, err := db.MetricsDB().Query(
 		`SELECT DISTINCT key FROM metrics_history ORDER BY key`)
 	if err != nil {
 		return nil, err
@@ -273,7 +273,7 @@ func (c *collector) collect() *Snapshot {
 
 func (c *collector) persist(snap *Snapshot) {
 	ts := time.Now().Unix()
-	database := db.DB()
+	database := db.MetricsDB()
 
 	rows := []struct {
 		key string
@@ -328,7 +328,7 @@ func (c *collector) maybeCleanup() {
 		return
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays).Unix()
-	if _, err := db.DB().Exec(
+	if _, err := db.MetricsDB().Exec(
 		`DELETE FROM metrics_history WHERE ts < ?`, cutoff,
 	); err != nil {
 		log.Printf("metrics: cleanup: %v", err)
