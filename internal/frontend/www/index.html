@@ -1072,7 +1072,7 @@
                         <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
                           :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
                         <!-- Gateway: stacked bar showing proportional status distribution -->
-                        <apexchart v-if="key.startsWith('gateway:')"
+                        <apexchart v-if="key.startsWith('gateway:') && !metricsConfigWidget"
                           type="bar"
                           height="90"
                           :options="{
@@ -1090,7 +1090,7 @@
                           :series="metricsGetGatewayStackedSeries(w.id, key)"
                         ></apexchart>
                         <!-- Area chart for all other metrics -->
-                        <apexchart v-else
+                        <apexchart v-else-if="!metricsConfigWidget"
                           type="area"
                           height="90"
                           :options="{
@@ -1181,7 +1181,7 @@
                       <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
                         :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
                       <!-- Gateway: stacked bar showing proportional status distribution -->
-                      <apexchart v-if="key.startsWith('gateway:')"
+                      <apexchart v-if="key.startsWith('gateway:') && !metricsConfigWidget"
                         type="bar"
                         height="120"
                         :options="{
@@ -1199,7 +1199,7 @@
                         :series="metricsGetGatewayStackedSeries(w.id, key)"
                       ></apexchart>
                       <!-- Area chart for all other metrics -->
-                      <apexchart v-else
+                      <apexchart v-else-if="!metricsConfigWidget"
                         type="area"
                         height="120"
                         :options="{
