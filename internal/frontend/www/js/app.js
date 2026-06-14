@@ -3160,6 +3160,18 @@ new Vue({
       } catch (e) { /* non-fatal */ }
     },
 
+    metricsGatewayTooltipFormatter(widgetId) {
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      if (period === '5m') {
+        // Each tick is exactly one status — show name, hide zero series
+        return function(v, opts) {
+          if (!v) return undefined; // hide zero-value series from tooltip
+          return opts.w.config.series[opts.seriesIndex].name;
+        };
+      }
+      return function(v) { return v + '%'; };
+    },
+
     // Builds 4 stacked series for gateway bar chart from distribution data.
     // For 5m realtime: derives from metricsHistory buffer (each tick = 1 status).
     // For historical: uses metricsGatewayDist from backend.
@@ -3184,11 +3196,12 @@ new Vue({
         const dist = this.metricsGatewayDist[`${widgetId}:${key}`] || [];
         for (const b of dist) {
           const [ts, h, d, dn, ad] = b;
-          // Pass raw counts — ApexCharts stackType:'100%' normalises internally
-          healthy.data.push(  { x: ts, y: h  });
-          degraded.data.push( { x: ts, y: d  });
-          down.data.push(     { x: ts, y: dn });
-          adminDown.data.push({ x: ts, y: ad });
+          const total = h + d + dn + ad || 1;
+          // Pre-compute percentages so tooltip shows correct values
+          healthy.data.push(  { x: ts, y: Math.round(h  / total * 100) });
+          degraded.data.push( { x: ts, y: Math.round(d  / total * 100) });
+          down.data.push(     { x: ts, y: Math.round(dn / total * 100) });
+          adminDown.data.push({ x: ts, y: Math.round(ad / total * 100) });
         }
       }
       return [adminDown, down, degraded, healthy];
