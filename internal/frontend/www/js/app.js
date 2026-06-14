@@ -3176,8 +3176,22 @@ new Vue({
     metricsGetSeries(widgetId, key) {
       const data = this.metricsHistory[`${widgetId}:${key}`] || [];
       if (!key.startsWith('gateway:')) return data;
-      // All bars same height=1; original status in .status for color/tooltip lookup
-      return data.map(p => ({ x: p.x, y: 1, status: p.y }));
+      return data.map(p => ({ x: p.x, y: 1 }));
+    },
+
+    // Returns pre-computed per-bar color array for gateway bar charts.
+    // Used with distributed:true so colors[i] maps to bar i directly — no dataPointIndex risk.
+    metricsGatewayColors(widgetId, key) {
+      const data = this.metricsHistory[`${widgetId}:${key}`] || [];
+      return data.map(p => this._gatewayStatusColor(p.y));
+    },
+
+    // Tooltip label for gateway status by index into the raw history buffer.
+    metricsGatewayTooltip(widgetId, key, dataPointIndex) {
+      const data = this.metricsHistory[`${widgetId}:${key}`] || [];
+      const p = data[dataPointIndex];
+      const v = p ? Math.round(p.y) : -1;
+      return ['Admin Down', 'Down', 'Degraded', 'Healthy'][v] || 'Unknown';
     },
 
     metricsOpenConfig(widgetId) {
