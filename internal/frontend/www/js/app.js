@@ -3174,7 +3174,10 @@ new Vue({
     },
 
     metricsGetSeries(widgetId, key) {
-      return this.metricsHistory[`${widgetId}:${key}`] || [];
+      const data = this.metricsHistory[`${widgetId}:${key}`] || [];
+      if (!key.startsWith('gateway:')) return data;
+      // All bars same height=1; original status in .status for color/tooltip lookup
+      return data.map(p => ({ x: p.x, y: 1, status: p.y }));
     },
 
     metricsOpenConfig(widgetId) {
