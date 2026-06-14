@@ -1082,6 +1082,7 @@
                           :options="{
                             chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:true, easing:'linear', dynamicAnimation:{ speed:500 } }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
                             stroke: { curve:'smooth', width:2 },
+                            markers: { size: 0 },
                             fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
                             xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
                             yaxis:  { labels:{ show:true, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, title:{ text: metricsYAxisTitle(key), style:{ fontSize:'9px', color: theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
