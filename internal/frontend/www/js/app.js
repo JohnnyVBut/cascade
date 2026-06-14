@@ -3128,9 +3128,10 @@ new Vue({
 
     // Returns fill color for a gateway status value (3=healthy, 2=degraded, 1=down, 0=admin_down)
     _gatewayStatusColor(val) {
-      if (val >= 3) return '#22c55e'; // healthy — green
-      if (val >= 2) return '#eab308'; // degraded — yellow
-      if (val >= 1) return '#ef4444'; // down — red
+      const v = Math.round(val);
+      if (v >= 3) return '#22c55e'; // healthy — green
+      if (v >= 2) return '#eab308'; // degraded — yellow
+      if (v >= 1) return '#ef4444'; // down — red
       return '#9ca3af';               // admin_down / unknown — gray
     },
 
