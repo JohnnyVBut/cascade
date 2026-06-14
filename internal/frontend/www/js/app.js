@@ -152,6 +152,7 @@ new Vue({
       { id: '_header_firewall', label: 'Firewall', type: 'header' },
       { id: 'firewall-aliases', label: 'Aliases' },
       { id: 'firewall',         label: 'Rules' },
+      { id: 'diagnostics',      label: 'Diagnostics' },
       { id: 'remotes',          label: 'Remotes' },
       { id: 'settings',         label: 'Settings' },
       { id: 'administration',   label: 'Administration' },
@@ -180,9 +181,15 @@ new Vue({
     metricsHistory: {},             // { [widgetId+key]: [{x,y}] } rolling buffer
     metricsPoller: null,            // setInterval handle
     metricsConfigWidget: null,      // widget being configured (modal open)
+    metricsConfigPage: 'dashboard', // page the config modal was opened from
     metricsConfigDraft: [],         // draft graphs[] for config modal
     metricsColorDraft: {},          // { [key]: '#rrggbb' } for config modal
+    metricsTitleDraft: '',          // draft widget title for config modal
     metricsWidgetPeriod: {},        // { [widgetId]: '5m'|'1h'|... }
+
+    // ── Diagnostics page ──────────────────────────────────────────────────────
+    diagWidgets: [],
+    diagGrid: null,
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -1017,6 +1024,11 @@ new Vue({
       // FIX: destroy GridStack when leaving dashboard — clears ResizeObserver,
       // inline styles and CSS vars it set on parent elements (which caused a
       // vertical gap on the interfaces page after visiting dashboard).
+      if (this.activePage === 'diagnostics' && pageId !== 'diagnostics' && this.diagGrid) {
+        this.diagGrid.destroy(false);
+        this.diagGrid = null;
+        this.metricsStopPoller();
+      }
       if (this.activePage === 'dashboard' && pageId !== 'dashboard' && this.dashGrid) {
         // destroy(false) — remove GridStack listeners/styles but keep DOM nodes
         // so that Vue's v-if can cleanly remove the subtree without conflict.
@@ -1036,6 +1048,10 @@ new Vue({
         // do not call it separately here to avoid a double-init race.
         this.loadDashboard();
         this.loadSystemInfo();
+        this.metricsStartPoller();
+      }
+      if (pageId === 'diagnostics') {
+        this.loadDiagnostics();
         this.metricsStartPoller();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
@@ -3021,8 +3037,11 @@ new Vue({
     },
 
     async _metricsRefreshHistory() {
-      for (const w of this.dashWidgets) {
-        if (w.type !== 'monitoring') continue;
+      const allWidgets = [
+        ...this.dashWidgets.filter(w => w.type === 'monitoring'),
+        ...this.diagWidgets.filter(w => w.type === 'monitoring'),
+      ];
+      for (const w of allWidgets) {
         const period = this.metricsWidgetPeriod[w.id] || '5m';
         if (period === '5m') continue;
         for (const key of (w.graphs || [])) {
@@ -3046,11 +3065,14 @@ new Vue({
           this.metricsAvailableKeys = keys;
         }
 
-        // Append to rolling buffers for realtime (5m) widgets
+        // Append to rolling buffers for realtime (5m) widgets — both dashboard and diagnostics
         const now = Date.now();
         const MAX_POINTS = 60;
-        for (const w of this.dashWidgets) {
-          if (w.type !== 'monitoring') continue;
+        const allMonitoringWidgets = [
+          ...this.dashWidgets.filter(w => w.type === 'monitoring'),
+          ...this.diagWidgets.filter(w => w.type === 'monitoring'),
+        ];
+        for (const w of allMonitoringWidgets) {
           const period = this.metricsWidgetPeriod[w.id] || '5m';
           if (period !== '5m') continue;
           for (const key of (w.graphs || [])) {
@@ -3102,15 +3124,18 @@ new Vue({
 
     async metricsOnPeriodChange(widgetId, period) {
       this.$set(this.metricsWidgetPeriod, widgetId, period);
-      const idx = this.dashWidgets.findIndex(w => w.id === widgetId);
+      const isDiag = this.activePage === 'diagnostics';
+      const list = isDiag ? this.diagWidgets : this.dashWidgets;
+      const idx = list.findIndex(w => w.id === widgetId);
       if (idx === -1) return;
       // Persist period into widget layout so it survives page refresh.
       // Debounced: rapid switching won't fire multiple concurrent PUT requests.
-      const updated = { ...this.dashWidgets[idx], period };
-      this.dashWidgets.splice(idx, 1, updated);
+      const updated = { ...list[idx], period };
+      list.splice(idx, 1, updated);
+      const page = isDiag ? 'diagnostics' : 'dashboard';
       if (this._metricsPeriodSaveTimer) clearTimeout(this._metricsPeriodSaveTimer);
       this._metricsPeriodSaveTimer = setTimeout(() => {
-        this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
+        this.api.putDashboardWidgets(isDiag ? this.diagWidgets : this.dashWidgets, page).catch(console.error);
       }, 500);
       const w = updated;
       // Clear existing buffer so chart doesn't mix realtime and history points
@@ -3128,11 +3153,17 @@ new Vue({
     },
 
     metricsOpenConfig(widgetId) {
-      const w = this.dashWidgets.find(w => w.id === widgetId);
+      // Snapshot the page at open time so Save writes to the correct list
+      // even if the user navigates away while the modal is open.
+      const page = this.activePage === 'diagnostics' ? 'diagnostics' : 'dashboard';
+      const list = page === 'diagnostics' ? this.diagWidgets : this.dashWidgets;
+      const w = list.find(w => w.id === widgetId);
       if (!w) return;
       this.metricsConfigWidget = widgetId;
+      this.metricsConfigPage = page;
       this.metricsConfigDraft = [...(w.graphs || [])];
       this.metricsColorDraft = Object.assign({}, w.graphColors || {});
+      this.metricsTitleDraft = w.title || '';
     },
 
     metricsToggleGraph(key) {
@@ -3143,12 +3174,16 @@ new Vue({
 
     async metricsSaveConfig() {
       const widgetId = this.metricsConfigWidget;
-      const idx = this.dashWidgets.findIndex(w => w.id === widgetId);
+      const page = this.metricsConfigPage || 'dashboard';
+      const isDiag = page === 'diagnostics';
+      const list = isDiag ? this.diagWidgets : this.dashWidgets;
+      const idx = list.findIndex(w => w.id === widgetId);
       if (idx === -1) return;
-      const w = { ...this.dashWidgets[idx], graphs: [...this.metricsConfigDraft], graphColors: { ...this.metricsColorDraft } };
-      this.dashWidgets.splice(idx, 1, w);
+      const title = this.metricsTitleDraft.trim() || '';
+      const w = { ...list[idx], graphs: [...this.metricsConfigDraft], graphColors: { ...this.metricsColorDraft }, title };
+      list.splice(idx, 1, w);
       this.metricsConfigWidget = null;
-      this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
+      this.api.putDashboardWidgets(isDiag ? this.diagWidgets : this.dashWidgets, page).catch(console.error);
       // Load history for newly added graphs if not in realtime mode
       const period = this.metricsWidgetPeriod[widgetId] || '5m';
       if (period !== '5m') {
@@ -3156,6 +3191,95 @@ new Vue({
           await this.metricsLoadHistory(widgetId, key, period);
         }
       }
+    },
+
+    // ── Diagnostics page ─────────────────────────────────────────────────────
+
+    async loadDiagnostics() {
+      // Sequence counter prevents stale concurrent loads from calling diagInitGrid.
+      const seq = (this._diagLoadSeq = (this._diagLoadSeq || 0) + 1);
+      try {
+        const res = await this.api.getDashboardWidgets('diagnostics');
+        const saved = res.widgets || [];
+        this.diagWidgets = saved;
+      } catch (e) {
+        this.diagWidgets = [];
+      }
+      if (seq !== this._diagLoadSeq) return; // superseded by a newer load
+      // Restore persisted periods and pre-load history
+      for (const w of this.diagWidgets) {
+        if (w.period) this.$set(this.metricsWidgetPeriod, w.id, w.period);
+        const period = this.metricsWidgetPeriod[w.id] || '5m';
+        if (period !== '5m') {
+          for (const key of (w.graphs || [])) {
+            this.metricsLoadHistory(w.id, key, period);
+          }
+        }
+      }
+      await this.$nextTick();
+      if (seq !== this._diagLoadSeq) return;
+      this.diagInitGrid();
+    },
+
+    diagInitGrid() {
+      if (this.diagGrid) { this.diagGrid.destroy(false); this.diagGrid = null; }
+      const el = document.querySelector('.diag-grid');
+      if (!el) return;
+      this.diagGrid = GridStack.init({
+        cellHeight: 60,
+        margin: 8,
+        column: 12,
+        animate: true,
+        resizable: { handles: 'se' },
+      }, el);
+      // Sync positions back to diagWidgets on change
+      this.diagGrid.on('change', () => {
+        if (this._diagSaveEnabled) this.diagSaveLayout();
+      });
+      this._diagSaveEnabled = false;
+      setTimeout(() => { this._diagSaveEnabled = true; }, 500);
+    },
+
+    diagSaveLayout() {
+      if (!this.diagGrid) return;
+      const snapshot = this.diagWidgets.slice(); // stable reference against concurrent mutations
+      const items = this.diagGrid.save(false);
+      const widgets = (items || []).map(item => {
+        const existing = snapshot.find(w => w.id === item.id);
+        if (!existing) return null; // widget removed mid-save — skip
+        return Object.assign({}, existing, {
+          x: item.x, y: item.y, w: item.w, h: item.h,
+        });
+      }).filter(Boolean);
+      this.diagWidgets = widgets;
+      this.api.putDashboardWidgets(widgets, 'diagnostics').catch(console.error);
+    },
+
+    diagAddWidget() {
+      const id = 'w-monitoring-' + Date.now();
+      const newW = { id, type: 'monitoring', x: 0, y: 0, w: 6, h: 5, graphs: [], title: '' };
+      this.diagWidgets.push(newW);
+      // Always persist immediately so the widget survives even if grid init failed.
+      this.api.putDashboardWidgets(this.diagWidgets, 'diagnostics').catch(console.error);
+      this.$nextTick(() => {
+        if (!this.diagGrid) return;
+        const el = document.querySelector(`[gs-id="${id}"]`);
+        if (el) {
+          this.diagGrid.makeWidget(el);
+          this.diagSaveLayout();
+        }
+      });
+    },
+
+    diagRemoveWidget(widgetId) {
+      const idx = this.diagWidgets.findIndex(w => w.id === widgetId);
+      if (idx === -1) return;
+      if (this.diagGrid) {
+        const el = document.querySelector(`[gs-id="${widgetId}"]`);
+        if (el) this.diagGrid.removeWidget(el, false);
+      }
+      this.diagWidgets.splice(idx, 1);
+      this.api.putDashboardWidgets(this.diagWidgets, 'diagnostics').catch(console.error);
     },
 
     // Compact elapsed time: "5s", "20m", "3h", "2d"

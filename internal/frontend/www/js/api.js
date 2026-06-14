@@ -258,12 +258,12 @@ class API {
   // Dashboard API
   // ============================================================
 
-  async getDashboardWidgets() {
-    return this.call({ method: 'get', path: '/dashboard/widgets' });
+  async getDashboardWidgets(page = 'dashboard') {
+    return this.call({ method: 'get', path: `/dashboard/widgets?page=${page}` });
   }
 
-  async putDashboardWidgets(widgets) {
-    return this.call({ method: 'put', path: '/dashboard/widgets', body: { widgets } });
+  async putDashboardWidgets(widgets, page = 'dashboard') {
+    return this.call({ method: 'put', path: `/dashboard/widgets?page=${page}`, body: { widgets } });
   }
 
   async getSystemInfo() {

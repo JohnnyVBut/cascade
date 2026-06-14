@@ -679,6 +679,26 @@ CREATE TABLE IF NOT EXISTS metrics_history (
 CREATE INDEX IF NOT EXISTS metrics_history_key_ts ON metrics_history(key, ts);
 `,
 	},
+	{
+		version: 34,
+		sql: `
+-- Diagnostics page: separate widget layout stored alongside dashboard.
+-- page column defaults to 'dashboard' so existing rows keep working.
+ALTER TABLE dashboard_widgets ADD COLUMN page TEXT NOT NULL DEFAULT 'dashboard';
+-- Rename the implicit primary key: new PK is (user_id, page).
+-- SQLite doesn't support DROP CONSTRAINT, so we recreate the table.
+CREATE TABLE IF NOT EXISTS dashboard_widgets_new (
+  user_id TEXT NOT NULL,
+  page    TEXT NOT NULL DEFAULT 'dashboard',
+  widgets TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (user_id, page)
+);
+INSERT INTO dashboard_widgets_new (user_id, page, widgets)
+  SELECT user_id, 'dashboard', widgets FROM dashboard_widgets;
+DROP TABLE dashboard_widgets;
+ALTER TABLE dashboard_widgets_new RENAME TO dashboard_widgets;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
