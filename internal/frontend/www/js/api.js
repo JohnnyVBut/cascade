@@ -1183,4 +1183,8 @@ class API {
     return this.call({ method: 'get', path: `/metrics/history?key=${encodeURIComponent(key)}&period=${period}` });
   }
 
+  async getMetricsGatewayDist({ key, period }) {
+    return this.call({ method: 'get', path: `/metrics/gateway-dist?key=${encodeURIComponent(key)}&period=${period}` });
+  }
+
 }

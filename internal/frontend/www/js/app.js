@@ -179,6 +179,7 @@ new Vue({
     metricsSnapshot: null,          // latest GET /api/metrics response
     metricsAvailableKeys: [],       // all keys (populated on first snapshot)
     metricsHistory: {},             // { [widgetId+key]: [{x,y}] } rolling buffer
+    metricsGatewayDist: {},         // { [widgetId+key]: [[ts_ms, healthy, degraded, down, adminDown]] }
     metricsPoller: null,            // setInterval handle
     metricsConfigWidget: null,      // widget being configured (modal open)
     metricsConfigPage: 'dashboard', // page the config modal was opened from
@@ -3045,7 +3046,11 @@ new Vue({
         const period = this.metricsWidgetPeriod[w.id] || '5m';
         if (period === '5m') continue;
         for (const key of (w.graphs || [])) {
-          await this.metricsLoadHistory(w.id, key, period);
+          if (key.startsWith('gateway:')) {
+            await this.metricsLoadGatewayDist(w.id, key, period);
+          } else {
+            await this.metricsLoadHistory(w.id, key, period);
+          }
         }
       }
     },
@@ -3148,6 +3153,47 @@ new Vue({
       } catch (e) { /* non-fatal */ }
     },
 
+    async metricsLoadGatewayDist(widgetId, key, period) {
+      try {
+        const res = await this.api.getMetricsGatewayDist({ key, period });
+        this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, res.buckets || []);
+      } catch (e) { /* non-fatal */ }
+    },
+
+    // Builds 4 stacked series for gateway bar chart from distribution data.
+    // For 5m realtime: derives from metricsHistory buffer (each tick = 1 status).
+    // For historical: uses metricsGatewayDist from backend.
+    metricsGetGatewayStackedSeries(widgetId, key) {
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      const healthy   = { name: 'Healthy',    color: '#22c55e', data: [] };
+      const degraded  = { name: 'Degraded',   color: '#eab308', data: [] };
+      const down      = { name: 'Down',       color: '#ef4444', data: [] };
+      const adminDown = { name: 'Admin Down', color: '#9ca3af', data: [] };
+
+      if (period === '5m') {
+        // Realtime: each point is a single status tick
+        const buf = this.metricsHistory[`${widgetId}:${key}`] || [];
+        for (const p of buf) {
+          const v = Math.round(p.y);
+          healthy.data.push(  { x: p.x, y: v >= 3 ? 1 : 0 });
+          degraded.data.push( { x: p.x, y: v === 2 ? 1 : 0 });
+          down.data.push(     { x: p.x, y: v === 1 ? 1 : 0 });
+          adminDown.data.push({ x: p.x, y: v <= 0 ? 1 : 0 });
+        }
+      } else {
+        const dist = this.metricsGatewayDist[`${widgetId}:${key}`] || [];
+        for (const b of dist) {
+          const [ts, h, d, dn, ad] = b;
+          // Pass raw counts — ApexCharts stackType:'100%' normalises internally
+          healthy.data.push(  { x: ts, y: h  });
+          degraded.data.push( { x: ts, y: d  });
+          down.data.push(     { x: ts, y: dn });
+          adminDown.data.push({ x: ts, y: ad });
+        }
+      }
+      return [adminDown, down, degraded, healthy];
+    },
+
     async metricsOnPeriodChange(widgetId, period) {
       this.$set(this.metricsWidgetPeriod, widgetId, period);
       const isDiag = this.activePage === 'diagnostics';
@@ -3167,10 +3213,15 @@ new Vue({
       // Clear existing buffer so chart doesn't mix realtime and history points
       for (const key of (w.graphs || [])) {
         this.$set(this.metricsHistory, `${widgetId}:${key}`, []);
+        this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, []);
       }
       if (period === '5m') return; // realtime — poller fills it from next tick
       for (const key of (w.graphs || [])) {
-        await this.metricsLoadHistory(widgetId, key, period);
+        if (key.startsWith('gateway:')) {
+          await this.metricsLoadGatewayDist(widgetId, key, period);
+        } else {
+          await this.metricsLoadHistory(widgetId, key, period);
+        }
       }
     },
 

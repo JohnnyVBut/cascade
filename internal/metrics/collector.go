@@ -134,6 +134,40 @@ func History(key string, from, to int64, stepSec int) ([][2]float64, error) {
 	return out, rows.Err()
 }
 
+// GatewayDistribution returns per-bucket status counts for a gateway metric key.
+// Each element: [ts_ms, healthy_count, degraded_count, down_count, admin_down_count]
+// Uses MIN-friendly raw ticks so worst-case events are never hidden by averaging.
+func GatewayDistribution(key string, from, to int64, stepSec int) ([][5]float64, error) {
+	rows, err := db.DB().Query(`
+		SELECT
+			(ts / ?) * ? AS bucket,
+			SUM(CASE WHEN ROUND(val) >= 3 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN ROUND(val) = 2  THEN 1 ELSE 0 END),
+			SUM(CASE WHEN ROUND(val) = 1  THEN 1 ELSE 0 END),
+			SUM(CASE WHEN ROUND(val) <= 0 THEN 1 ELSE 0 END)
+		FROM metrics_history
+		WHERE key = ? AND ts >= ? AND ts <= ?
+		GROUP BY bucket
+		ORDER BY bucket`,
+		stepSec, stepSec, key, from, to,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out [][5]float64
+	for rows.Next() {
+		var bucket int64
+		var healthy, degraded, down, adminDown float64
+		if err := rows.Scan(&bucket, &healthy, &degraded, &down, &adminDown); err != nil {
+			continue
+		}
+		out = append(out, [5]float64{float64(bucket * 1000), healthy, degraded, down, adminDown})
+	}
+	return out, rows.Err()
+}
+
 // AvailableKeys returns all distinct metric keys stored in the DB.
 func AvailableKeys() ([]string, error) {
 	rows, err := db.DB().Query(

@@ -1071,23 +1071,23 @@
                       <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
                         <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
                           :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
-                        <!-- Gateway: bar chart with per-bar color by status -->
+                        <!-- Gateway: stacked bar showing proportional status distribution -->
                         <apexchart v-if="key.startsWith('gateway:')"
                           type="bar"
                           height="90"
                           :options="{
-                            chart: { id: w.id+'_'+key, type:'bar', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
-                            plotOptions: { bar: { distributed: true, columnWidth:'95%', borderRadius:1, minHeight: 4 } },
-                            colors: metricsGatewayColors(w.id, key),
+                            chart: { id: w.id+'_'+key, type:'bar', stacked:true, stackType:'100%', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                            plotOptions: { bar: { columnWidth:'95%', borderRadius:0 } },
+                            colors: ['#9ca3af','#ef4444','#eab308','#22c55e'],
                             dataLabels: { enabled: false },
                             legend: { show: false },
                             xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
-                            yaxis:  { min:0, max:1, labels:{ show:false } },
+                            yaxis:  { min:0, max:100, labels:{ show:false } },
                             grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-                            tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: function(v,opts){ return metricsGatewayTooltip(w.id, key, opts.dataPointIndex); } }, theme: theme==='dark'?'dark':'light' },
+                            tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: function(v){ return v+'%'; } }, theme: theme==='dark'?'dark':'light' },
                             theme:  { mode: theme==='dark'?'dark':'light' },
                           }"
-                          :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                          :series="metricsGetGatewayStackedSeries(w.id, key)"
                         ></apexchart>
                         <!-- Area chart for all other metrics -->
                         <apexchart v-else
@@ -1180,23 +1180,23 @@
                     <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
                       <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
                         :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
-                      <!-- Gateway: bar chart with per-bar color by status -->
+                      <!-- Gateway: stacked bar showing proportional status distribution -->
                       <apexchart v-if="key.startsWith('gateway:')"
                         type="bar"
                         height="120"
                         :options="{
-                          chart: { id: w.id+'_'+key, type:'bar', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
-                          plotOptions: { bar: { distributed: true, columnWidth:'95%', borderRadius:1, minHeight: 4 } },
-                          colors: metricsGatewayColors(w.id, key),
+                          chart: { id: w.id+'_'+key, type:'bar', stacked:true, stackType:'100%', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                          plotOptions: { bar: { columnWidth:'95%', borderRadius:0 } },
+                          colors: ['#9ca3af','#ef4444','#eab308','#22c55e'],
                           dataLabels: { enabled: false },
                           legend: { show: false },
                           xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
-                          yaxis:  { min:0, max:1, labels:{ show:false } },
+                          yaxis:  { min:0, max:100, labels:{ show:false } },
                           grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: function(v,opts){ return metricsGatewayTooltip(w.id, key, opts.dataPointIndex); } }, theme: theme==='dark'?'dark':'light' },
+                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: function(v){ return v+'%'; } }, theme: theme==='dark'?'dark':'light' },
                           theme:  { mode: theme==='dark'?'dark':'light' },
                         }"
-                        :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                        :series="metricsGetGatewayStackedSeries(w.id, key)"
                       ></apexchart>
                       <!-- Area chart for all other metrics -->
                       <apexchart v-else
