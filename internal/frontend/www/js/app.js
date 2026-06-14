@@ -3264,6 +3264,11 @@ new Vue({
       return ['Admin Down', 'Down', 'Degraded', 'Healthy'][v] || 'Unknown';
     },
 
+    metricsCloseConfig() {
+      this.metricsConfigWidget = null;
+      this.metricsTick();
+    },
+
     metricsOpenConfig(widgetId) {
       // Snapshot the page at open time so Save writes to the correct list
       // even if the user navigates away while the modal is open.
@@ -3294,7 +3299,7 @@ new Vue({
       const title = this.metricsTitleDraft.trim() || '';
       const w = { ...list[idx], graphs: [...this.metricsConfigDraft], graphColors: { ...this.metricsColorDraft }, title };
       list.splice(idx, 1, w);
-      this.metricsConfigWidget = null;
+      this.metricsCloseConfig();
       this.api.putDashboardWidgets(isDiag ? this.diagWidgets : this.dashWidgets, page).catch(console.error);
       // Load history for newly added graphs if not in realtime mode
       const period = this.metricsWidgetPeriod[widgetId] || '5m';

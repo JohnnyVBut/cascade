@@ -8108,12 +8108,12 @@
 
     <!-- ==================== Monitoring Config Modal ==================== -->
     <div v-if="metricsConfigWidget" class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
-      style="padding:40px 24px;" @click.self="metricsConfigWidget = null">
+      style="padding:40px 24px;" @click.self="metricsCloseConfig()">
       <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
         <div style="padding:20px 24px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e5e7eb;"
           :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#e5e7eb' }">
           <h3 class="font-semibold text-base dark:text-neutral-100">Configure Graphs</h3>
-          <button @click="metricsConfigWidget = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+          <button @click="metricsCloseConfig()" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
         </div>
         <div style="padding:20px 24px;">
           <!-- Widget title -->
@@ -8161,7 +8161,7 @@
           </div>
         </div>
         <div style="padding:12px 24px 20px; display:flex; justify-content:flex-end; gap:10px;">
-          <button @click="metricsConfigWidget = null"
+          <button @click="metricsCloseConfig()"
             class="text-sm text-gray-500 dark:text-neutral-400 hover:text-gray-700"
             style="padding:8px 16px; border:none; background:none; cursor:pointer;">Cancel</button>
           <button @click="metricsSaveConfig()"
