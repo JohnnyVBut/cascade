@@ -1082,6 +1082,7 @@
                           :options="{
                             chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:true, easing:'linear', dynamicAnimation:{ speed:500 } }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
                             stroke: { curve:'smooth', width:2 },
+                            colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
                             markers: { size: 0 },
                             dataLabels: { enabled: false },
                             fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
@@ -7996,7 +7997,8 @@
             <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">System</div>
             <label v-for="key in ['cpu','mem']" :key="key" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
               <input type="checkbox" :checked="metricsConfigDraft.includes(key)" @change="metricsToggleGraph(key)" style="width:15px; height:15px; cursor:pointer;">
-              <span class="text-sm dark:text-neutral-200">{{ metricsKeyLabel(key) }}</span>
+              <span class="text-sm dark:text-neutral-200" style="flex:1;">{{ metricsKeyLabel(key) }}</span>
+              <input type="color" :value="metricsColorDraft[key] || '#22d3ee'" @input="$set(metricsColorDraft, key, $event.target.value)" style="width:28px; height:24px; padding:1px; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; background:none;">
             </label>
           </div>
 
@@ -8006,7 +8008,8 @@
             <template v-for="iface in (metricsSnapshot.interfaces || [])">
               <label v-for="dir in ['rx','tx']" :key="iface+':'+dir" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
                 <input type="checkbox" :checked="metricsConfigDraft.includes('net:'+iface+':'+dir)" @change="metricsToggleGraph('net:'+iface+':'+dir)" style="width:15px; height:15px; cursor:pointer;">
-                <span class="text-sm dark:text-neutral-200">{{ metricsKeyLabel('net:'+iface+':'+dir) }}</span>
+                <span class="text-sm dark:text-neutral-200" style="flex:1;">{{ metricsKeyLabel('net:'+iface+':'+dir) }}</span>
+                <input type="color" :value="metricsColorDraft['net:'+iface+':'+dir] || '#22d3ee'" @input="$set(metricsColorDraft, 'net:'+iface+':'+dir, $event.target.value)" style="width:28px; height:24px; padding:1px; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; background:none;">
               </label>
             </template>
           </div>

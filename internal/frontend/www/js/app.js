@@ -181,6 +181,7 @@ new Vue({
     metricsPoller: null,            // setInterval handle
     metricsConfigWidget: null,      // widget being configured (modal open)
     metricsConfigDraft: [],         // draft graphs[] for config modal
+    metricsColorDraft: {},          // { [key]: '#rrggbb' } for config modal
     metricsWidgetPeriod: {},        // { [widgetId]: '5m'|'1h'|... }
 
     // Tunnel Interfaces
@@ -2807,9 +2808,11 @@ new Vue({
       if (this.natRules.length === 0) this.loadNatRules();
       if (this.dnatRules.length === 0) this.loadDnatRules();
       if (this.aliases.length === 0) this.loadAliases();
-      // Load history for monitoring widgets that are not in realtime mode
+      // Restore saved periods and load history for monitoring widgets
       for (const w of this.dashWidgets) {
         if (w.type !== 'monitoring') continue;
+        // Restore persisted period (saved in w.period field)
+        if (w.period) this.$set(this.metricsWidgetPeriod, w.id, w.period);
         const period = this.metricsWidgetPeriod[w.id] || '5m';
         if (period !== '5m') {
           for (const key of (w.graphs || [])) {
@@ -3099,8 +3102,17 @@ new Vue({
 
     async metricsOnPeriodChange(widgetId, period) {
       this.$set(this.metricsWidgetPeriod, widgetId, period);
-      const w = this.dashWidgets.find(w => w.id === widgetId);
-      if (!w) return;
+      const idx = this.dashWidgets.findIndex(w => w.id === widgetId);
+      if (idx === -1) return;
+      // Persist period into widget layout so it survives page refresh.
+      // Debounced: rapid switching won't fire multiple concurrent PUT requests.
+      const updated = { ...this.dashWidgets[idx], period };
+      this.dashWidgets.splice(idx, 1, updated);
+      if (this._metricsPeriodSaveTimer) clearTimeout(this._metricsPeriodSaveTimer);
+      this._metricsPeriodSaveTimer = setTimeout(() => {
+        this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
+      }, 500);
+      const w = updated;
       // Clear existing buffer so chart doesn't mix realtime and history points
       for (const key of (w.graphs || [])) {
         this.$set(this.metricsHistory, `${widgetId}:${key}`, []);
@@ -3120,6 +3132,7 @@ new Vue({
       if (!w) return;
       this.metricsConfigWidget = widgetId;
       this.metricsConfigDraft = [...(w.graphs || [])];
+      this.metricsColorDraft = Object.assign({}, w.graphColors || {});
     },
 
     metricsToggleGraph(key) {
@@ -3132,7 +3145,7 @@ new Vue({
       const widgetId = this.metricsConfigWidget;
       const idx = this.dashWidgets.findIndex(w => w.id === widgetId);
       if (idx === -1) return;
-      const w = { ...this.dashWidgets[idx], graphs: [...this.metricsConfigDraft] };
+      const w = { ...this.dashWidgets[idx], graphs: [...this.metricsConfigDraft], graphColors: { ...this.metricsColorDraft } };
       this.dashWidgets.splice(idx, 1, w);
       this.metricsConfigWidget = null;
       this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
