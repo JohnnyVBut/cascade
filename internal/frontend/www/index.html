@@ -631,6 +631,8 @@
                   <div class="dash-card-header">
                     <span>{{ dashWidgetLabel(w.type) }}</span>
                     <div style="display:flex; align-items:center; gap:4px;">
+                      <button v-if="w.type === 'monitoring'" @click="metricsOpenConfig(w.id)" title="Configure graphs"
+                        style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
                       <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
                         style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
                       <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
@@ -1045,6 +1047,50 @@
                             </div>
                           </div>
                         </div>
+                      </div>
+                    </template>
+
+                    <!-- ── monitoring ── -->
+                    <template v-else-if="w.type === 'monitoring'">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                        <span class="text-xs font-medium text-gray-500 dark:text-neutral-400">
+                          {{ (w.graphs||[]).length ? '' : 'No graphs — click ⚙ to configure' }}
+                        </span>
+                        <select
+                          :value="metricsWidgetPeriod[w.id] || '5m'"
+                          @change="metricsOnPeriodChange(w.id, $event.target.value)"
+                          class="border rounded text-xs dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                          style="padding:2px 6px;">
+                          <option value="5m">5m</option>
+                          <option value="1h">1h</option>
+                          <option value="6h">6h</option>
+                          <option value="24h">24h</option>
+                          <option value="7d">7d</option>
+                          <option value="30d">30d</option>
+                        </select>
+                      </div>
+                      <div v-if="!(w.graphs||[]).length" style="display:flex; align-items:center; justify-content:center; height:80px;">
+                        <span class="text-xs text-gray-400 dark:text-neutral-500">Click ⚙ to add graphs</span>
+                      </div>
+                      <div v-for="key in (w.graphs||[])" :key="key" style="margin-bottom:10px;">
+                        <div class="text-xs text-gray-500 dark:text-neutral-400" style="margin-bottom:2px;">
+                          {{ metricsKeyLabel(key) }}
+                        </div>
+                        <vue-apex-charts
+                          type="area"
+                          height="90"
+                          :options="{
+                            chart: { id: w.id+':'+key, type:'area', animations:{ enabled:true, easing:'linear', dynamicAnimation:{ speed:500 } }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+                            stroke: { curve:'smooth', width:2 },
+                            fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
+                            xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                            yaxis:  { labels:{ show:true, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, title:{ text: metricsYAxisTitle(key), style:{ fontSize:'9px', color: theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
+                            grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0 } },
+                            tooltip:{ x:{ format:'HH:mm:ss' }, theme: theme==='dark'?'dark':'light' },
+                            theme:  { mode: theme==='dark'?'dark':'light' },
+                          }"
+                          :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                        ></vue-apex-charts>
                       </div>
                     </template>
 
@@ -7928,6 +7974,50 @@
             {{ _aliasLabel(mid) }}
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- ==================== Monitoring Config Modal ==================== -->
+    <div v-if="metricsConfigWidget" class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+      style="padding:40px 24px;" @click.self="metricsConfigWidget = null">
+      <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
+        <div style="padding:20px 24px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e5e7eb;"
+          :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#e5e7eb' }">
+          <h3 class="font-semibold text-base dark:text-neutral-100">Configure Graphs</h3>
+          <button @click="metricsConfigWidget = null" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+        </div>
+        <div style="padding:20px 24px;">
+          <p class="text-xs text-gray-500 dark:text-neutral-400" style="margin-bottom:14px;">Select metrics to display in this widget. Each appears as a separate chart.</p>
+
+          <!-- System -->
+          <div style="margin-bottom:12px;">
+            <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">System</div>
+            <label v-for="key in ['cpu','mem']" :key="key" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
+              <input type="checkbox" :checked="metricsConfigDraft.includes(key)" @change="metricsToggleGraph(key)" style="width:15px; height:15px; cursor:pointer;">
+              <span class="text-sm dark:text-neutral-200">{{ metricsKeyLabel(key) }}</span>
+            </label>
+          </div>
+
+          <!-- Network interfaces -->
+          <div v-if="metricsSnapshot && metricsSnapshot.interfaces && metricsSnapshot.interfaces.length">
+            <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Network Interfaces</div>
+            <template v-for="iface in (metricsSnapshot.interfaces || [])">
+              <label v-for="dir in ['rx','tx']" :key="iface+':'+dir" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
+                <input type="checkbox" :checked="metricsConfigDraft.includes('net:'+iface+':'+dir)" @change="metricsToggleGraph('net:'+iface+':'+dir)" style="width:15px; height:15px; cursor:pointer;">
+                <span class="text-sm dark:text-neutral-200">{{ metricsKeyLabel('net:'+iface+':'+dir) }}</span>
+              </label>
+            </template>
+          </div>
+          <div v-else class="text-xs text-gray-400 dark:text-neutral-500" style="margin-bottom:12px;">No metrics data yet — wait a few seconds</div>
+        </div>
+        <div style="padding:12px 24px 20px; display:flex; justify-content:flex-end; gap:10px;">
+          <button @click="metricsConfigWidget = null"
+            class="text-sm text-gray-500 dark:text-neutral-400 hover:text-gray-700"
+            style="padding:8px 16px; border:none; background:none; cursor:pointer;">Cancel</button>
+          <button @click="metricsSaveConfig()"
+            class="text-sm text-white rounded"
+            style="padding:8px 20px; background:#2563eb; border:none; cursor:pointer;">Save</button>
+        </div>
       </div>
     </div>
 

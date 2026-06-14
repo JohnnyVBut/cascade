@@ -1173,4 +1173,14 @@ class API {
     return this.call({ method: 'delete', path: '/speedtest/results' });
   }
 
+  // ── Metrics ────────────────────────────────────────────────────────────────
+
+  async getMetrics() {
+    return this.call({ method: 'get', path: '/metrics/' });
+  }
+
+  async getMetricsHistory({ key, period }) {
+    return this.call({ method: 'get', path: `/metrics/history?key=${encodeURIComponent(key)}&period=${period}` });
+  }
+
 }

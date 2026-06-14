@@ -170,8 +170,18 @@ new Vue({
       { type: 'peers',          label: 'Peers',           icon: '🔗' },
       { type: 'nat',            label: 'NAT',             icon: '🔀' },
       { type: 'traffic',        label: 'Traffic',         icon: '📊' },
+      { type: 'monitoring',     label: 'Monitoring',      icon: '📈' },
     ],
     dashPeersState: {},   // per-widget: { [widgetId]: { iface: '', sort: 'name' } }
+
+    // ── Monitoring widget ──────────────────────────────────────────────────────
+    metricsSnapshot: null,          // latest GET /api/metrics response
+    metricsAvailableKeys: [],       // all keys (populated on first snapshot)
+    metricsHistory: {},             // { [widgetId+key]: [{x,y}] } rolling buffer
+    metricsPoller: null,            // setInterval handle
+    metricsConfigWidget: null,      // widget being configured (modal open)
+    metricsConfigDraft: [],         // draft graphs[] for config modal
+    metricsWidgetPeriod: {},        // { [widgetId]: '5m'|'1h'|... }
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -1013,6 +1023,7 @@ new Vue({
         // Vue's vdom from the real DOM (visible as blank dashboard on return).
         this.dashGrid.destroy(false);
         this.dashGrid = null;
+        this.metricsStopPoller();
       }
       if (this._dashResizeObs) {
         this._dashResizeObs.disconnect();
@@ -1024,6 +1035,7 @@ new Vue({
         // do not call it separately here to avoid a double-init race.
         this.loadDashboard();
         this.loadSystemInfo();
+        this.metricsStartPoller();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
       if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
@@ -2970,6 +2982,126 @@ new Vue({
       try {
         this.dashSystemInfo = await this.api.getSystemInfo();
       } catch (e) { /* non-fatal */ }
+    },
+
+    // ── Monitoring widget methods ──────────────────────────────────────────────
+
+    metricsStartPoller() {
+      if (this.metricsPoller) return;
+      this.metricsPoller = setInterval(() => this.metricsTick(), 5000);
+      this.metricsTick(); // immediate first tick
+    },
+
+    metricsStopPoller() {
+      if (this.metricsPoller) {
+        clearInterval(this.metricsPoller);
+        this.metricsPoller = null;
+      }
+    },
+
+    async metricsTick() {
+      try {
+        const snap = await this.api.getMetrics();
+        this.metricsSnapshot = snap;
+
+        // Build available keys list from first snapshot
+        if (!this.metricsAvailableKeys.length && snap) {
+          const keys = ['cpu', 'mem'];
+          for (const iface of (snap.interfaces || [])) {
+            keys.push(`net:${iface}:rx`);
+            keys.push(`net:${iface}:tx`);
+          }
+          this.metricsAvailableKeys = keys;
+        }
+
+        // Append to rolling buffers for realtime (5m) widgets
+        const now = Date.now();
+        const MAX_POINTS = 60;
+        for (const w of this.dashWidgets) {
+          if (w.type !== 'monitoring') continue;
+          const period = this.metricsWidgetPeriod[w.id] || '5m';
+          if (period !== '5m') continue;
+          for (const key of (w.graphs || [])) {
+            const val = this.metricsValueFromSnap(snap, key);
+            if (val === null) continue;
+            const bufKey = `${w.id}:${key}`;
+            const buf = this.metricsHistory[bufKey] || [];
+            buf.push({ x: now, y: Math.round(val * 100) / 100 });
+            if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
+            this.$set(this.metricsHistory, bufKey, buf);
+          }
+        }
+      } catch (e) { /* non-fatal */ }
+    },
+
+    metricsValueFromSnap(snap, key) {
+      if (!snap) return null;
+      if (key === 'cpu') return snap.cpu ?? null;
+      if (key === 'mem') return snap.mem ?? null;
+      if (key.startsWith('net:')) {
+        const [, iface, dir] = key.split(':');
+        return snap.net?.[iface]?.[dir === 'rx' ? 'rxMbps' : 'txMbps'] ?? null;
+      }
+      return null;
+    },
+
+    metricsKeyLabel(key) {
+      if (key === 'cpu') return 'CPU %';
+      if (key === 'mem') return 'RAM %';
+      if (key.startsWith('net:')) {
+        const [, iface, dir] = key.split(':');
+        return `${iface} ${dir.toUpperCase()} Mbps`;
+      }
+      return key;
+    },
+
+    metricsYAxisTitle(key) {
+      if (key === 'cpu' || key === 'mem') return '%';
+      return 'Mbps';
+    },
+
+    async metricsLoadHistory(widgetId, key, period) {
+      try {
+        const res = await this.api.getMetricsHistory({ key, period });
+        const points = (res.points || []).map(p => ({ x: p[0], y: Math.round(p[1] * 100) / 100 }));
+        this.$set(this.metricsHistory, `${widgetId}:${key}`, points);
+      } catch (e) { /* non-fatal */ }
+    },
+
+    async metricsOnPeriodChange(widgetId, period) {
+      this.$set(this.metricsWidgetPeriod, widgetId, period);
+      const w = this.dashWidgets.find(w => w.id === widgetId);
+      if (!w) return;
+      if (period === '5m') return; // realtime — poller fills it
+      for (const key of (w.graphs || [])) {
+        await this.metricsLoadHistory(widgetId, key, period);
+      }
+    },
+
+    metricsGetSeries(widgetId, key) {
+      return this.metricsHistory[`${widgetId}:${key}`] || [];
+    },
+
+    metricsOpenConfig(widgetId) {
+      const w = this.dashWidgets.find(w => w.id === widgetId);
+      if (!w) return;
+      this.metricsConfigWidget = widgetId;
+      this.metricsConfigDraft = [...(w.graphs || [])];
+    },
+
+    metricsToggleGraph(key) {
+      const idx = this.metricsConfigDraft.indexOf(key);
+      if (idx === -1) this.metricsConfigDraft.push(key);
+      else this.metricsConfigDraft.splice(idx, 1);
+    },
+
+    async metricsSaveConfig() {
+      const idx = this.dashWidgets.findIndex(w => w.id === this.metricsConfigWidget);
+      if (idx === -1) return;
+      const w = { ...this.dashWidgets[idx], graphs: [...this.metricsConfigDraft] };
+      this.dashWidgets.splice(idx, 1, w);
+      this.metricsConfigWidget = null;
+      this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
     },
 
     // Compact elapsed time: "5s", "20m", "3h", "2d"
