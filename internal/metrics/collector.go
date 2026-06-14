@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -214,6 +215,7 @@ func (c *collector) collect() *Snapshot {
 		c.prevNetTime = now
 	}
 
+	sort.Strings(snap.Interfaces)
 	return snap
 }
 
