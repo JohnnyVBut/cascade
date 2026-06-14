@@ -1094,7 +1094,7 @@
                           type="area"
                           height="90"
                           :options="{
-                            chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:true, easing:'linear', dynamicAnimation:{ speed:500 } }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+                            chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
                             stroke: { curve:'smooth', width:2 },
                             colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
                             markers: { size: 0 },
@@ -1203,7 +1203,7 @@
                         type="area"
                         height="120"
                         :options="{
-                          chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:true, easing:'linear', dynamicAnimation:{ speed:500 } }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+                          chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
                           colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
                           stroke: { curve:'smooth', width:2 },
                           markers: { size: 0 },

@@ -3022,11 +3022,21 @@ new Vue({
     metricsStartPoller() {
       if (this.metricsPoller) return;
       this.metricsPoller = setInterval(() => this.metricsTick(), 5000);
-      this.metricsTick(); // immediate first tick
-      // Also start history refresh poller (30s) for non-realtime widgets
+      this.metricsTick();
       if (this._metricsHistoryPoller) clearInterval(this._metricsHistoryPoller);
-      this._metricsRefreshHistory(); // immediate first load for saved non-5m periods
+      this._metricsRefreshHistory();
       this._metricsHistoryPoller = setInterval(() => this._metricsRefreshHistory(), 30000);
+      // Pause poller when tab is hidden, resume (with immediate tick) when visible again
+      if (!this._metricsVisibilityHandler) {
+        this._metricsVisibilityHandler = () => {
+          if (document.hidden) {
+            this.metricsStopPoller();
+          } else {
+            this.metricsStartPoller();
+          }
+        };
+        document.addEventListener('visibilitychange', this._metricsVisibilityHandler);
+      }
     },
 
     metricsStopPoller() {
