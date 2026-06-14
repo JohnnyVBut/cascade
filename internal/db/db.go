@@ -630,8 +630,6 @@ ALTER TABLE firewall_rules_applied ADD COLUMN separator_color TEXT NOT NULL DEFA
 		version: 30,
 		sql: `
 -- Remote Cascade servers for multi-server management.
--- token: API token (ws_...) obtained at add-time via login→create token→logout.
--- Password is never stored — only the resulting API token.
 CREATE TABLE IF NOT EXISTS remotes (
 	id         TEXT PRIMARY KEY,
 	name       TEXT NOT NULL,
@@ -644,9 +642,7 @@ CREATE TABLE IF NOT EXISTS remotes (
 	{
 		version: 31,
 		sql: `
--- Speed test results: persisted history of iperf3 runs between servers.
--- from_server / to_server: display name (local server name or remote.name).
--- status: 'running' | 'done' | 'error'.
+-- Speed test results.
 CREATE TABLE IF NOT EXISTS speedtest_results (
 	id           TEXT PRIMARY KEY,
 	from_server  TEXT NOT NULL DEFAULT '',
@@ -669,8 +665,18 @@ CREATE TABLE IF NOT EXISTS speedtest_results (
 	{
 		version: 32,
 		sql: `
--- Add via column to speedtest_results (missed in v31 initial schema on live servers).
 ALTER TABLE speedtest_results ADD COLUMN via TEXT NOT NULL DEFAULT 'internet';
+`,
+	},
+	{
+		version: 33,
+		sql: `
+CREATE TABLE IF NOT EXISTS metrics_history (
+  ts  INTEGER NOT NULL,
+  key TEXT    NOT NULL,
+  val REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS metrics_history_key_ts ON metrics_history(key, ts);
 `,
 	},
 }
