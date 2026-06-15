@@ -24,6 +24,7 @@ func RegisterDashboard(api fiber.Router) {
 }
 
 // getDashboardWidgets returns the widget layout for the current user.
+// Query param: ?page=dashboard (default) or ?page=diagnostics
 // Response: { "widgets": [...] }
 func getDashboardWidgets(c *fiber.Ctx) error {
 	uid, ok := currentUserID(c)
@@ -31,8 +32,13 @@ func getDashboardWidgets(c *fiber.Ctx) error {
 		return fiber.ErrUnauthorized
 	}
 
+	page := c.Query("page", "dashboard")
+	if page != "dashboard" && page != "diagnostics" {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid page")
+	}
+
 	var widgetsJSON string
-	row := db.DB().QueryRow(`SELECT widgets FROM dashboard_widgets WHERE user_id = ?`, uid)
+	row := db.DB().QueryRow(`SELECT widgets FROM dashboard_widgets WHERE user_id = ? AND page = ?`, uid, page)
 	if err := row.Scan(&widgetsJSON); err != nil {
 		widgetsJSON = "[]"
 	}
@@ -42,11 +48,17 @@ func getDashboardWidgets(c *fiber.Ctx) error {
 }
 
 // putDashboardWidgets saves the widget layout for the current user.
+// Query param: ?page=dashboard (default) or ?page=diagnostics
 // Body: { "widgets": [...] }
 func putDashboardWidgets(c *fiber.Ctx) error {
 	uid, ok := currentUserID(c)
 	if !ok {
 		return fiber.ErrUnauthorized
+	}
+
+	page := c.Query("page", "dashboard")
+	if page != "dashboard" && page != "diagnostics" {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid page")
 	}
 
 	var payload struct {
@@ -62,10 +74,10 @@ func putDashboardWidgets(c *fiber.Ctx) error {
 	}
 
 	if _, err := db.DB().Exec(`
-		INSERT INTO dashboard_widgets (user_id, widgets)
-		VALUES (?, ?)
-		ON CONFLICT(user_id) DO UPDATE SET widgets = excluded.widgets
-	`, uid, widgetsJSON); err != nil {
+		INSERT INTO dashboard_widgets (user_id, page, widgets)
+		VALUES (?, ?, ?)
+		ON CONFLICT(user_id, page) DO UPDATE SET widgets = excluded.widgets
+	`, uid, page, widgetsJSON); err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 

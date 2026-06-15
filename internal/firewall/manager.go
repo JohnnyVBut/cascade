@@ -833,14 +833,22 @@ func (m *Manager) ReorderRules(ids []string) error {
 // each enabled rule. Returns the first matching rule and all evaluated steps.
 // Used by the route test API to determine which PBR fwmark (if any) applies.
 func (m *Manager) SimulateTrace(srcIP, dstIP string) (*TraceResult, error) {
-	rules, err := m.GetRules()
+	// Prefer the applied snapshot so results match what's actually in iptables.
+	// Fall back to live rules when the snapshot is empty (e.g. in tests).
+	rules, err := m.getAppliedRules()
 	if err != nil {
 		return nil, err
+	}
+	if len(rules) == 0 {
+		rules, err = m.GetRules()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	result := &TraceResult{Steps: []TraceStep{}}
 	for _, rule := range rules {
-		if !rule.Enabled {
+		if !rule.Enabled || rule.RuleType == "separator" {
 			continue
 		}
 		srcMatch, err := m.matchEndpoint(&rule.Source, srcIP)
@@ -1058,6 +1066,7 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 		return m.applyRuleKernelSubchain(rule, combos, srcParts, dstParts)
 	}
 
+	isPBR := rule.Action == "accept" && (rule.GatewayID != "" || rule.GatewayGroupID != "")
 	for _, combo := range combos {
 		for _, srcPart := range srcParts {
 			for _, dstPart := range dstParts {
@@ -1070,7 +1079,7 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 				}
 
 				// Mangle MARK (PBR) or RETURN (non-PBR) — in PREROUTING/FIREWALL_MANGLE.
-				if rule.Action == "accept" && (rule.GatewayID != "" || rule.GatewayGroupID != "") {
+				if isPBR {
 					cmd := fmt.Sprintf("iptables-nft -t mangle -A FIREWALL_MANGLE%s -j MARK --set-mark %d", flags, *rule.Fwmark)
 					if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
 						log.Printf("firewall: mangle MARK %q: %v", rule.Name, err)
@@ -1088,6 +1097,11 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 				}
 			}
 		}
+	}
+	// PBR first-match semantics: once a mark is set, stop processing so that
+	// subsequent (more general) PBR rules cannot override it.
+	if isPBR {
+		util.Exec("iptables-nft -t mangle -A FIREWALL_MANGLE -m mark ! --mark 0 -j RETURN", 10*time.Second, true) //nolint
 	}
 	return nil
 }
@@ -1156,6 +1170,11 @@ func (m *Manager) applyRuleKernelSubchain(rule *Rule, combos []portCombo, srcPar
 			util.Exec(cmd, 10*time.Second, true) //nolint
 		}
 	}
+	// PBR first-match semantics: once a mark is set, stop processing so that
+	// subsequent (more general) PBR rules cannot override it.
+	if isPBR {
+		util.Exec("iptables-nft -t mangle -A FIREWALL_MANGLE -m mark ! --mark 0 -j RETURN", 10*time.Second, true) //nolint
+	}
 	return nil
 }
 
@@ -1190,12 +1209,17 @@ func (m *Manager) applyRoutingForRule(rule *Rule) error {
 
 	fwmark := *rule.Fwmark
 
-	// ip route replace default via <gw> dev <iface> onlink table <fwmark>
-	// "onlink" bypasses the kernel's reachability check for the next-hop IP.
-	// Required when the gateway IP is not in the same subnet as the interface
-	// (e.g. a remote KZ server reachable via ens3, or a WireGuard peer whose
-	// address lives in a different /24 than the local interface address).
-	cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	// WireGuard/AmneziaWG interfaces are point-to-point — the kernel rejects
+	// "via <ip> onlink" with "Nexthop has invalid gateway". Route via dev only.
+	// For regular interfaces (ens*, eth*) keep "via <ip> onlink" so the kernel
+	// knows which next-hop to use when multiple routes exist in the table.
+	isWG := strings.HasPrefix(gw.iface, "wg") || strings.HasPrefix(gw.iface, "awg")
+	var cmd string
+	if isWG || gw.gatewayIP == "" {
+		cmd = fmt.Sprintf("ip route replace default dev %s table %d", gw.iface, fwmark)
+	} else {
+		cmd = fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	}
 	if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
 		return fmt.Errorf("ip route replace: %w", err)
 	}
@@ -1443,6 +1467,9 @@ func (m *Manager) buildMatchParts(dir string, ep *Endpoint) ([]string, error) {
 	}
 
 	if ep.Type == "cidr" {
+		if err := validateCIDROrIP(ep.Value); err != nil {
+			return nil, fmt.Errorf("buildMatchParts cidr: %w", err)
+		}
 		return []string{fmt.Sprintf("%s%s %s", invert, flag, ep.Value)}, nil
 	}
 
@@ -1743,7 +1770,9 @@ func (m *Manager) matchEndpoint(ep *Endpoint, ip string) (bool, error) {
 func (m *Manager) matchAlias(aliasID, ip string) (bool, error) {
 	spec, err := m.am.GetMatchSpec(aliasID)
 	if err != nil || spec == nil {
-		return false, nil
+		// Return an error so the caller skips Invert logic — otherwise a missing
+		// alias with Invert=true would produce !false=true (spurious match).
+		return false, fmt.Errorf("alias %s not found", aliasID)
 	}
 	if spec.Type == "ipset" {
 		return m.ipsetTest(spec.Name, ip), nil
@@ -1938,13 +1967,36 @@ func validateInput(inp RuleInput) error {
 			return fmt.Errorf("protocol must be any, tcp, udp, tcp/udp, or icmp")
 		}
 	}
-	if inp.Source.Type == "cidr" && strings.TrimSpace(inp.Source.Value) == "" {
-		return fmt.Errorf("source CIDR value is required")
+	if inp.Source.Type == "cidr" {
+		if strings.TrimSpace(inp.Source.Value) == "" {
+			return fmt.Errorf("source CIDR value is required")
+		}
+		if err := validateCIDROrIP(inp.Source.Value); err != nil {
+			return fmt.Errorf("source: %w", err)
+		}
 	}
-	if inp.Destination.Type == "cidr" && strings.TrimSpace(inp.Destination.Value) == "" {
-		return fmt.Errorf("destination CIDR value is required")
+	if inp.Destination.Type == "cidr" {
+		if strings.TrimSpace(inp.Destination.Value) == "" {
+			return fmt.Errorf("destination CIDR value is required")
+		}
+		if err := validateCIDROrIP(inp.Destination.Value); err != nil {
+			return fmt.Errorf("destination: %w", err)
+		}
 	}
 	return nil
+}
+
+// validateCIDROrIP rejects any value that is not a valid IP address or CIDR notation.
+// This prevents command injection when the value is interpolated into iptables commands.
+func validateCIDROrIP(s string) error {
+	s = strings.TrimSpace(s)
+	if net.ParseIP(s) != nil {
+		return nil
+	}
+	if _, _, err := net.ParseCIDR(s); err == nil {
+		return nil
+	}
+	return fmt.Errorf("invalid IP/CIDR value %q", s)
 }
 
 // normalizeEndpoint sanitises and fills defaults for an endpoint.

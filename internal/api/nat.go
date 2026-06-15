@@ -33,6 +33,42 @@ func RegisterNat(api fiber.Router) {
 	g.Delete("/dnat/:id", deleteDnatRule)
 }
 
+// ifaceWithLabel is the JSON shape returned by all interface-list endpoints.
+// Label is the human-readable name shown in dropdowns: for WG/AWG interfaces
+// it is "<id> <tunnel-name>" (e.g. "wg10-s2s Finland"), for everything else
+// it equals Name.
+type ifaceWithLabel struct {
+	Name      string `json:"name"`
+	Label     string `json:"label"`
+	Operstate string `json:"operstate,omitempty"`
+}
+
+// enrichIfaceLabels builds a slice of ifaceWithLabel from raw interface names,
+// annotating WG/AWG tunnel interfaces with their human-readable tunnel name.
+func enrichIfaceLabels(names []string, operByName map[string]string) []ifaceWithLabel {
+	nameByID := make(map[string]string)
+	if tm := tunnel.Get(); tm != nil {
+		for _, t := range tm.GetAllInterfaces() {
+			if t.Name != "" && t.Name != t.ID {
+				nameByID[t.ID] = t.Name
+			}
+		}
+	}
+	result := make([]ifaceWithLabel, 0, len(names))
+	for _, n := range names {
+		label := n
+		if tn, ok := nameByID[n]; ok {
+			label = n + " " + tn
+		}
+		result = append(result, ifaceWithLabel{
+			Name:      n,
+			Label:     label,
+			Operstate: operByName[n],
+		})
+	}
+	return result
+}
+
 // GET /api/nat/interfaces
 // Returns host network interfaces for the outInterface dropdown in the UI.
 // Wrapped as { interfaces: [...] } because the frontend does `res.interfaces || []`.
@@ -41,7 +77,11 @@ func getNatInterfaces(c *fiber.Ctx) error {
 	if err != nil || ifaces == nil {
 		ifaces = []nat.HostInterface{}
 	}
-	return c.JSON(fiber.Map{"interfaces": ifaces})
+	names := make([]string, len(ifaces))
+	for i, iface := range ifaces {
+		names[i] = iface.Name
+	}
+	return c.JSON(fiber.Map{"interfaces": enrichIfaceLabels(names, nil)})
 }
 
 // GET /api/nat/rules

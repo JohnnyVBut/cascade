@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JohnnyVBut/cascade/internal/remoteclient"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
@@ -325,8 +326,10 @@ func (m *Monitor) probeHTTP(gw Gateway, state *monitorState) {
 	var httpCode *int
 
 	// Use native Go HTTP client with TLS verification disabled (monitoring probe).
+	// SafeDialContext blocks SSRF to RFC1918/loopback/link-local targets.
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402
+		DialContext:     remoteclient.SafeDialContext,
 	}
 	client := &http.Client{Timeout: timeoutDur, Transport: transport}
 

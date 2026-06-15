@@ -278,6 +278,41 @@ func TestSimulateTrace_InvertedCIDRSource(t *testing.T) {
 	}
 }
 
+func TestSimulateTrace_SeparatorSkipped(t *testing.T) {
+	m, _ := initTestDB(t)
+
+	// Separator with empty src/dst — must NOT match any traffic.
+	sep := Rule{
+		ID: "sep1", RuleType: "separator", Name: "Group header", Enabled: true, Order: 1,
+		Interface: "any", Protocol: "any",
+		Source: Endpoint{}, Destination: Endpoint{},
+		Action:    "accept",
+		CreatedAt: "2026-01-01T00:00:00Z",
+	}
+	insertRule(sep)
+
+	fwmark := 42
+	real := Rule{
+		ID: "r1", Name: "Real rule", Enabled: true, Order: 2,
+		Interface: "any", Protocol: "any",
+		Source:      Endpoint{Type: "cidr", Value: "10.0.0.0/8"},
+		Destination: Endpoint{Type: "any"},
+		Action:      "accept",
+		Fwmark:      &fwmark,
+		GatewayID:   "gw1",
+		CreatedAt:   "2026-01-01T00:00:00Z",
+	}
+	insertRule(real)
+
+	result, _ := m.SimulateTrace("10.0.0.1", "8.8.8.8")
+	if result.MatchedRule == nil {
+		t.Fatal("expected real rule to match")
+	}
+	if result.MatchedRule.ID != "r1" {
+		t.Errorf("expected rule r1, got %s", result.MatchedRule.ID)
+	}
+}
+
 // ── GetRules CRUD ─────────────────────────────────────────────────────────────
 
 func TestGetRules_EmptyOnFreshDB(t *testing.T) {

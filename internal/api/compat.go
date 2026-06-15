@@ -92,12 +92,17 @@ func RegisterCompatAuth(r fiber.Router) {
 
 	// GET /api/system/interfaces — host network interfaces for the gateway form.
 	// Reuses the same ip-link-show parser from the NAT manager.
+	// WG/AWG interfaces are enriched with tunnel name label (see enrichIfaceLabels).
 	// Returns { interfaces: [...] } because the frontend does `res.interfaces || []`.
 	r.Get("/system/interfaces", func(c *fiber.Ctx) error {
 		ifaces, err := nat.Get().GetNetworkInterfaces()
 		if err != nil || ifaces == nil {
 			ifaces = []nat.HostInterface{}
 		}
-		return c.JSON(fiber.Map{"interfaces": ifaces})
+		names := make([]string, len(ifaces))
+		for i, iface := range ifaces {
+			names[i] = iface.Name
+		}
+		return c.JSON(fiber.Map{"interfaces": enrichIfaceLabels(names, nil)})
 	})
 }

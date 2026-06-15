@@ -152,6 +152,8 @@ new Vue({
       { id: '_header_firewall', label: 'Firewall', type: 'header' },
       { id: 'firewall-aliases', label: 'Aliases' },
       { id: 'firewall',         label: 'Rules' },
+      { id: 'diagnostics',      label: 'Diagnostics' },
+      { id: 'remotes',          label: 'Remotes' },
       { id: 'settings',         label: 'Settings' },
       { id: 'administration',   label: 'Administration' },
     ],
@@ -169,8 +171,27 @@ new Vue({
       { type: 'peers',          label: 'Peers',           icon: '🔗' },
       { type: 'nat',            label: 'NAT',             icon: '🔀' },
       { type: 'traffic',        label: 'Traffic',         icon: '📊' },
+      { type: 'monitoring',     label: 'Monitoring',      icon: '📈' },
     ],
     dashPeersState: {},   // per-widget: { [widgetId]: { iface: '', sort: 'name' } }
+
+    // ── Monitoring widget ──────────────────────────────────────────────────────
+    metricsSnapshot: null,          // latest GET /api/metrics response
+    metricsAvailableKeys: [],       // all keys (populated on first snapshot)
+    metricsHistory: {},             // { [widgetId+key]: [{x,y}] } rolling buffer
+    metricsGatewayDist: {},         // { [widgetId+key]: [[ts_ms, healthy, degraded, down, adminDown]] }
+    metricsGatewaySeriesCache: {},  // { [widgetId+key]: [series] } — stable refs so ApexCharts skips re-render
+    metricsPoller: null,            // setInterval handle
+    metricsConfigWidget: null,      // widget being configured (modal open)
+    metricsConfigPage: 'dashboard', // page the config modal was opened from
+    metricsConfigDraft: [],         // draft graphs[] for config modal
+    metricsColorDraft: {},          // { [key]: '#rrggbb' } for config modal
+    metricsTitleDraft: '',          // draft widget title for config modal
+    metricsWidgetPeriod: {},        // { [widgetId]: '5m'|'1h'|... }
+
+    // ── Diagnostics page ──────────────────────────────────────────────────────
+    diagWidgets: [],
+    diagGrid: null,
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -328,6 +349,43 @@ new Vue({
     gateways: [],
     gatewayGroups: [],
     systemInterfaces: [],
+
+    // ── Remote servers ──────────────────────────────────────────────────────
+    remotes: [],
+    activeRemoteId: null,   // null = local server; string = remote id
+    localServerName: '',    // name of the local server, set once on login and never overwritten by remote settings
+    showRemoteAdd: false,
+    remoteAddForm: { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '', skipTlsVerify: false },
+    remoteAddError: '',
+    remoteAddLoading: false,
+    remoteAddNeedsTOTP: false,
+    remoteTesting: {},   // { [id]: true } while test is in progress
+    remoteTestResult: {}, // { [id]: 'ok' | 'error' }
+
+    // ── Speed test ────────────────────────────────────────────────────────────
+    showSpeedtest: false,
+    speedtest: {
+      fromId: '__local__',
+      toId: '__local__',
+      via: 'auto',      // 'auto' | 'internet' | 'tunnel'
+      tunnelIp: '',     // manual override when via='tunnel'
+      duration: 10,
+      streams: 4,
+    },
+    speedtestDetectedTunnelIp: '',
+    speedtestFromIfaces: [],   // active interfaces on "from" server (manual mode)
+    speedtestToIfaces: [],     // active interfaces on "to" server (manual mode)
+    speedtestFromIfaceId: '',  // selected interface id on "from" (manual mode)
+    speedtestToIfaceId: '',    // selected interface id on "to" (manual mode, bind addr for iperf3 client)
+    speedtestPingConfirm: false,     // show ping-failed confirmation
+    speedtestPingConfirmMsg: '',     // message shown in confirmation
+    speedtestPendingHost: '',        // host waiting for confirmation
+    speedtestPendingVia: '',
+    speedtestRunning: false,
+    speedtestResult: null,
+    speedtestError: '',
+    speedtestHistory: [],
+
     showGatewayCreate: false,
     showGatewayEdit:   false,
     showGroupCreate:   false,
@@ -389,6 +447,19 @@ new Vue({
       metric: '',
       table: 'main',
     },
+    showRouteEdit: false,
+    routeEdit: {
+      id: '',
+      description: '',
+      destination: '',
+      viaMode: 'manual',
+      gateway: '',
+      dev: '',
+      gatewayId: '',
+      gatewayGroupId: '',
+      metric: '',
+      table: 'main',
+    },
 
     // NAT page
     activeNatTab: 'outbound',     // 'outbound' | 'portforward'
@@ -443,6 +514,8 @@ new Vue({
       genAsn: '',
       genAsnList: '',
       file: null,               // optional CIDR file for ipset (uploaded immediately after create)
+      rateDown: 0,              // kbps; 0 = unlimited (client-group only)
+      rateUp: 0,
     },
     aliasEdit: {
       id: null,
@@ -458,6 +531,8 @@ new Vue({
       genCountry: '',
       genAsn: '',
       genAsnList: '',
+      rateDown: 0,              // kbps; 0 = unlimited (client-group only)
+      rateUp: 0,
     },
     // Country picker combobox state (shared — only one modal open at a time)
     countrySearch: '',          // text in the filter input
@@ -471,6 +546,7 @@ new Vue({
     showBackupModal: false,     // password prompt for backup download
     backupPassword: '',
     backupPasswordConfirm: '',
+    backupIncludeMetrics: false,
     backupDownloading: false,
     showRestorePasswordModal: false, // password prompt for encrypted restore
     restorePassword: '',
@@ -842,6 +918,7 @@ new Vue({
       this.loadClientGroups();
       this.loadUsers();
       this.loadCurrentUser();
+      this.loadRemotes();
       // Re-load dashboard after login: loadDashboard() in mounted() ran before
       // the dashboard DOM existed (authenticated=false → v-if removed the div),
       // so dashInitGrid() silently returned without initialising GridStack.
@@ -954,6 +1031,15 @@ new Vue({
       // FIX: destroy GridStack when leaving dashboard — clears ResizeObserver,
       // inline styles and CSS vars it set on parent elements (which caused a
       // vertical gap on the interfaces page after visiting dashboard).
+      if (this.activePage === 'diagnostics' && pageId !== 'diagnostics' && this.diagGrid) {
+        // Clear inline styles GridStack sets on .grid-stack-item-content before destroy(false).
+        // destroy(false) cleans up .grid-stack-item but NOT content children — those keep
+        // height/overflow styles, and Vue reuses the DOM nodes for the next page's elements.
+        document.querySelectorAll('.diag-grid .grid-stack-item-content').forEach(el => { el.style.cssText = ''; });
+        this.diagGrid.destroy(false);
+        this.diagGrid = null;
+        this.metricsStopPoller();
+      }
       if (this.activePage === 'dashboard' && pageId !== 'dashboard' && this.dashGrid) {
         // destroy(false) — remove GridStack listeners/styles but keep DOM nodes
         // so that Vue's v-if can cleanly remove the subtree without conflict.
@@ -961,20 +1047,37 @@ new Vue({
         // Vue's vdom from the real DOM (visible as blank dashboard on return).
         this.dashGrid.destroy(false);
         this.dashGrid = null;
+        this.metricsStopPoller();
       }
       if (this._dashResizeObs) {
         this._dashResizeObs.disconnect();
         this._dashResizeObs = null;
       }
       this.activePage = pageId;
+      // Reset scroll and any GridStack inline styles AFTER Vue updates the DOM.
+      this.$nextTick(() => {
+        const mainEl = document.querySelector('.app-main');
+        if (mainEl) {
+          mainEl.scrollTop = 0;
+          mainEl.style.overflow = '';
+          mainEl.style.overflowY = '';
+          mainEl.style.height = '';
+        }
+      });
       if (pageId === 'dashboard') {
         // loadDashboard already calls dashInitGrid after await $nextTick —
         // do not call it separately here to avoid a double-init race.
         this.loadDashboard();
         this.loadSystemInfo();
+        this.metricsStartPoller();
+      }
+      if (pageId === 'diagnostics') {
+        this.loadDiagnostics();
+        this.metricsStartPoller();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
       if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
+      if (pageId === 'remotes') this.loadRemotes();
       if (pageId === 'gateways') {
         this.loadGateways();
         this.loadGatewayGroups();
@@ -987,6 +1090,7 @@ new Vue({
         this.loadStaticRoutes();
         if (!this.gateways.length) this.loadGateways();
         if (!this.gatewayGroups.length) this.loadGatewayGroups();
+        if (!this.natInterfaces.length) this.loadNatInterfaces();
       }
       if (pageId === 'nat') {
         this.loadNatInterfaces();
@@ -1012,9 +1116,7 @@ new Vue({
 
     async loadTunnelInterfaces() {
       try {
-        const res = await fetch('./api/tunnel-interfaces', { credentials: 'include' });
-        if (!res.ok) throw new Error(res.statusText);
-        const data = await res.json();
+        const data = await this.api.getTunnelInterfaces();
         this.tunnelInterfaces = data.interfaces || [];
       } catch (err) {
         console.error('Failed to load tunnel interfaces:', err);
@@ -1054,19 +1156,7 @@ new Vue({
           payload.settings = this.interfaceCreate.settings;
         }
 
-        const res = await fetch('./api/tunnel-interfaces', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || res.statusText);
-        }
-
-        const newIface = await res.json();
+        const newIface = await this.api.createTunnelInterface(payload);
         this.showInterfaceCreate = false;
         this._resetInterfaceCreate();
 
@@ -1096,19 +1186,7 @@ new Vue({
           body.name = trimmedName;
         }
 
-        const res = await fetch('./api/tunnel-interfaces/quick-create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        });
-
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}));
-          throw new Error(error.message || res.statusText);
-        }
-
-        const data = await res.json();
+        const data = await this.api.call({ method: 'post', path: '/tunnel-interfaces/quick-create', body });
         this.showInterfaceCreate = false;
         this._resetInterfaceCreate();
         await this.loadTunnelInterfaces();
@@ -1236,17 +1314,7 @@ new Vue({
     // by generating a random profile via the /templates/generate endpoint.
     async generateAndFillInterfaceParams() {
       try {
-        const res = await fetch('./api/templates/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ profile: 'random', intensity: 'medium' }),
-        });
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}));
-          throw new Error(error.message || res.statusText);
-        }
-        const { params } = await res.json();
+        const { params } = await this.api.generateTemplate({ profile: 'random', intensity: 'medium' });
         // Merge generated params into interfaceCreate.settings.
         Object.assign(this.interfaceCreate.settings, {
           jc:   params.jc   ?? this.interfaceCreate.settings.jc,
@@ -1570,15 +1638,7 @@ new Vue({
 
     async downloadPeerConfig(peer) {
       try {
-        const segs = window.location.pathname.split('/').filter(Boolean);
-        const apiBase = segs.length > 0
-          ? `${window.location.origin}/${segs[0]}/api`
-          : `${window.location.origin}/api`;
-        const res = await fetch(`${apiBase}/tunnel-interfaces/${this._peerIfaceId(peer)}/peers/${peer.id}/config`, {
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error(res.statusText);
-        const config = await res.text();
+        const config = await this.api.getPeerConfig({ interfaceId: this._peerIfaceId(peer), peerId: peer.id });
         const blob = new Blob([config], { type: 'text/plain' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1845,6 +1905,411 @@ new Vue({
       }
     },
 
+    // ── Remote servers ────────────────────────────────────────────────────────
+
+    async loadRemotes() {
+      if (!this.authenticated) return;
+      try {
+        const res = await this.api.getRemotes();
+        this.remotes = res.remotes || [];
+      } catch (err) {
+        this.showToast(`Failed to load remotes: ${err.message}`, 'error');
+      }
+    },
+
+    async switchToRemote(remote) {
+      this.api.setRemote(remote.id);
+      this.activeRemoteId = remote.id;
+      // Reset current page data so stale local data isn't shown.
+      this.tunnelInterfaces = [];
+      this.allPeers = [];
+      this.gateways = [];
+      this.natRules = [];
+      this.dnatRules = [];
+      this.natInterfaces = [];
+      this.staticRoutes = [];
+      this.kernelRoutes = [];
+      this.firewallRules = [];
+      this.aliases = [];
+      this.switchPage('dashboard');
+      try {
+        await Promise.all([this.loadTunnelInterfaces(), this.loadSettings()]);
+      } catch (err) {
+        this.showToast(`Failed to connect to ${remote.name}: ${err.message}`, 'error');
+        this.switchToLocal();
+      }
+    },
+
+    switchToLocal() {
+      this.api.clearRemote();
+      this.activeRemoteId = null;
+      this.tunnelInterfaces = [];
+      this.allPeers = [];
+      this.gateways = [];
+      this.natRules = [];
+      this.dnatRules = [];
+      this.natInterfaces = [];
+      this.staticRoutes = [];
+      this.kernelRoutes = [];
+      this.firewallRules = [];
+      this.aliases = [];
+      this.switchPage('dashboard');
+      // Must reload interfaces explicitly: refreshAllPeers() iterates
+      // tunnelInterfaces, so it returns nothing until they are populated.
+      this.loadTunnelInterfaces();
+      this.loadSettings();
+    },
+
+    async addRemote() {
+      this.remoteAddError = '';
+      this.remoteAddLoading = true;
+      try {
+        const res = await this.api.addRemote(this.remoteAddForm);
+        // Server returned totp_required: true — show TOTP step.
+        if (res && res.totp_required) {
+          this.remoteAddNeedsTOTP = true;
+          this.remoteAddForm.totpCode = '';
+          return;
+        }
+        this.remotes.push(res.remote);
+        this.showRemoteAdd = false;
+        this.remoteAddForm = { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' };
+        this.remoteAddNeedsTOTP = false;
+        this.showToast('Remote server added', 'success');
+      } catch (err) {
+        this.remoteAddError = err.message;
+      } finally {
+        this.remoteAddLoading = false;
+      }
+    },
+
+    async deleteRemote(remote) {
+      if (!confirm(`Remove remote server "${remote.name}"?`)) return;
+      try {
+        await this.api.deleteRemote({ id: remote.id });
+        this.remotes = this.remotes.filter(r => r.id !== remote.id);
+        this.showToast('Remote server removed', 'success');
+      } catch (err) {
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    async testRemote(remote) {
+      this.$set(this.remoteTesting, remote.id, true);
+      this.$set(this.remoteTestResult, remote.id, null);
+      try {
+        await this.api.testRemote({ id: remote.id });
+        this.$set(this.remoteTestResult, remote.id, 'ok');
+      } catch (err) {
+        this.$set(this.remoteTestResult, remote.id, 'error');
+      } finally {
+        this.$set(this.remoteTesting, remote.id, false);
+      }
+    },
+
+    // ── Speed test ────────────────────────────────────────────────────────────
+
+    openSpeedtest() {
+      this.speedtestResult = null;
+      this.speedtestError = '';
+      this.speedtest.fromId = this.activeRemoteId || '__local__';
+      this.speedtest.toId = this.remotes.length > 0 ? this.remotes[0].id : '__local__';
+      this.speedtest.via = 'auto';
+      this.speedtest.tunnelIp = '';
+      this.speedtestDetectedTunnelIp = '';
+      this.speedtestFromIfaces = [];
+      this.speedtestToIfaces = [];
+      this.speedtestFromIfaceId = '';
+      this.speedtestToIfaceId = '';
+      this.showSpeedtest = true;
+      this.loadSpeedtestHistory();
+      this.onSpeedtestServersChange();
+    },
+
+    async onSpeedtestServersChange() {
+      this.speedtestDetectedTunnelIp = '';
+      this.speedtestFromIfaces = [];
+      this.speedtestToIfaces = [];
+      this.speedtestFromIfaceId = '';
+      this.speedtestToIfaceId = '';
+      this.speedtestError = '';
+      if (this.speedtest.fromId === this.speedtest.toId) return;
+      try {
+        const [ip, fromIfaces, toIfaces] = await Promise.all([
+          this._findTunnelIP(this.speedtest.fromId, this.speedtest.toId),
+          this._getIfacesFor(this.speedtest.fromId),
+          this._getIfacesFor(this.speedtest.toId),
+        ]);
+        this.speedtestDetectedTunnelIp = ip || '';
+        this.speedtestFromIfaces = fromIfaces;
+        this.speedtestToIfaces = toIfaces;
+        if (fromIfaces.length) this.speedtestFromIfaceId = fromIfaces[0].id;
+        if (toIfaces.length) this.speedtestToIfaceId = toIfaces[0].id;
+      } catch (e) {
+        this.speedtestError = 'Failed to load interfaces: ' + (e.message || e);
+      }
+    },
+
+    _speedtestServerName(id) {
+      if (id === '__local__') return this.localServerName || this.pageTitle || 'Local';
+      const r = this.remotes.find(r => r.id === id);
+      return r ? r.name : id;
+    },
+
+    _speedtestPublicHost(fromId) {
+      if (fromId === '__local__') {
+        return this.globalSettings.resolvedPublicIP || this.globalSettings.publicIP || '';
+      }
+      const remote = this.remotes.find(r => r.id === fromId);
+      if (!remote) return '';
+      try { return new URL(remote.url).hostname; } catch (_) { return ''; }
+    },
+
+    // _ipInCIDR returns true if ip (string) falls within cidr (string), excluding /0.
+    _ipInCIDR(ip, cidr) {
+      const parts = ip.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(p => isNaN(p))) return false;
+      const ip32 = (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
+      const n = this._cidrNetwork(cidr);
+      if (!n || n.prefix === 0) return false; // exclude default route
+      return ((ip32 & n.mask) >>> 0) === n.net;
+    },
+
+    // _cidrNetwork returns the network address and prefix length for a CIDR string.
+    _cidrNetwork(cidr) {
+      const [addr, bits] = cidr.split('/');
+      if (!addr || bits === undefined) return null;
+      const prefix = parseInt(bits, 10);
+      if (isNaN(prefix)) return null;
+      const parts = addr.split('.').map(Number);
+      if (parts.length !== 4 || parts.some(p => isNaN(p))) return null;
+      const ip32 = (parts[0] << 24 | parts[1] << 16 | parts[2] << 8 | parts[3]) >>> 0;
+      const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+      return { net: (ip32 & mask) >>> 0, mask, ip32, prefix };
+    },
+
+    // _sameSubnet returns true if ipA/prefixA and ipB/prefixB share a subnet.
+    _sameSubnet(cidrA, cidrB) {
+      const a = this._cidrNetwork(cidrA);
+      const b = this._cidrNetwork(cidrB);
+      if (!a || !b) return false;
+      const mask = Math.min(a.prefix, b.prefix) === 0 ? 0
+        : (0xffffffff << (32 - Math.min(a.prefix, b.prefix))) >>> 0;
+      return ((a.ip32 & mask) >>> 0) === ((b.ip32 & mask) >>> 0);
+    },
+
+    // _getIfacesFor loads active tunnel interfaces from a server (local or remote).
+    async _getIfacesFor(serverId) {
+      const data = serverId === '__local__'
+        ? await this.api.getTunnelInterfaces()
+        : await this.api.remoteCall({ remoteId: serverId, method: 'get', path: '/tunnel-interfaces' });
+      return (data.interfaces || []).filter(i => i.enabled && i.address);
+    },
+
+    // _getPeersFor loads peers for one interface on a server.
+    async _getPeersFor(serverId, ifaceId) {
+      const path = `/tunnel-interfaces/${ifaceId}/peers`;
+      const data = serverId === '__local__'
+        ? await this.api.call({ method: 'get', path })
+        : await this.api.remoteCall({ remoteId: serverId, method: 'get', path });
+      return data.peers || [];
+    },
+
+    // _findTunnelIP finds a common subnet between interfaces on two servers.
+    // If server A has 10.0.1.1/30 and server B has 10.0.1.2/30 — same subnet → S2S.
+    // Returns the "from" interface IP, or null if no match found.
+    async _findTunnelIP(fromId, toId) {
+      try {
+        const [fromIfaces, toIfaces] = await Promise.all([
+          this._getIfacesFor(fromId),
+          this._getIfacesFor(toId),
+        ]);
+        const fromS2S = fromIfaces.filter(i => i.disableRoutes);
+        const toS2S = toIfaces.filter(i => i.disableRoutes);
+        for (const fi of fromS2S) {
+          for (const ti of toS2S) {
+            if (this._sameSubnet(fi.address, ti.address)) {
+              return fi.address.split('/')[0];
+            }
+          }
+        }
+      } catch (_) {}
+      return null;
+    },
+
+    async runSpeedtest() {
+      if (this.speedtestRunning) return;
+      const { fromId, toId, duration, streams } = this.speedtest;
+      if (fromId === toId) {
+        this.speedtestError = 'Source and destination must be different servers.';
+        return;
+      }
+      const host = this._speedtestPublicHost(fromId);
+      if (!host) {
+        this.speedtestError = 'Cannot determine IP address of source server. Set Public IP in Settings.';
+        return;
+      }
+
+      this.speedtestRunning = true;
+      this.speedtestResult = null;
+      this.speedtestError = '';
+      this.speedtestPingConfirm = false;
+
+      try {
+        let resolvedHost = host;
+        let via = 'internet';
+
+        if (this.speedtest.via === 'manual') {
+          const iface = this.speedtestFromIfaces.find(i => i.id === this.speedtestFromIfaceId);
+          if (!iface) {
+            this.speedtestError = 'Select a source interface.';
+            this.speedtestRunning = false;
+            return;
+          }
+          resolvedHost = iface.address.split('/')[0];
+          via = 'manual';
+        } else if (this.speedtest.via === 'tunnel') {
+          const ip = this.speedtest.tunnelIp.trim() || this.speedtestDetectedTunnelIp;
+          if (!ip) {
+            this.speedtestError = 'No S2S tunnel found. Switch to Manual or Internet mode.';
+            this.speedtestRunning = false;
+            return;
+          }
+          resolvedHost = ip;
+          via = 'tunnel';
+        } else if (this.speedtest.via === 'internet') {
+          resolvedHost = host;
+          via = 'internet';
+        } else {
+          // auto
+          const tunnelIP = await this._findTunnelIP(fromId, toId);
+          resolvedHost = tunnelIP || host;
+          via = tunnelIP ? 'tunnel' : 'internet';
+        }
+
+        // Ping check: from server pings the resolved host.
+        // For internet mode warn softly (ICMP may be blocked), others warn harder.
+        if (via !== 'internet') {
+          const fromRemoteId = fromId === '__local__' ? null : fromId;
+          try {
+            const pingRes = await this.api.ping({ host: resolvedHost, count: 3, remoteId: fromRemoteId });
+            if (!pingRes.reachable) {
+              this.speedtestPendingHost = resolvedHost;
+              this.speedtestPendingVia = via;
+              this.speedtestPingConfirmMsg = `${resolvedHost} is not reachable from the source server (ICMP). The speed test may fail.`;
+              this.speedtestPingConfirm = true;
+              this.speedtestRunning = false;
+              return;
+            }
+          } catch (_) { /* ping endpoint unavailable — proceed */ }
+        } else {
+          // Internet mode: soft check
+          const fromRemoteId = fromId === '__local__' ? null : fromId;
+          try {
+            const pingRes = await this.api.ping({ host: resolvedHost, count: 2, remoteId: fromRemoteId });
+            if (!pingRes.reachable) {
+              this.speedtestPendingHost = resolvedHost;
+              this.speedtestPendingVia = via;
+              this.speedtestPingConfirmMsg = `${resolvedHost} does not respond to ICMP — it may be blocked by firewall. The test may still work.`;
+              this.speedtestPingConfirm = true;
+              this.speedtestRunning = false;
+              return;
+            }
+          } catch (_) {}
+        }
+
+        const toIface = this.speedtest.via === 'manual'
+          ? this.speedtestToIfaces.find(i => i.id === this.speedtestToIfaceId)
+          : null;
+        const { jobId } = await this.api.speedtestRun({
+          fromServer: this._speedtestServerName(fromId),
+          toServer: this._speedtestServerName(toId),
+          fromRemoteId: fromId === '__local__' ? '' : fromId,
+          toRemoteId: toId === '__local__' ? '' : toId,
+          host: resolvedHost,
+          bindAddr: toIface ? toIface.address.split('/')[0] : '',
+          via,
+          duration: Number(duration),
+          streams: Number(streams),
+        });
+
+        // Poll until done or error.
+        for (;;) {
+          await new Promise(r => setTimeout(r, 2000));
+          const rec = await this.api.speedtestGetResult(jobId);
+          if (rec.status === 'running') continue;
+          if (rec.status === 'error') {
+            this.speedtestError = rec.error || 'Speed test failed.';
+          } else {
+            this.speedtestResult = rec;
+          }
+          break;
+        }
+      } catch (err) {
+        this.speedtestError = err.message || 'Speed test failed.';
+      } finally {
+        this.speedtestRunning = false;
+        this.loadSpeedtestHistory();
+      }
+    },
+
+    async confirmAndRunSpeedtest() {
+      this.speedtestPingConfirm = false;
+      // Re-enter runSpeedtest but skip ping check by temporarily overriding flag.
+      const { fromId, toId, duration, streams } = this.speedtest;
+      const host = this._speedtestPublicHost(fromId);
+      this.speedtestRunning = true;
+      this.speedtestResult = null;
+      this.speedtestError = '';
+      try {
+        const resolvedHost = this.speedtestPendingHost;
+        const via = this.speedtestPendingVia;
+        const toIface2 = via === 'manual'
+          ? this.speedtestToIfaces.find(i => i.id === this.speedtestToIfaceId)
+          : null;
+        const { jobId } = await this.api.speedtestRun({
+          fromServer: this._speedtestServerName(fromId),
+          toServer: this._speedtestServerName(toId),
+          fromRemoteId: fromId === '__local__' ? '' : fromId,
+          toRemoteId: toId === '__local__' ? '' : toId,
+          host: resolvedHost,
+          bindAddr: toIface2 ? toIface2.address.split('/')[0] : '',
+          via,
+          duration: Number(duration),
+          streams: Number(streams),
+        });
+        for (;;) {
+          await new Promise(r => setTimeout(r, 2000));
+          const rec = await this.api.speedtestGetResult(jobId);
+          if (rec.status === 'running') continue;
+          if (rec.status === 'error') this.speedtestError = rec.error || 'Speed test failed.';
+          else this.speedtestResult = rec;
+          break;
+        }
+      } catch (err) {
+        this.speedtestError = err.message || 'Speed test failed.';
+      } finally {
+        this.speedtestRunning = false;
+        this.loadSpeedtestHistory();
+      }
+    },
+
+    async loadSpeedtestHistory() {
+      try {
+        const { results } = await this.api.speedtestListResults();
+        this.speedtestHistory = results || [];
+      } catch (_) {}
+    },
+
+    async clearSpeedtestHistory() {
+      try {
+        await this.api.speedtestClearResults();
+        this.speedtestHistory = [];
+      } catch (err) {
+        this.showToast(err.message, 'error');
+      }
+    },
+
     // ── Group gateways entry helpers ──────────────────────────────────────────
     addGroupGatewayEntry(form) {
       form.gateways.push({ gatewayId: '', tier: 1, weight: 100 });
@@ -2002,6 +2467,54 @@ new Vue({
       if (route.gatewayGroupId) return 'group';
       if (route.gatewayId) return 'gateway';
       return 'manual';
+    },
+
+    // Helper: determine viaMode from a saved route object
+    _routeViaMode(route) {
+      if (route.gatewayGroupId) return 'group';
+      if (route.gatewayId) return 'gateway';
+      return 'manual';
+    },
+
+    openEditRoute(route) {
+      this.routeEdit = {
+        id:            route.id,
+        description:   route.description || '',
+        destination:   route.destination || '',
+        viaMode:       this._routeViaMode(route),
+        gateway:       route.gateway || '',
+        dev:           route.dev || '',
+        gatewayId:     route.gatewayId || '',
+        gatewayGroupId: route.gatewayGroupId || '',
+        metric:        route.metric != null ? String(route.metric) : '',
+        table:         route.table || 'main',
+      };
+      this.showRouteEdit = true;
+    },
+
+    async saveEditRoute() {
+      try {
+        const data = {
+          description: this.routeEdit.description,
+          destination: this.routeEdit.destination,
+          metric: this.routeEdit.metric !== '' ? Number(this.routeEdit.metric) : null,
+          table: this.routeEdit.table || 'main',
+        };
+        if (this.routeEdit.viaMode === 'gateway') {
+          data.gatewayId = this.routeEdit.gatewayId;
+        } else if (this.routeEdit.viaMode === 'group') {
+          data.gatewayGroupId = this.routeEdit.gatewayGroupId;
+        } else {
+          data.gateway = this.routeEdit.gateway;
+          data.dev = this.routeEdit.dev;
+        }
+        await this.api.updateStaticRoute({ routeId: this.routeEdit.id, data });
+        this.showRouteEdit = false;
+        await this.loadStaticRoutes();
+        this.showToast('Route updated');
+      } catch (err) {
+        this.showToast(err.message || 'Failed to update route', 'error');
+      }
     },
 
     async toggleRoute(id, enabled) {
@@ -2332,6 +2845,19 @@ new Vue({
       if (this.natRules.length === 0) this.loadNatRules();
       if (this.dnatRules.length === 0) this.loadDnatRules();
       if (this.aliases.length === 0) this.loadAliases();
+      // Restore saved periods and load history for monitoring widgets
+      for (const w of this.dashWidgets) {
+        if (w.type !== 'monitoring') continue;
+        // Restore persisted period (saved in w.period field)
+        if (w.period) this.$set(this.metricsWidgetPeriod, w.id, w.period);
+        const period = this.metricsWidgetPeriod[w.id] || '5m';
+        if (period !== '5m') {
+          for (const key of (w.graphs || [])) {
+            if (key.startsWith('gateway:')) this.metricsLoadGatewayDist(w.id, key, period);
+            else this.metricsLoadHistory(w.id, key, period);
+          }
+        }
+      }
       await this.$nextTick();
       this.dashInitGrid();
     },
@@ -2441,11 +2967,12 @@ new Vue({
       const items = grid.save(false);
       const widgets = (items || []).map(item => {
         const existing = this.dashWidgets.find(w => w.id === item.id);
-        return {
+        // Preserve all extra fields (graphs, fontScale, etc.) alongside GridStack geometry
+        return Object.assign({}, existing || {}, {
           id: item.id,
           type: existing ? existing.type : item.id.replace('w-', ''),
           x: item.x, y: item.y, w: item.w, h: item.h,
-        };
+        });
       });
       this.dashWidgets = widgets;
       this.api.putDashboardWidgets(widgets).catch(console.error);
@@ -2507,6 +3034,406 @@ new Vue({
       try {
         this.dashSystemInfo = await this.api.getSystemInfo();
       } catch (e) { /* non-fatal */ }
+    },
+
+    // ── Monitoring widget methods ──────────────────────────────────────────────
+
+    metricsStartPoller() {
+      if (this.metricsPoller) return;
+      this.metricsPoller = setInterval(() => this.metricsTick(), 5000);
+      this.metricsTick();
+      if (this._metricsHistoryPoller) clearInterval(this._metricsHistoryPoller);
+      this._metricsRefreshHistory();
+      this._metricsHistoryPoller = setInterval(() => this._metricsRefreshHistory(), 30000);
+      // Pause poller when tab is hidden, resume (with immediate tick) when visible again
+      if (!this._metricsVisibilityHandler) {
+        this._metricsVisibilityHandler = () => {
+          if (document.hidden) {
+            this.metricsStopPoller();
+          } else {
+            this.metricsStartPoller();
+          }
+        };
+        document.addEventListener('visibilitychange', this._metricsVisibilityHandler);
+      }
+    },
+
+    metricsStopPoller() {
+      if (this.metricsPoller) {
+        clearInterval(this.metricsPoller);
+        this.metricsPoller = null;
+      }
+      if (this._metricsHistoryPoller) {
+        clearInterval(this._metricsHistoryPoller);
+        this._metricsHistoryPoller = null;
+      }
+    },
+
+    async _metricsRefreshHistory() {
+      if (this.metricsConfigWidget) return;
+      const allWidgets = [
+        ...this.dashWidgets.filter(w => w.type === 'monitoring'),
+        ...this.diagWidgets.filter(w => w.type === 'monitoring'),
+      ];
+      for (const w of allWidgets) {
+        const period = this.metricsWidgetPeriod[w.id] || '5m';
+        if (period === '5m') continue;
+        for (const key of (w.graphs || [])) {
+          if (key.startsWith('gateway:')) {
+            await this.metricsLoadGatewayDist(w.id, key, period);
+          } else {
+            await this.metricsLoadHistory(w.id, key, period);
+          }
+        }
+      }
+    },
+
+    async metricsTick() {
+      if (this.metricsConfigWidget) return;
+      try {
+        const snap = await this.api.getMetrics();
+        this.metricsSnapshot = snap;
+
+        // Build available keys list; rebuild static keys on first snapshot,
+        // but always sync gateway keys so newly added/removed gateways appear.
+        if (snap) {
+          if (!this.metricsAvailableKeys.length) {
+            const keys = ['cpu', 'mem'];
+            for (const iface of (snap.interfaces || [])) {
+              keys.push(`net:${iface}:rx`);
+              keys.push(`net:${iface}:tx`);
+            }
+            this.metricsAvailableKeys = keys;
+          }
+          // Gateway keys: add new, remove stale on every tick
+          const gwIds = new Set(Object.keys(snap.gateways || {}));
+          const gwKeys = [...gwIds].map(id => `gateway:${id}`);
+          const withoutGw = this.metricsAvailableKeys.filter(k => !k.startsWith('gateway:'));
+          this.metricsAvailableKeys = [...withoutGw, ...gwKeys];
+        }
+
+        // Append to rolling buffers for realtime (5m) widgets — both dashboard and diagnostics
+        const now = Date.now();
+        const MAX_POINTS = 60;
+        const allMonitoringWidgets = [
+          ...this.dashWidgets.filter(w => w.type === 'monitoring'),
+          ...this.diagWidgets.filter(w => w.type === 'monitoring'),
+        ];
+        for (const w of allMonitoringWidgets) {
+          const period = this.metricsWidgetPeriod[w.id] || '5m';
+          if (period !== '5m') continue;
+          for (const key of (w.graphs || [])) {
+            const val = this.metricsValueFromSnap(snap, key);
+            if (val === null) continue;
+            const bufKey = `${w.id}:${key}`;
+            const prev = this.metricsHistory[bufKey] || [];
+            const buf = [...prev, { x: now, y: Math.round(val * 100) / 100 }];
+            if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
+            this.$set(this.metricsHistory, bufKey, buf);
+            if (key.startsWith('gateway:')) this._updateGatewaySeriesCache(w.id, key);
+          }
+        }
+      } catch (e) { /* non-fatal */ }
+    },
+
+    metricsValueFromSnap(snap, key) {
+      if (!snap) return null;
+      if (key === 'cpu') return snap.cpu ?? null;
+      if (key === 'mem') return snap.mem ?? null;
+      if (key.startsWith('net:')) {
+        const [, iface, dir] = key.split(':');
+        return snap.net?.[iface]?.[dir === 'rx' ? 'rxMbps' : 'txMbps'] ?? null;
+      }
+      if (key.startsWith('gateway:')) {
+        const id = key.slice(8);
+        return snap.gateways?.[id] ?? null;
+      }
+      return null;
+    },
+
+    metricsKeyLabel(key) {
+      if (key === 'cpu') return 'CPU %';
+      if (key === 'mem') return 'RAM %';
+      if (key.startsWith('net:')) {
+        const [, iface, dir] = key.split(':');
+        return `${iface} ${dir.toUpperCase()} Mbps`;
+      }
+      if (key.startsWith('gateway:')) {
+        const id = key.slice(8);
+        const gw = (this.gateways || []).find(g => g.id === id);
+        return gw ? gw.name : id;
+      }
+      return key;
+    },
+
+    // Returns fill color for a gateway status value (3=healthy, 2=degraded, 1=down, 0=admin_down)
+    _gatewayStatusColor(val) {
+      const v = Math.round(val);
+      if (v >= 3) return '#22c55e'; // healthy — green
+      if (v >= 2) return '#eab308'; // degraded — yellow
+      if (v >= 1) return '#ef4444'; // down — red
+      return '#9ca3af';               // admin_down / unknown — gray
+    },
+
+    metricsYAxisTitle(key) {
+      if (key === 'cpu' || key === 'mem') return '%';
+      return 'Mbps';
+    },
+
+    async metricsLoadHistory(widgetId, key, period) {
+      try {
+        const res = await this.api.getMetricsHistory({ key, period });
+        const points = (res.points || []).map(p => ({ x: p[0], y: Math.round(p[1] * 100) / 100 }));
+        this.$set(this.metricsHistory, `${widgetId}:${key}`, points);
+      } catch (e) { /* non-fatal */ }
+    },
+
+    async metricsLoadGatewayDist(widgetId, key, period) {
+      try {
+        const res = await this.api.getMetricsGatewayDist({ key, period });
+        this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, res.buckets || []);
+        this._updateGatewaySeriesCache(widgetId, key);
+      } catch (e) { /* non-fatal */ }
+    },
+
+    metricsGatewayTooltipFormatter(widgetId) {
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      if (period === '5m') {
+        // Each tick is exactly one status — show name, hide zero series
+        return function(v, opts) {
+          if (!v) return undefined; // hide zero-value series from tooltip
+          return opts.w.config.series[opts.seriesIndex].name;
+        };
+      }
+      return function(v) { return v + '%'; };
+    },
+
+    // Returns cached series for gateway bar chart. Stable reference → ApexCharts skips re-render
+    // when data hasn't changed. Cache is updated only in _updateGatewaySeriesCache.
+    metricsGetGatewayStackedSeries(widgetId, key) {
+      return this.metricsGatewaySeriesCache[`${widgetId}:${key}`] || [];
+    },
+
+    // Builds 4 stacked series and stores in cache. Call whenever underlying data changes.
+    _updateGatewaySeriesCache(widgetId, key) {
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      const healthy   = { name: 'Healthy',    data: [] };
+      const degraded  = { name: 'Degraded',   data: [] };
+      const down      = { name: 'Down',       data: [] };
+      const adminDown = { name: 'Admin Down', data: [] };
+
+      if (period === '5m') {
+        const buf = this.metricsHistory[`${widgetId}:${key}`] || [];
+        for (const p of buf) {
+          const v = Math.round(p.y);
+          healthy.data.push(  { x: p.x, y: v >= 3 ? 1 : 0 });
+          degraded.data.push( { x: p.x, y: v === 2 ? 1 : 0 });
+          down.data.push(     { x: p.x, y: v === 1 ? 1 : 0 });
+          adminDown.data.push({ x: p.x, y: v <= 0 ? 1 : 0 });
+        }
+      } else {
+        const dist = this.metricsGatewayDist[`${widgetId}:${key}`] || [];
+        for (const b of dist) {
+          const [ts, h, d, dn, ad] = b;
+          const total = h + d + dn + ad || 1;
+          healthy.data.push(  { x: ts, y: Math.round(h  / total * 100) });
+          degraded.data.push( { x: ts, y: Math.round(d  / total * 100) });
+          down.data.push(     { x: ts, y: Math.round(dn / total * 100) });
+          adminDown.data.push({ x: ts, y: Math.round(ad / total * 100) });
+        }
+      }
+      this.$set(this.metricsGatewaySeriesCache, `${widgetId}:${key}`, [adminDown, down, degraded, healthy]);
+    },
+
+
+    async metricsOnPeriodChange(widgetId, period) {
+      this.$set(this.metricsWidgetPeriod, widgetId, period);
+      const isDiag = this.activePage === 'diagnostics';
+      const list = isDiag ? this.diagWidgets : this.dashWidgets;
+      const idx = list.findIndex(w => w.id === widgetId);
+      if (idx === -1) return;
+      // Persist period into widget layout so it survives page refresh.
+      // Debounced: rapid switching won't fire multiple concurrent PUT requests.
+      const updated = { ...list[idx], period };
+      list.splice(idx, 1, updated);
+      const page = isDiag ? 'diagnostics' : 'dashboard';
+      if (this._metricsPeriodSaveTimer) clearTimeout(this._metricsPeriodSaveTimer);
+      this._metricsPeriodSaveTimer = setTimeout(() => {
+        this.api.putDashboardWidgets(isDiag ? this.diagWidgets : this.dashWidgets, page).catch(console.error);
+      }, 500);
+      const w = updated;
+      // Clear existing buffer so chart doesn't mix realtime and history points
+      for (const key of (w.graphs || [])) {
+        this.$set(this.metricsHistory, `${widgetId}:${key}`, []);
+        this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, []);
+        this.$set(this.metricsGatewaySeriesCache, `${widgetId}:${key}`, []);
+      }
+      if (period === '5m') return; // realtime — poller fills it from next tick
+      for (const key of (w.graphs || [])) {
+        if (key.startsWith('gateway:')) {
+          await this.metricsLoadGatewayDist(widgetId, key, period);
+        } else {
+          await this.metricsLoadHistory(widgetId, key, period);
+        }
+      }
+    },
+
+    metricsGetSeries(widgetId, key) {
+      const data = this.metricsHistory[`${widgetId}:${key}`] || [];
+      if (!key.startsWith('gateway:')) return data;
+      return data.map(p => ({ x: p.x, y: 1 }));
+    },
+
+    // Returns pre-computed per-bar color array for gateway bar charts.
+    // Used with distributed:true so colors[i] maps to bar i directly — no dataPointIndex risk.
+    metricsGatewayColors(widgetId, key) {
+      const data = this.metricsHistory[`${widgetId}:${key}`] || [];
+      return data.map(p => this._gatewayStatusColor(p.y));
+    },
+
+    // Tooltip label for gateway status by index into the raw history buffer.
+    metricsGatewayTooltip(widgetId, key, dataPointIndex) {
+      const data = this.metricsHistory[`${widgetId}:${key}`] || [];
+      const p = data[dataPointIndex];
+      const v = p ? Math.round(p.y) : -1;
+      return ['Admin Down', 'Down', 'Degraded', 'Healthy'][v] || 'Unknown';
+    },
+
+    metricsCloseConfig() {
+      this.metricsConfigWidget = null;
+      this.metricsTick();
+    },
+
+    metricsOpenConfig(widgetId) {
+      // Snapshot the page at open time so Save writes to the correct list
+      // even if the user navigates away while the modal is open.
+      const page = this.activePage === 'diagnostics' ? 'diagnostics' : 'dashboard';
+      const list = page === 'diagnostics' ? this.diagWidgets : this.dashWidgets;
+      const w = list.find(w => w.id === widgetId);
+      if (!w) return;
+      this.metricsConfigWidget = widgetId;
+      this.metricsConfigPage = page;
+      this.metricsConfigDraft = [...(w.graphs || [])];
+      this.metricsColorDraft = Object.assign({}, w.graphColors || {});
+      this.metricsTitleDraft = w.title || '';
+    },
+
+    metricsToggleGraph(key) {
+      const idx = this.metricsConfigDraft.indexOf(key);
+      if (idx === -1) this.metricsConfigDraft.push(key);
+      else this.metricsConfigDraft.splice(idx, 1);
+    },
+
+    async metricsSaveConfig() {
+      const widgetId = this.metricsConfigWidget;
+      const page = this.metricsConfigPage || 'dashboard';
+      const isDiag = page === 'diagnostics';
+      const list = isDiag ? this.diagWidgets : this.dashWidgets;
+      const idx = list.findIndex(w => w.id === widgetId);
+      if (idx === -1) return;
+      const title = this.metricsTitleDraft.trim() || '';
+      const w = { ...list[idx], graphs: [...this.metricsConfigDraft], graphColors: { ...this.metricsColorDraft }, title };
+      list.splice(idx, 1, w);
+      this.metricsCloseConfig();
+      this.api.putDashboardWidgets(isDiag ? this.diagWidgets : this.dashWidgets, page).catch(console.error);
+      // Load history for newly added graphs if not in realtime mode
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      if (period !== '5m') {
+        for (const key of w.graphs) {
+          if (key.startsWith('gateway:')) await this.metricsLoadGatewayDist(widgetId, key, period);
+          else await this.metricsLoadHistory(widgetId, key, period);
+        }
+      }
+    },
+
+    // ── Diagnostics page ─────────────────────────────────────────────────────
+
+    async loadDiagnostics() {
+      // Sequence counter prevents stale concurrent loads from calling diagInitGrid.
+      const seq = (this._diagLoadSeq = (this._diagLoadSeq || 0) + 1);
+      try {
+        const res = await this.api.getDashboardWidgets('diagnostics');
+        const saved = res.widgets || [];
+        this.diagWidgets = saved;
+      } catch (e) {
+        this.diagWidgets = [];
+      }
+      if (seq !== this._diagLoadSeq) return; // superseded by a newer load
+      // Restore persisted periods and pre-load history
+      for (const w of this.diagWidgets) {
+        if (w.period) this.$set(this.metricsWidgetPeriod, w.id, w.period);
+        const period = this.metricsWidgetPeriod[w.id] || '5m';
+        if (period !== '5m') {
+          for (const key of (w.graphs || [])) {
+            if (key.startsWith('gateway:')) this.metricsLoadGatewayDist(w.id, key, period);
+            else this.metricsLoadHistory(w.id, key, period);
+          }
+        }
+      }
+      await this.$nextTick();
+      if (seq !== this._diagLoadSeq) return;
+      this.diagInitGrid();
+    },
+
+    diagInitGrid() {
+      if (this.diagGrid) { this.diagGrid.destroy(false); this.diagGrid = null; }
+      const el = document.querySelector('.diag-grid');
+      if (!el) return;
+      this.diagGrid = GridStack.init({
+        cellHeight: 60,
+        margin: 8,
+        column: 12,
+        animate: true,
+        resizable: { handles: 'se' },
+      }, el);
+      // Sync positions back to diagWidgets on change
+      this.diagGrid.on('change', () => {
+        if (this._diagSaveEnabled) this.diagSaveLayout();
+      });
+      this._diagSaveEnabled = false;
+      setTimeout(() => { this._diagSaveEnabled = true; }, 500);
+    },
+
+    diagSaveLayout() {
+      if (!this.diagGrid) return;
+      const snapshot = this.diagWidgets.slice(); // stable reference against concurrent mutations
+      const items = this.diagGrid.save(false);
+      const widgets = (items || []).map(item => {
+        const existing = snapshot.find(w => w.id === item.id);
+        if (!existing) return null; // widget removed mid-save — skip
+        return Object.assign({}, existing, {
+          x: item.x, y: item.y, w: item.w, h: item.h,
+        });
+      }).filter(Boolean);
+      this.diagWidgets = widgets;
+      this.api.putDashboardWidgets(widgets, 'diagnostics').catch(console.error);
+    },
+
+    diagAddWidget() {
+      const id = 'w-monitoring-' + Date.now();
+      const newW = { id, type: 'monitoring', x: 0, y: 0, w: 6, h: 5, graphs: [], title: '' };
+      this.diagWidgets.push(newW);
+      // Always persist immediately so the widget survives even if grid init failed.
+      this.api.putDashboardWidgets(this.diagWidgets, 'diagnostics').catch(console.error);
+      this.$nextTick(() => {
+        if (!this.diagGrid) return;
+        const el = document.querySelector(`[gs-id="${id}"]`);
+        if (el) {
+          this.diagGrid.makeWidget(el);
+          this.diagSaveLayout();
+        }
+      });
+    },
+
+    diagRemoveWidget(widgetId) {
+      const idx = this.diagWidgets.findIndex(w => w.id === widgetId);
+      if (idx === -1) return;
+      if (this.diagGrid) {
+        const el = document.querySelector(`[gs-id="${widgetId}"]`);
+        if (el) this.diagGrid.removeWidget(el, false);
+      }
+      this.diagWidgets.splice(idx, 1);
+      this.api.putDashboardWidgets(this.diagWidgets, 'diagnostics').catch(console.error);
     },
 
     // Compact elapsed time: "5s", "20m", "3h", "2d"
@@ -2656,7 +3583,7 @@ new Vue({
       this.aliasCreate = {
         name: '', description: '', type: 'network', entries: '', ipsetEntries: '', memberIds: [],
         genSource: 'country', genCountry: '', genAsn: '', genAsnList: '',
-        file: null,
+        file: null, rateDown: 0, rateUp: 0,
       };
     },
 
@@ -2686,6 +3613,10 @@ new Vue({
         }
         if (data.type === 'group' || data.type === 'port-group') {
           data.memberIds = this.aliasCreate.memberIds;
+        }
+        if (data.type === 'client-group') {
+          data.rateDown = this.aliasCreate.rateDown || 0;
+          data.rateUp = this.aliasCreate.rateUp || 0;
         }
         // Сохраняем ipsetEntries, file и genOpts ДО сброса формы
         const ipsetText = this.aliasCreate.ipsetEntries.trim();
@@ -2779,6 +3710,8 @@ new Vue({
         genCountry: alias.generatorOpts?.country || '',
         genAsn: alias.generatorOpts?.asn || '',
         genAsnList: alias.generatorOpts?.asnList || '',
+        rateDown: alias.rateDown || 0,
+        rateUp: alias.rateUp || 0,
       };
       // Pre-fill country picker display if country was saved.
       const code = this.aliasEdit.genCountry;
@@ -2813,6 +3746,10 @@ new Vue({
         }
         if (this.aliasEdit.type === 'group' || this.aliasEdit.type === 'port-group') {
           data.memberIds = this.aliasEdit.memberIds;
+        }
+        if (this.aliasEdit.type === 'client-group') {
+          data.rateDown = this.aliasEdit.rateDown || 0;
+          data.rateUp = this.aliasEdit.rateUp || 0;
         }
         await this.api.updateAlias(data);
 
@@ -2994,7 +3931,7 @@ new Vue({
       }
       try {
         this.backupDownloading = true;
-        const { blob, filename } = await this.api.downloadSystemBackup({ password: this.backupPassword });
+        const { blob, filename } = await this.api.downloadSystemBackup({ password: this.backupPassword, includeMetrics: this.backupIncludeMetrics });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -3836,6 +4773,10 @@ new Vue({
           i18n.locale = this.globalSettings.lang;
           localStorage.setItem('lang', this.globalSettings.lang);
         }
+        // Capture local server name once — never overwrite with remote settings.
+        if (!this.activeRemoteId) {
+          this.localServerName = this.globalSettings.routerName || this.globalSettings.hostname || '';
+        }
         const { templates } = await this.api.getTemplates();
         this.templates = templates;
       } catch (err) {
@@ -4311,16 +5252,28 @@ new Vue({
     // Remove splash screen — Vue is mounted, content is ready
     const splash = document.getElementById('app-splash');
     if (splash) {
-      setTimeout(() => {
-        splash.classList.add('splash-hide');
-        setTimeout(() => { if (splash.parentNode) splash.parentNode.removeChild(splash); }, 400);
-      }, 2000);
+      // Hide immediately — Vue is mounted, content is ready.
+      splash.classList.add('splash-hide');
+      setTimeout(() => { if (splash.parentNode) splash.parentNode.removeChild(splash); }, 400);
     }
 
     this.prefersDarkScheme.addListener(this.handlePrefersChange);
     this.setTheme(this.uiTheme);
 
     this.api = new API();
+
+    // Auto-switch back to local when the remote becomes unreachable.
+    // This fires when a proxy call returns 401 (token revoked/expired) or
+    // 5xx (remote server or network error), preventing a confusing login
+    // window after a remote goes down.
+    this.api._onRemoteError = (status, path) => {
+      if (!this.activeRemoteId) return; // already local, ignore
+      const remoteName = (this.activeRemote && this.activeRemote.name) || 'Remote server';
+      this.switchToLocal();
+      const reason = status === 401 ? 'authentication failed' : `error ${status}`;
+      this.showToast(`${remoteName} disconnected (${reason}). Switched back to local.`, 'error');
+    };
+
     this.api.getSession()
       .then((session) => {
         this.authenticated = session.authenticated;
@@ -4344,8 +5297,11 @@ new Vue({
         // Load users and current user for the Users section in Settings.
         this.loadUsers();
         this.loadCurrentUser();
-        // Load dashboard layout.
+        // Load registered remote servers.
+        this.loadRemotes();
+        // Load dashboard layout + start metrics poller.
         this.loadDashboard();
+        this.metricsStartPoller();
       })
       .catch((err) => {
         this.showToast(err.message || err.toString(), 'error');
@@ -4474,6 +5430,13 @@ new Vue({
         document.title = val;
       },
     },
+    showRemoteAdd(val) {
+      if (!val) {
+        this.remoteAddNeedsTOTP = false;
+        this.remoteAddError = '';
+        this.remoteAddForm = { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' };
+      }
+    },
     activeInterfaceId(newId) {
       if (newId) {
         this.selectedInterface = this.currentInterface;
@@ -4490,6 +5453,17 @@ new Vue({
     // Browser tab title: routerName if set, otherwise hostname, otherwise 'Cascade'.
     pageTitle() {
       return this.globalSettings.routerName || this.globalSettings.hostname || 'Cascade';
+    },
+
+    // The currently active remote record, or null if we're on the local server.
+    activeRemote() {
+      if (!this.activeRemoteId) return null;
+      return this.remotes.find(r => r.id === this.activeRemoteId) || null;
+    },
+
+    // Label shown in the server switcher dropdown.
+    activeServerLabel() {
+      return this.activeRemote ? this.activeRemote.name : (this.localServerName || this.pageTitle || 'Local');
     },
     // MSS clamping mode derived from the sentinel int value in interfaceEdit.mss.
     // Used to drive the select dropdown in Edit Interface modal.

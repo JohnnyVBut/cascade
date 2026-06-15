@@ -28,6 +28,15 @@
     opacity: 0;
     transform: translateX(110%);
   }
+  /* Toast colors — !important to override any ancestor stacking-context bleed */
+  .toast-success {
+    background: rgba(21,128,61,0.92) !important;
+    color: #fff !important;
+  }
+  .toast-error {
+    background: rgba(185,28,28,0.92) !important;
+    color: #fff !important;
+  }
 
   /* ── Reusable layout utilities ───────────────────────────────────── */
 
@@ -56,12 +65,12 @@
   .modal-footer { padding: 16px 24px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 12px; }
 
   /* Dark mode borders for modal sections */
-  .dark .modal-header { border-bottom-color: #525252; }
-  .dark .modal-footer { border-top-color: #525252; }
+  .dark .modal-header { border-bottom-color: rgba(255,255,255,0.08); }
+  .dark .modal-footer { border-top-color: rgba(255,255,255,0.08); }
   .modal-section        { padding: 16px 24px 24px; border-top: 1px solid #e5e7eb; }
-  .dark .modal-section  { border-top-color: #525252; }
+  .dark .modal-section  { border-top-color: rgba(255,255,255,0.08); }
   .modal-footer-compact { padding: 12px 24px 20px; border-top: 1px solid #e5e7eb; display: flex; gap: 8px; justify-content: flex-end; }
-  .dark .modal-footer-compact { border-top-color: #525252; }
+  .dark .modal-footer-compact { border-top-color: rgba(255,255,255,0.08); }
 
   /* Button base padding (combine with Tailwind color classes) */
   .btn { padding: 8px 16px; }
@@ -105,7 +114,13 @@
     border-radius: 12px;
   }
   .dark .dash-card {
-    background: #404040;
+    background: rgba(15,23,42,0.82) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3) !important;
+  }
+  .dark .grid-stack-item-content {
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
   }
   .dash-card-header {
     padding: 12px 16px 8px;
@@ -122,7 +137,7 @@
   }
   .dark .dash-card-header {
     color: #9ca3af;
-    border-bottom-color: #525252;
+    border-bottom-color: rgba(255,255,255,0.07);
   }
   .dash-card-body {
     padding: 12px 16px;
@@ -138,7 +153,7 @@
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: #0f172a;
+    background: linear-gradient(135deg, #14532d 0%, #0f172a 50%, #1e3a8a 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -161,10 +176,119 @@
   @keyframes splash-spin {
     to { transform: rotate(360deg); }
   }
+
+  /* ── Page background — light mode: soft tint of logo palette ── */
+  html, body {
+    background: linear-gradient(135deg, #f0fdf4 0%, #f8fafc 55%, #eff6ff 100%) !important;
+    background-attachment: fixed !important;
+    min-height: 100vh;
+  }
+  /* ── Page background — dark mode: deep logo-gradient ── */
+  html.dark, html.dark body {
+    background: linear-gradient(135deg, #14532d 0%, #0f172a 50%, #1e3a8a 100%) !important;
+  }
+
+  /* ── Sidebar & main area — light mode ── */
+  .app-nav {
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(0,0,0,0.08);
+  }
+  .app-main {
+    background: rgba(255,255,255,0.45);
+    /* no backdrop-filter — it creates a stacking context that traps
+       position:fixed children (toasts), making their background invisible */
+  }
+  /* ── Sidebar & main area — dark mode ── */
+  .dark .app-nav {
+    background: rgba(15,23,42,0.72);
+    backdrop-filter: blur(12px);
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+  .dark .app-main {
+    background: rgba(15,23,42,0.78);
+    /* no backdrop-filter — same reason as light mode */
+  }
+
+  /* ── Light mode: subtle glass panels ── */
+  .shadow-md {
+    background: rgba(255,255,255,0.80) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0,0,0,0.06) !important;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.08) !important;
+  }
+  .shadow-lg {
+    background: rgba(255,255,255,0.88) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0,0,0,0.07) !important;
+  }
+  .dash-card {
+    background: rgba(255,255,255,0.80) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  }
+
+  /* Light mode modals */
+  .modal-panel {
+    background: rgba(255,255,255,0.92) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  .shadow-xl, .shadow-2xl {
+    background: rgba(255,255,255,0.92) !important;
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0,0,0,0.08) !important;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.15) !important;
+  }
+
+  /* ── Dark mode: glassmorphism for all content panels ── */
+  /* Main content panels: peer tables, routing, firewall, NAT, etc. */
+  .dark .shadow-md {
+    background: rgba(15,23,42,0.85) !important;
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255,255,255,0.07) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4) !important;
+  }
+  /* Sub-panels: server info dropdowns, chart wrappers */
+  .dark .shadow-lg {
+    background: rgba(15,23,42,0.88) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.09) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+  }
+  /* Modal dialogs */
+  .dark .modal-panel {
+    background: rgba(10,18,36,0.88) !important;
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  /* First-run & delete confirm modals (shadow-2xl) */
+  .dark .shadow-2xl,
+  .dark .shadow-xl {
+    background: rgba(10,18,36,0.88) !important;
+    backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5) !important;
+  }
+  /* Table header rows inside panels */
+  .dark .shadow-md thead tr,
+  .dark .shadow-md .tc-header {
+    background: rgba(255,255,255,0.04) !important;
+  }
+  /* Alternate row hover */
+  .dark .shadow-md tr:hover {
+    background: rgba(255,255,255,0.04) !important;
+  }
+  /* Inner dividers */
+  .dark .shadow-md [class*="border-b"],
+  .dark .shadow-md [class*="border-t"] {
+    border-color: rgba(255,255,255,0.07) !important;
+  }
 </style>
 </head>
 
-<body class="bg-gray-50 dark:bg-neutral-800">
+<body>
   <!-- Splash screen: hides raw {{ }} templates until Vue mounts -->
   <div id="app-splash">
     <img src="./img/logo.svg" alt="Cascade" style="width:240px; max-width:80vw; opacity:0.95;">
@@ -177,7 +301,6 @@
       <!-- The main UI (sidebar + content) is NOT rendered — no DOM to reach via   -->
       <!-- devtools, no background content accessible behind an overlay.           -->
       <div v-if="authenticated === true && showFirstRunSetup"
-        class="bg-gray-50 dark:bg-neutral-900"
         style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px;">
         <div class="bg-white dark:bg-neutral-800 rounded-xl shadow-2xl"
              role="dialog" aria-modal="true" aria-labelledby="setup-title"
@@ -244,8 +367,8 @@
       <div v-else-if="authenticated === true" class="flex h-screen">
 
         <!-- ==================== Sidebar ==================== -->
-        <nav class="w-64 flex-shrink-0 bg-gray-50 dark:bg-neutral-800 overflow-y-auto flex flex-col"
-             style="border-right: 1px solid #e5e7eb; min-height: 100vh;">
+        <nav class="w-64 flex-shrink-0 overflow-y-auto flex flex-col"
+             class="app-nav" style="min-height: 100vh;">
           <!-- Logo -->
           <div style="padding: 20px 16px 14px;">
             <img :src="theme === 'dark' ? 'img/logo-dark.svg' : 'img/logo.svg'" style="width:216px; height:auto; display:block;" alt="Cascade" />
@@ -324,6 +447,27 @@
               </span>
             </div>
           </div>
+          <!-- Server switcher (visible only when remotes exist) -->
+          <div v-if="remotes.length" style="padding: 8px 16px 12px; border-bottom: 1px solid #e5e7eb;" class="dark:border-neutral-700">
+            <div class="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500" style="margin-bottom:6px;">Server</div>
+            <div style="position:relative;">
+              <select @change="$event.target.value === '__local__' ? switchToLocal() : switchToRemote(remotes.find(r => r.id === $event.target.value))"
+                class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                style="padding:5px 8px; appearance:none; cursor:pointer; width:100%;"
+                :value="activeRemoteId || '__local__'">
+                <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
+                <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
+              </select>
+            </div>
+            <!-- Remote mode indicator -->
+            <div v-if="activeRemoteId"
+              style="margin-top:6px; padding:4px 8px; border-radius:6px; background:#fef9c3; border:1px solid #fde047;">
+              <span style="font-size:0.7rem; color:#854d0e; font-weight:600;">
+                ⚡ Managing remote server
+              </span>
+            </div>
+          </div>
+
           <!-- Menu items -->
           <div style="padding: 0 8px;" class="flex-grow">
             <template v-for="page in sidebarMenu" :key="page.id">
@@ -410,7 +554,7 @@
         </nav>
 
         <!-- ==================== Content Area ==================== -->
-        <main class="flex-grow overflow-y-auto" style="height: 100vh; padding: 24px 32px;">
+        <main class="flex-grow overflow-y-auto app-main" style="height: 100vh; padding: 24px 32px;">
 
         <!-- Firewall pending changes global banner -->
         <div v-if="firewallPending && activePage !== 'firewall'"
@@ -448,7 +592,8 @@
               <!-- Add Widget dropdown -->
               <div style="position:relative;">
                 <button @click="dashShowAddMenu = !dashShowAddMenu"
-                  class="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition">
+                  class="flex items-center gap-2 text-white rounded-lg text-sm font-medium"
+                  style="padding:7px 12px; background:#4f46e5; border:none; cursor:pointer;">
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                   Add Widget
                 </button>
@@ -485,8 +630,23 @@
               <div class="grid-stack-item-content">
                 <div class="dash-card">
                   <div class="dash-card-header">
-                    <span>{{ dashWidgetLabel(w.type) }}</span>
+                    <span>{{ (w.type === 'monitoring' && w.title) ? w.title : dashWidgetLabel(w.type) }}</span>
                     <div style="display:flex; align-items:center; gap:4px;">
+                      <template v-if="w.type === 'monitoring'">
+                        <select :value="metricsWidgetPeriod[w.id]||'5m'" @change="metricsOnPeriodChange(w.id, $event.target.value)"
+                          class="text-xs dark:text-neutral-300 rounded"
+                          style="padding:1px 4px; border:1px solid transparent; cursor:pointer; background:none; opacity:0.7;"
+                          :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
+                          <option value="5m">5m</option>
+                          <option value="1h">1h</option>
+                          <option value="6h">6h</option>
+                          <option value="24h">24h</option>
+                          <option value="7d">7d</option>
+                          <option value="30d">30d</option>
+                        </select>
+                        <button @click="metricsOpenConfig(w.id)" title="Configure graphs"
+                          style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
+                      </template>
                       <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
                         style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
                       <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
@@ -904,6 +1064,54 @@
                       </div>
                     </template>
 
+                    <!-- ── monitoring ── -->
+                    <template v-else-if="w.type === 'monitoring'">
+                      <div v-if="!(w.graphs||[]).length" style="display:flex; align-items:center; justify-content:center; height:60px;">
+                        <span class="text-xs text-gray-400 dark:text-neutral-500">Click ⚙ to add graphs</span>
+                      </div>
+                      <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
+                        <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
+                          :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
+                        <!-- Gateway: stacked bar showing proportional status distribution -->
+                        <apexchart v-if="key.startsWith('gateway:') && !metricsConfigWidget"
+                          type="bar"
+                          height="90"
+                          :options="{
+                            chart: { id: w.id+'_'+key, type:'bar', stacked:true, stackType:'100%', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                            plotOptions: { bar: { columnWidth:'95%', borderRadius:0 } },
+                            colors: ['#9ca3af','#ef4444','#eab308','#22c55e'],
+                            dataLabels: { enabled: false },
+                            legend: { show: false },
+                            xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                            yaxis:  { min:0, max:100, labels:{ show:false } },
+                            grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                            tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: metricsGatewayTooltipFormatter(w.id) }, theme: theme==='dark'?'dark':'light' },
+                            theme:  { mode: theme==='dark'?'dark':'light' },
+                          }"
+                          :series="metricsGetGatewayStackedSeries(w.id, key)"
+                        ></apexchart>
+                        <!-- Area chart for all other metrics -->
+                        <apexchart v-else-if="!metricsConfigWidget"
+                          type="area"
+                          height="90"
+                          :options="{
+                            chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+                            stroke: { curve:'smooth', width:2 },
+                            colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
+                            markers: { size: 0 },
+                            dataLabels: { enabled: false },
+                            fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
+                            xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                            yaxis:  { labels:{ show:true, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
+                            grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                            tooltip:{ x:{ format:'HH:mm:ss' }, theme: theme==='dark'?'dark':'light' },
+                            theme:  { mode: theme==='dark'?'dark':'light' },
+                          }"
+                          :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                        ></apexchart>
+                      </div>
+                    </template>
+
                     <template v-else>
                       <div class="text-sm text-gray-400 dark:text-neutral-500">Unknown widget type: {{ w.type }}</div>
                     </template>
@@ -914,6 +1122,109 @@
             </div>
           </div>
         </div><!-- /activePage === 'dashboard' -->
+
+        <!-- ============================================================== -->
+        <!-- Diagnostics Page                                               -->
+        <!-- ============================================================== -->
+        <div v-if="activePage === 'diagnostics'" style="display:flex; flex-direction:column; gap:16px; padding-bottom:40px;">
+
+          <!-- Header -->
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <h2 class="text-lg font-semibold dark:text-neutral-100">Diagnostics</h2>
+            <button @click="diagAddWidget()"
+              class="text-sm text-white rounded"
+              style="padding:7px 16px; background:#2563eb; border:none; cursor:pointer;">
+              + Add Graph
+            </button>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="!diagWidgets.length"
+            class="text-sm text-gray-400 dark:text-neutral-500"
+            style="padding:60px 0; text-align:center;">
+            No graphs yet — click <strong>+ Add Graph</strong> to create one.
+          </div>
+
+          <!-- GridStack grid -->
+          <div class="grid-stack diag-grid" style="min-height:100px;">
+            <div v-for="w in diagWidgets" :key="w.id"
+              class="grid-stack-item"
+              :gs-id="w.id" :gs-x="w.x" :gs-y="w.y" :gs-w="w.w" :gs-h="w.h">
+              <div class="grid-stack-item-content">
+                <div class="dash-card">
+                  <div class="dash-card-header">
+                    <span>{{ w.title || 'Graph' }}</span>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                      <select :value="metricsWidgetPeriod[w.id]||'5m'" @change="metricsOnPeriodChange(w.id, $event.target.value)"
+                        class="text-xs dark:text-neutral-300 rounded"
+                        style="padding:1px 4px; border:1px solid transparent; cursor:pointer; background:none; opacity:0.7;"
+                        :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
+                        <option value="5m">5m</option>
+                        <option value="1h">1h</option>
+                        <option value="6h">6h</option>
+                        <option value="24h">24h</option>
+                        <option value="7d">7d</option>
+                        <option value="30d">30d</option>
+                      </select>
+                      <button @click="metricsOpenConfig(w.id)" title="Configure graph"
+                        style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
+                      <button @click="diagRemoveWidget(w.id)" title="Remove"
+                        style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit; margin-left:2px;">✕</button>
+                    </div>
+                  </div>
+                  <div class="dash-card-body" :style="{ fontSize: (w.fontScale||1) + 'rem' }">
+                    <!-- No graphs configured -->
+                    <div v-if="!(w.graphs||[]).length" style="display:flex; align-items:center; justify-content:center; height:60px;">
+                      <span class="text-xs text-gray-400 dark:text-neutral-500">Click ⚙ to add metrics</span>
+                    </div>
+                    <!-- Charts -->
+                    <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
+                      <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
+                        :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
+                      <!-- Gateway: stacked bar showing proportional status distribution -->
+                      <apexchart v-if="key.startsWith('gateway:') && !metricsConfigWidget"
+                        type="bar"
+                        height="120"
+                        :options="{
+                          chart: { id: w.id+'_'+key, type:'bar', stacked:true, stackType:'100%', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                          plotOptions: { bar: { columnWidth:'95%', borderRadius:0 } },
+                          colors: ['#9ca3af','#ef4444','#eab308','#22c55e'],
+                          dataLabels: { enabled: false },
+                          legend: { show: false },
+                          xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                          yaxis:  { min:0, max:100, labels:{ show:false } },
+                          grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: metricsGatewayTooltipFormatter(w.id) }, theme: theme==='dark'?'dark':'light' },
+                          theme:  { mode: theme==='dark'?'dark':'light' },
+                        }"
+                        :series="metricsGetGatewayStackedSeries(w.id, key)"
+                      ></apexchart>
+                      <!-- Area chart for all other metrics -->
+                      <apexchart v-else-if="!metricsConfigWidget"
+                        type="area"
+                        height="120"
+                        :options="{
+                          chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+                          colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
+                          stroke: { curve:'smooth', width:2 },
+                          markers: { size: 0 },
+                          dataLabels: { enabled: false },
+                          fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
+                          xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                          yaxis:  { labels:{ show:true, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
+                          grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                          tooltip:{ x:{ format:'HH:mm:ss' }, theme: theme==='dark'?'dark':'light' },
+                          theme:  { mode: theme==='dark'?'dark':'light' },
+                        }"
+                        :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                      ></apexchart>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div><!-- /activePage === 'diagnostics' -->
 
         <!-- ============================================================== -->
         <!-- Administration Page                                            -->
@@ -3211,6 +3522,15 @@
                   </p>
                 </div>
               </div>
+              <div style="padding:0 20px 4px;">
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                  <input type="checkbox" v-model="backupIncludeMetrics" style="width:16px; height:16px; cursor:pointer;">
+                  <span class="text-sm dark:text-neutral-300">Include metrics history</span>
+                </label>
+                <p v-if="backupIncludeMetrics" class="text-xs" style="color:#d97706; margin-top:4px; margin-left:24px;">
+                  ⚠ metrics.db can be large (several hundred MB for 30 days). Use for server migration only.
+                </p>
+              </div>
               <div class="modal-footer dark:border-neutral-600">
                 <button @click="showBackupModal = false"
                   class="bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded-lg font-medium text-sm btn">
@@ -3547,7 +3867,7 @@
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
                     <option value="">— select interface —</option>
                     <option v-for="iface in systemInterfaces" :key="iface.name" :value="iface.name">
-                      {{iface.name}} ({{iface.operstate}})
+                      {{ iface.label || iface.name }}{{ iface.operstate ? ' (' + iface.operstate + ')' : '' }}
                     </option>
                   </select>
                 </div>
@@ -3699,7 +4019,7 @@
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
                     <option value="">— select interface —</option>
                     <option v-for="iface in systemInterfaces" :key="iface.name" :value="iface.name">
-                      {{iface.name}} ({{iface.operstate}})
+                      {{ iface.label || iface.name }}{{ iface.operstate ? ' (' + iface.operstate + ')' : '' }}
                     </option>
                   </select>
                 </div>
@@ -4003,6 +4323,421 @@
         </div><!-- /gateways page -->
 
         <!-- ============================================================== -->
+        <!-- Remotes Page                                                   -->
+        <!-- ============================================================== -->
+        <div v-if="activePage === 'remotes'" style="display:flex; flex-direction:column; gap:24px; padding-bottom:32px;">
+
+          <div class="flex items-center justify-between">
+            <div>
+              <h1 class="text-2xl font-bold dark:text-neutral-200">Remote Servers</h1>
+              <p class="text-sm text-gray-500 dark:text-neutral-400" style="margin-top:4px;">
+                Manage other Cascade instances from this UI. Requests are proxied through this server — credentials never leave the backend.
+              </p>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button @click="openSpeedtest()" :disabled="remotes.length === 0"
+                class="rounded-lg font-medium text-sm btn"
+                :style="remotes.length === 0 ? 'background:#e5e7eb; color:#9ca3af; cursor:not-allowed; padding:8px 16px;' : 'background:#f3f4f6; color:#374151; padding:8px 16px;'">
+                ⚡ Speed Test
+              </button>
+              <button @click="showRemoteAdd = true"
+                class="text-white rounded-lg font-medium text-sm btn"
+                style="background:#2563eb; padding:8px 16px; white-space:nowrap;">
+                + Add Server
+              </button>
+            </div>
+          </div>
+
+          <!-- Empty state -->
+          <div v-if="!remotes.length" class="bg-white dark:bg-neutral-700 rounded-lg text-center"
+            style="border:1px solid #e5e7eb; padding:48px 24px;">
+            <div style="font-size:2rem; margin-bottom:12px;">🌐</div>
+            <p class="text-gray-500 dark:text-neutral-400 text-sm">No remote servers yet.</p>
+            <p class="text-gray-400 dark:text-neutral-500 text-xs" style="margin-top:4px;">Add another Cascade instance to manage it from here.</p>
+          </div>
+
+          <!-- Remotes table -->
+          <div v-else class="bg-white dark:bg-neutral-700 rounded-lg overflow-hidden" style="border:1px solid #e5e7eb;">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="bg-gray-50 dark:bg-neutral-600 text-gray-500 dark:text-neutral-400 text-xs uppercase">
+                  <th class="text-left font-medium tc">Name</th>
+                  <th class="text-left font-medium tc">URL</th>
+                  <th class="text-left font-medium tc">Added</th>
+                  <th class="text-right font-medium tc">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="remote in remotes" :key="remote.id"
+                  class="border-t dark:border-neutral-600"
+                  :style="{ 'border-top-color': theme === 'dark' ? '#525252' : '#f3f4f6' }">
+                  <td class="tc font-medium dark:text-neutral-200">{{ remote.name }}</td>
+                  <td class="tc text-gray-500 dark:text-neutral-400">
+                    <a :href="remote.url" target="_blank" class="hover:underline" style="color:#2563eb;">{{ remote.url }}</a>
+                  </td>
+                  <td class="tc text-gray-500 dark:text-neutral-400 text-xs">{{ remote.createdAt ? new Date(remote.createdAt).toLocaleDateString() : '—' }}</td>
+                  <td class="tc text-right" style="white-space:nowrap;">
+                    <!-- Test button -->
+                    <button @click="testRemote(remote)"
+                      :disabled="remoteTesting[remote.id]"
+                      class="rounded text-xs font-medium"
+                      style="padding:4px 10px; margin-right:6px;"
+                      :style="remoteTesting[remote.id] ? 'background:#e5e7eb; color:#9ca3af; cursor:not-allowed;' :
+                              remoteTestResult[remote.id] === 'ok' ? 'background:#dcfce7; color:#16a34a;' :
+                              remoteTestResult[remote.id] === 'error' ? 'background:#fee2e2; color:#dc2626;' :
+                              'background:#f3f4f6; color:#374151;'">
+                      {{ remoteTesting[remote.id] ? '…' : remoteTestResult[remote.id] === 'ok' ? '✓ OK' : remoteTestResult[remote.id] === 'error' ? '✗ Error' : 'Test' }}
+                    </button>
+                    <!-- Delete button -->
+                    <button @click="deleteRemote(remote)"
+                      class="rounded text-xs font-medium"
+                      style="padding:4px 10px; background:#fee2e2; color:#dc2626;">
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- Speed Test Modal                                               -->
+        <!-- ============================================================== -->
+        <div v-if="showSpeedtest" class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+          style="padding:40px 24px;" @click.self="showSpeedtest = false">
+          <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:480px; margin:0 auto;">
+
+            <div class="flex items-center justify-between" style="padding:20px 24px 0;">
+              <h2 class="text-lg font-semibold dark:text-neutral-200">⚡ Speed Test</h2>
+              <button @click="showSpeedtest = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+            </div>
+
+            <div style="padding:20px 24px;">
+
+              <!-- From / To pickers -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">From (server)</label>
+                  <select v-model="speedtest.fromId" @change="onSpeedtestServersChange()" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
+                    <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">To (server)</label>
+                  <select v-model="speedtest.toId" @change="onSpeedtestServersChange()" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option value="__local__">🏠 {{ localServerName || pageTitle || 'Local' }}</option>
+                    <option v-for="r in remotes" :key="r.id" :value="r.id">🌐 {{ r.name }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Via -->
+              <div style="margin-bottom:16px;">
+                <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:6px;">Via</label>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button v-for="opt in [{v:'auto',l:'Auto'},{v:'internet',l:'🌐 Internet'},{v:'tunnel',l:'🔒 S2S Tunnel'},{v:'manual',l:'⚙️ Manual'}]" :key="opt.v"
+                    @click="speedtest.via = opt.v"
+                    class="text-xs font-medium rounded"
+                    style="padding:5px 12px; border:1px solid;"
+                    :style="speedtest.via === opt.v
+                      ? 'background:#2563eb; color:#fff; border-color:#2563eb;'
+                      : (theme==='dark' ? 'background:#404040; color:#d4d4d4; border-color:#525252;' : 'background:#f9fafb; color:#374151; border-color:#d1d5db;')">
+                    {{ opt.l }}
+                  </button>
+                </div>
+
+                <!-- Auto hint -->
+                <div v-if="speedtest.via === 'auto'" style="font-size:0.75rem; margin-top:4px;"
+                  :style="{ color: speedtestDetectedTunnelIp ? '#16a34a' : '#9ca3af' }">
+                  {{ speedtestDetectedTunnelIp ? '✓ S2S tunnel found — will use ' + speedtestDetectedTunnelIp : 'No S2S tunnel found — will use public IP' }}
+                </div>
+
+                <!-- Tunnel: S2S auto-detected IP with optional override -->
+                <div v-if="speedtest.via === 'tunnel'" style="margin-top:8px;">
+                  <input v-model="speedtest.tunnelIp" type="text"
+                    :placeholder="speedtestDetectedTunnelIp ? 'Auto: ' + speedtestDetectedTunnelIp : 'No S2S detected — enter IP'"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:7px 10px;" />
+                  <div v-if="speedtestDetectedTunnelIp && !speedtest.tunnelIp" style="font-size:0.75rem; color:#16a34a; margin-top:3px;">
+                    ✓ S2S peer found — will use {{ speedtestDetectedTunnelIp }}
+                  </div>
+                  <div v-if="!speedtestDetectedTunnelIp && !speedtest.tunnelIp" style="font-size:0.75rem; color:#f59e0b; margin-top:3px;">
+                    No S2S peer detected between these servers
+                  </div>
+                </div>
+
+                <!-- Manual: interface pickers -->
+                <div v-if="speedtest.via === 'manual'" style="margin-top:8px; display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                  <div>
+                    <label class="text-xs text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">
+                      Source interface (From) — iperf3 server IP
+                    </label>
+                    <select v-model="speedtestFromIfaceId"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:7px 10px;">
+                      <option value="" disabled>Select…</option>
+                      <option v-for="i in speedtestFromIfaces" :key="i.id" :value="i.id">
+                        {{ i.name || i.id }} — {{ i.address }}
+                      </option>
+                    </select>
+                    <div v-if="!speedtestFromIfaces.length" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
+                      No active interfaces
+                    </div>
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">
+                      Destination interface (To) — iperf3 client bind
+                    </label>
+                    <select v-model="speedtestToIfaceId"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:7px 10px;">
+                      <option value="">Any (no bind)</option>
+                      <option v-for="i in speedtestToIfaces" :key="i.id" :value="i.id">
+                        {{ i.name || i.id }} — {{ i.address }}
+                      </option>
+                    </select>
+                    <div v-if="!speedtestToIfaces.length" style="font-size:0.75rem; color:#9ca3af; margin-top:3px;">
+                      No active interfaces
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Duration / Streams -->
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px;">
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">Duration (sec)</label>
+                  <select v-model="speedtest.duration" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option :value="5">5</option>
+                    <option :value="10">10</option>
+                    <option :value="20">20</option>
+                    <option :value="30">30</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-medium text-gray-500 dark:text-neutral-400" style="display:block; margin-bottom:4px;">Parallel streams</label>
+                  <select v-model="speedtest.streams" class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200" style="padding:7px 10px;">
+                    <option :value="1">1</option>
+                    <option :value="4">4</option>
+                    <option :value="8">8</option>
+                    <option :value="16">16</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Error -->
+              <div v-if="speedtestError" style="background:#fee2e2; border-radius:6px; padding:10px 14px; margin-bottom:16px; color:#dc2626; font-size:0.85rem;">
+                {{ speedtestError }}
+              </div>
+
+              <!-- Result -->
+              <div v-if="speedtestResult" style="background:#f0fdf4; border-radius:8px; padding:16px 20px; margin-bottom:16px;">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; text-align:center;">
+                  <div>
+                    <div style="font-size:1.75rem; font-weight:700; color:#16a34a;">{{ speedtestResult.sendMbps.toFixed(1) }}</div>
+                    <div style="font-size:0.75rem; color:#6b7280; margin-top:2px;">Mbps ↑ Upload</div>
+                  </div>
+                  <div>
+                    <div style="font-size:1.75rem; font-weight:700; color:#2563eb;">{{ speedtestResult.recvMbps.toFixed(1) }}</div>
+                    <div style="font-size:0.75rem; color:#6b7280; margin-top:2px;">Mbps ↓ Download</div>
+                  </div>
+                </div>
+                <div style="display:flex; justify-content:center; gap:24px; margin-top:12px; font-size:0.8rem; color:#6b7280;">
+                  <span v-if="speedtestResult.latencyMs">⏱ {{ speedtestResult.latencyMs.toFixed(1) }} ms RTT</span>
+                  <span v-if="speedtestResult.retransmits">↩ {{ speedtestResult.retransmits }} retransmits</span>
+                </div>
+              </div>
+
+              <!-- Progress -->
+              <div v-if="speedtestRunning" style="text-align:center; padding:12px 0; color:#6b7280; font-size:0.875rem;">
+                <span>Running iperf3 ({{ speedtest.duration }}s)…</span>
+              </div>
+
+              <!-- Ping confirmation -->
+              <div v-if="speedtestPingConfirm" style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:12px 14px; margin-bottom:14px;">
+                <div style="font-size:0.85rem; color:#92400e; margin-bottom:10px;">⚠️ {{ speedtestPingConfirmMsg }}</div>
+                <div style="display:flex; gap:8px;">
+                  <button @click="confirmAndRunSpeedtest()"
+                    class="text-sm font-medium rounded"
+                    style="padding:6px 14px; background:#2563eb; color:#fff;">
+                    Run anyway
+                  </button>
+                  <button @click="speedtestPingConfirm = false"
+                    class="text-sm font-medium rounded"
+                    style="padding:6px 14px; background:#e5e7eb; color:#374151;">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              <!-- Run button -->
+              <button @click="runSpeedtest()"
+                :disabled="speedtestRunning || speedtest.fromId === speedtest.toId"
+                class="w-full text-white rounded-lg font-medium text-sm"
+                :style="(speedtestRunning || speedtest.fromId === speedtest.toId)
+                  ? 'background:#9ca3af; cursor:not-allowed; padding:10px;'
+                  : 'background:#2563eb; cursor:pointer; padding:10px;'">
+                {{ speedtestRunning ? 'Running…' : 'Run Speed Test' }}
+              </button>
+
+              <!-- History -->
+              <div v-if="speedtestHistory.length" style="margin-top:20px;">
+                <div class="flex items-center justify-between" style="margin-bottom:8px;">
+                  <span class="text-xs font-medium text-gray-500 dark:text-neutral-400">History</span>
+                  <button @click="clearSpeedtestHistory()" class="text-xs" style="color:#dc2626;">Clear</button>
+                </div>
+                <div style="max-height:220px; overflow-y:auto;">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr :style="{ color: theme === 'dark' ? '#a3a3a3' : '#6b7280' }">
+                        <th class="text-left" style="padding:3px 6px 3px 0;">Route</th>
+                        <th class="text-right" style="padding:3px 4px;">↑ Mbps</th>
+                        <th class="text-right" style="padding:3px 4px;">↓ Mbps</th>
+                        <th class="text-right" style="padding:3px 0;">RTT ms</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="r in speedtestHistory" :key="r.id"
+                        :style="{ borderTop: theme === 'dark' ? '1px solid #404040' : '1px solid #f3f4f6' }">
+                        <td style="padding:4px 6px 4px 0;">
+                          <div :style="{ color: theme === 'dark' ? '#e5e5e5' : '#111827' }">{{ r.fromServer }} → {{ r.toServer }}</div>
+                          <div :style="{ color: theme === 'dark' ? '#737373' : '#9ca3af' }">
+                            {{ r.startedAt ? new Date(r.startedAt).toLocaleString() : '' }}
+                            · {{ r.duration }}s · {{ r.streams }}×
+                            · <span :style="{ color: r.via === 'tunnel' ? '#8b5cf6' : '#6b7280' }">{{ r.via === 'tunnel' ? '🔒 tunnel' : '🌐 internet' }}</span>
+                          </div>
+                          <div v-if="r.status === 'error'" style="color:#dc2626;">{{ r.error }}</div>
+                          <div v-if="r.status === 'running'" style="color:#f59e0b;">running…</div>
+                        </td>
+                        <td class="text-right" style="padding:4px;" :style="{ color: r.sendMbps ? '#16a34a' : '#9ca3af' }">
+                          {{ r.sendMbps ? r.sendMbps.toFixed(1) : '—' }}
+                        </td>
+                        <td class="text-right" style="padding:4px;" :style="{ color: r.recvMbps ? '#2563eb' : '#9ca3af' }">
+                          {{ r.recvMbps ? r.recvMbps.toFixed(1) : '—' }}
+                        </td>
+                        <td class="text-right" style="padding:4px 0;" :style="{ color: theme === 'dark' ? '#a3a3a3' : '#6b7280' }">
+                          {{ r.latencyMs ? r.latencyMs.toFixed(1) : '—' }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- Add Remote Modal                                                -->
+        <!-- ============================================================== -->
+        <div v-if="showRemoteAdd" class="modal-overlay" @click.self="showRemoteAdd = false">
+          <div class="bg-white dark:bg-neutral-700 rounded-lg modal-panel modal-panel-md">
+            <div class="modal-header flex items-center justify-between">
+              <h2 class="text-lg font-semibold dark:text-neutral-200">Add Remote Server</h2>
+              <button @click="showRemoteAdd = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+            </div>
+            <div class="modal-body">
+              <!-- Step 1: credentials -->
+              <template v-if="!remoteAddNeedsTOTP">
+                <!-- Mode selector -->
+                <div style="display:flex; gap:18px; margin-bottom:4px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" class="text-sm dark:text-neutral-300">
+                    <input type="radio" value="login" v-model="remoteAddForm.mode" />
+                    Log in automatically
+                  </label>
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" class="text-sm dark:text-neutral-300">
+                    <input type="radio" value="token" v-model="remoteAddForm.mode" />
+                    Provide API token
+                  </label>
+                </div>
+                <p class="text-xs text-gray-500 dark:text-neutral-400" v-if="remoteAddForm.mode === 'login'">
+                  Cascade will log in to the remote server, create an API token, then log out.
+                  Your password is <strong>never stored</strong>.
+                </p>
+                <p class="text-xs text-gray-500 dark:text-neutral-400" v-else>
+                  Provide an existing API token (<code>ws_…</code>) from the remote server.
+                  It will be validated and stored as-is.
+                </p>
+                <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Name</label>
+                  <input v-model="remoteAddForm.name" type="text" placeholder="e.g. Server Berlin"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px;" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">URL</label>
+                  <input v-model="remoteAddForm.url" type="url" placeholder="https://cascade.example.com"
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px;" />
+                </div>
+                <!-- Login-mode fields -->
+                <template v-if="remoteAddForm.mode === 'login'">
+                  <div>
+                    <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Username</label>
+                    <input v-model="remoteAddForm.username" type="text" placeholder="admin"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:8px 10px;" />
+                  </div>
+                  <div>
+                    <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Password</label>
+                    <input v-model="remoteAddForm.password" type="password"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:8px 10px;" @keyup.enter="addRemote()" />
+                  </div>
+                </template>
+                <!-- Token-mode field -->
+                <template v-else>
+                  <div>
+                    <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">API Token</label>
+                    <input v-model="remoteAddForm.token" type="password" placeholder="ws_…"
+                      autocomplete="off"
+                      class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                      style="padding:8px 10px;" @keyup.enter="addRemote()" />
+                  </div>
+                </template>
+                <!-- TLS option -->
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:4px;">
+                  <input type="checkbox" v-model="remoteAddForm.skipTlsVerify" />
+                  <span class="text-sm dark:text-neutral-300">Skip TLS certificate verification</span>
+                </label>
+                <p v-if="remoteAddForm.skipTlsVerify" class="text-xs" style="color:#f59e0b; margin-top:2px;">
+                  ⚠ Only use for servers with self-signed certificates on a trusted network.
+                </p>
+              </template>
+
+              <!-- Step 2: TOTP code -->
+              <template v-else>
+                <p class="text-xs text-gray-500 dark:text-neutral-400" style="margin-bottom:12px;">
+                  The remote server has <strong>two-factor authentication</strong> enabled.
+                  Enter the 6-digit code from your authenticator app.
+                </p>
+                <div class="alert-error" v-if="remoteAddError">{{ remoteAddError }}</div>
+                <div>
+                  <label class="block text-sm font-medium dark:text-neutral-300" style="margin-bottom:4px;">Authenticator Code</label>
+                  <input v-model="remoteAddForm.totpCode" type="text" inputmode="numeric"
+                    pattern="[0-9]{6}" maxlength="6" placeholder="123456" autofocus
+                    class="w-full border rounded text-sm dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                    style="padding:8px 10px; letter-spacing:0.2em; font-size:1.1em;"
+                    @keyup.enter="addRemote()" />
+                </div>
+              </template>
+            </div>
+            <div class="modal-footer">
+              <button @click="showRemoteAdd = false"
+                class="rounded-lg text-sm font-medium btn dark:text-neutral-300"
+                style="background:#f3f4f6;">Cancel</button>
+              <button @click="addRemote()" :disabled="remoteAddLoading"
+                class="text-white rounded-lg text-sm font-medium btn"
+                :style="remoteAddLoading ? 'background:#9ca3af; cursor:not-allowed;' : 'background:#2563eb;'">
+                {{ remoteAddLoading ? 'Connecting…' : (remoteAddNeedsTOTP ? 'Verify & Add' : 'Add Server') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- ============================================================== -->
         <!-- Routing Page                                                   -->
         <!-- ============================================================== -->
@@ -4239,6 +4974,16 @@
                   {{ route.table || 'main' }}
                 </span>
 
+                <!-- Edit button -->
+                <button @click="openEditRoute(route)"
+                  class="shrink-0 text-gray-400 dark:text-neutral-500 rounded transition"
+                  style="background:none;border:none;cursor:pointer;padding:6px;"
+                  title="Edit route"
+                  onmouseover="this.style.color='#2563eb'" onmouseout="this.style.color=''">
+                  <svg class="w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
                 <!-- Delete button -->
                 <button @click="deleteRoute(route.id)"
                   class="shrink-0 text-gray-400 dark:text-neutral-500 rounded transition"
@@ -4322,8 +5067,11 @@
                 </div>
                 <div>
                   <label class="text-sm font-medium dark:text-neutral-300">Interface (dev, optional)</label>
-                  <input v-model="routeCreate.dev" type="text" placeholder="e.g. wg10"
-                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                  <select v-model="routeCreate.dev"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                    <option value="">— not specified —</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
+                  </select>
                 </div>
               </template>
 
@@ -4393,6 +5141,130 @@
                 <button @click="createRoute"
                   class="px-4 py-2 bg-green-600 text-white rounded text-sm font-medium transition">
                   Add Route
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit Static Route modal -->
+        <div v-if="showRouteEdit && activePage === 'routing'" class="modal-overlay" @click.self="showRouteEdit = false">
+          <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-480">
+            <div class="modal-header dark:border-neutral-600">
+              <h2 class="text-xl font-medium dark:text-neutral-200">Edit Static Route</h2>
+            </div>
+            <div class="modal-body">
+
+              <!-- Destination -->
+              <div>
+                <label class="text-sm font-medium dark:text-neutral-300">Destination (CIDR) *</label>
+                <input v-model="routeEdit.destination" type="text" placeholder="e.g. 10.0.0.0/8 or default"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+              </div>
+
+              <!-- Next-hop mode -->
+              <div>
+                <label class="text-sm font-medium dark:text-neutral-300">Next-hop</label>
+                <div class="flex gap-1 mt-1">
+                  <button @click="routeEdit.viaMode = 'manual'"
+                    :style="routeEdit.viaMode === 'manual'
+                      ? 'background:#2563eb;color:#fff;border:1px solid #2563eb;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    Manual IP
+                  </button>
+                  <button @click="routeEdit.viaMode = 'gateway'"
+                    :style="routeEdit.viaMode === 'gateway'
+                      ? 'background:#059669;color:#fff;border:1px solid #059669;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    Gateway
+                  </button>
+                  <button @click="routeEdit.viaMode = 'group'"
+                    :style="routeEdit.viaMode === 'group'
+                      ? 'background:#d97706;color:#fff;border:1px solid #d97706;'
+                      : 'background:transparent;color:#6b7280;border:1px solid #d1d5db;'"
+                    style="flex:1;padding:5px 0;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">
+                    GW Group
+                  </button>
+                </div>
+              </div>
+
+              <!-- Manual IP + dev -->
+              <template v-if="routeEdit.viaMode === 'manual'">
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Gateway IP (via)</label>
+                  <input v-model="routeEdit.gateway" type="text" placeholder="e.g. 10.255.255.1"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+                <div>
+                  <label class="text-sm font-medium dark:text-neutral-300">Interface (dev, optional)</label>
+                  <select v-model="routeEdit.dev"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                    <option value="">— not specified —</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
+                  </select>
+                </div>
+              </template>
+
+              <!-- Gateway selector -->
+              <div v-if="routeEdit.viaMode === 'gateway'">
+                <label class="text-sm font-medium dark:text-neutral-300">Gateway *</label>
+                <select v-model="routeEdit.gatewayId"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <option value="">— select gateway —</option>
+                  <option v-for="gw in gateways" :key="gw.id" :value="gw.id">
+                    {{ gw.name }} ({{ gw.interface }} → {{ gw.gatewayIP }})
+                  </option>
+                </select>
+              </div>
+
+              <!-- Gateway Group selector -->
+              <div v-if="routeEdit.viaMode === 'group'">
+                <label class="text-sm font-medium dark:text-neutral-300">Gateway Group * <span class="text-yellow-600 dark:text-yellow-400">(failover)</span></label>
+                <select v-model="routeEdit.gatewayGroupId"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                  <option value="">— select group —</option>
+                  <option v-for="grp in gatewayGroups" :key="grp.id" :value="grp.id">{{ grp.name }}</option>
+                </select>
+              </div>
+
+              <!-- Metric + Table -->
+              <div class="flex gap-3">
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Metric</label>
+                  <input v-model="routeEdit.metric" type="number" placeholder="optional"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Table</label>
+                  <select v-if="routingTables.length > 0" v-model="routeEdit.table"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                    <option v-for="t in routingTables.filter(t => t.name !== 'all')" :key="t.name" :value="t.name">
+                      {{ t.name }}{{ t.id !== null ? ' (' + t.id + ')' : '' }}
+                    </option>
+                  </select>
+                  <input v-else v-model="routeEdit.table" type="text" placeholder="main"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+                </div>
+              </div>
+
+              <!-- Description -->
+              <div>
+                <label class="text-sm font-medium dark:text-neutral-300">Description</label>
+                <input v-model="routeEdit.description" type="text" placeholder="optional"
+                  class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1" />
+              </div>
+
+              <!-- Buttons -->
+              <div class="flex gap-2" style="justify-content:flex-end;">
+                <button @click="showRouteEdit = false"
+                  class="px-4 py-2 bg-gray-200 dark:bg-neutral-600 dark:text-neutral-200 rounded text-sm font-medium transition">
+                  Cancel
+                </button>
+                <button @click="saveEditRoute"
+                  class="px-4 py-2 bg-blue-600 text-white rounded text-sm font-medium transition">
+                  Save Changes
                 </button>
               </div>
             </div>
@@ -4724,7 +5596,7 @@
                     class="w-full border border-gray-300 dark:border-neutral-500 rounded-lg text-sm dark:bg-neutral-600 dark:text-neutral-100"
                     style="padding:8px 12px;">
                     <option value="">— any interface —</option>
-                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
+                    <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
                   </select>
                 </div>
 
@@ -4874,7 +5746,7 @@
                 <select v-model="natRuleCreate.outInterface"
                   class="w-full mt-1 border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm">
                   <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">
-                    {{ iface.name }}
+                    {{ iface.label || iface.name }}
                   </option>
                 </select>
               </div>
@@ -4995,7 +5867,7 @@
                 <select v-model="natRuleEdit.outInterface"
                   class="w-full mt-1 border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm">
                   <option v-for="iface in natInterfaces" :key="iface.name" :value="iface.name">
-                    {{ iface.name }}
+                    {{ iface.label || iface.name }}
                   </option>
                 </select>
               </div>
@@ -5176,6 +6048,19 @@
                   <option value="port-group">Port Group — combines multiple port aliases</option>
                 </select>
               </div>
+              <!-- Rate limits (client-group) -->
+              <div v-if="aliasCreate.type === 'client-group'" style="display:flex; gap:12px;">
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Download limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasCreate.rateDown" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Upload limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasCreate.rateUp" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+              </div>
               <!-- Entries (host/network) -->
               <div v-if="aliasCreate.type === 'host' || aliasCreate.type === 'network'">
                 <label class="text-sm font-medium dark:text-neutral-300">Entries (one per line)</label>
@@ -5345,6 +6230,19 @@
                     {{ aliasEdit.type }}
                   </span>
                   <span class="text-xs text-gray-400 dark:text-neutral-500 ml-2">Type cannot be changed after creation</span>
+                </div>
+              </div>
+              <!-- Rate limits (client-group) -->
+              <div v-if="aliasEdit.type === 'client-group'" style="display:flex; gap:12px;">
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Download limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasEdit.rateDown" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Upload limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasEdit.rateUp" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                 </div>
               </div>
               <!-- Entries (host/network) -->
@@ -5723,7 +6621,7 @@
                   <select v-model="firewallCreate.interface"
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                     <option value="any">any</option>
-                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
+                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
                   </select>
                 </div>
                 <div class="flex-1">
@@ -5926,7 +6824,7 @@
                   <select v-model="firewallEdit.interface"
                     class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                     <option value="any">any</option>
-                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.name }}</option>
+                    <option v-for="iface in firewallInterfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
                   </select>
                 </div>
                 <div class="flex-1">
@@ -7243,15 +8141,78 @@
       </div>
     </div>
 
+    <!-- ==================== Monitoring Config Modal ==================== -->
+    <div v-if="metricsConfigWidget" class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+      style="padding:40px 24px;" @click.self="metricsCloseConfig()">
+      <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:420px; margin:0 auto;">
+        <div style="padding:20px 24px 16px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #e5e7eb;"
+          :style="{ 'border-bottom-color': theme==='dark'?'#525252':'#e5e7eb' }">
+          <h3 class="font-semibold text-base dark:text-neutral-100">Configure Graphs</h3>
+          <button @click="metricsCloseConfig()" class="text-gray-400 hover:text-gray-600 dark:hover:text-neutral-200" style="font-size:1.25rem; line-height:1;">✕</button>
+        </div>
+        <div style="padding:20px 24px;">
+          <!-- Widget title -->
+          <div style="margin-bottom:16px;">
+            <label class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="display:block; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">Widget Title</label>
+            <input v-model="metricsTitleDraft" type="text" placeholder="e.g. Server Load" maxlength="40"
+              class="text-sm dark:text-neutral-100 dark:bg-neutral-600 rounded"
+              style="width:100%; padding:7px 10px; border:1px solid #d1d5db; outline:none;"
+              :style="{ 'border-color': theme==='dark'?'#525252':'#d1d5db', 'background': theme==='dark'?'#525252':'#fff' }">
+          </div>
+
+          <p class="text-xs text-gray-500 dark:text-neutral-400" style="margin-bottom:14px;">Select metrics to display in this widget. Each appears as a separate chart.</p>
+
+          <!-- System -->
+          <div style="margin-bottom:12px;">
+            <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">System</div>
+            <label v-for="key in ['cpu','mem']" :key="key" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
+              <input type="checkbox" :checked="metricsConfigDraft.includes(key)" @change="metricsToggleGraph(key)" style="width:15px; height:15px; cursor:pointer;">
+              <span class="text-sm dark:text-neutral-200" style="flex:1;">{{ metricsKeyLabel(key) }}</span>
+              <input type="color" :value="metricsColorDraft[key] || '#22d3ee'" @input="$set(metricsColorDraft, key, $event.target.value)" style="width:28px; height:24px; padding:1px; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; background:none;">
+            </label>
+          </div>
+
+          <!-- Network interfaces -->
+          <div v-if="metricsSnapshot && metricsSnapshot.interfaces && metricsSnapshot.interfaces.length" style="margin-bottom:12px;">
+            <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Network Interfaces</div>
+            <template v-for="iface in (metricsSnapshot.interfaces || [])">
+              <label v-for="dir in ['rx','tx']" :key="iface+':'+dir" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
+                <input type="checkbox" :checked="metricsConfigDraft.includes('net:'+iface+':'+dir)" @change="metricsToggleGraph('net:'+iface+':'+dir)" style="width:15px; height:15px; cursor:pointer;">
+                <span class="text-sm dark:text-neutral-200" style="flex:1;">{{ metricsKeyLabel('net:'+iface+':'+dir) }}</span>
+                <input type="color" :value="metricsColorDraft['net:'+iface+':'+dir] || '#22d3ee'" @input="$set(metricsColorDraft, 'net:'+iface+':'+dir, $event.target.value)" style="width:28px; height:24px; padding:1px; border:1px solid #d1d5db; border-radius:4px; cursor:pointer; background:none;">
+              </label>
+            </template>
+          </div>
+          <div v-else class="text-xs text-gray-400 dark:text-neutral-500" style="margin-bottom:12px;">No metrics data yet — wait a few seconds</div>
+
+          <!-- Gateways -->
+          <div v-if="metricsSnapshot && metricsSnapshot.gateways && Object.keys(metricsSnapshot.gateways).length">
+            <div class="text-xs font-semibold text-gray-400 dark:text-neutral-500" style="text-transform:uppercase; letter-spacing:0.06em; margin-bottom:8px;">Gateways</div>
+            <div class="text-xs text-gray-400 dark:text-neutral-500" style="margin-bottom:6px;">Color: 🟢 healthy · 🟡 degraded · 🔴 down · ⚫ admin down</div>
+            <label v-for="(status, id) in (metricsSnapshot.gateways || {})" :key="id" style="display:flex; align-items:center; gap:10px; padding:6px 0; cursor:pointer;">
+              <input type="checkbox" :checked="metricsConfigDraft.includes('gateway:'+id)" @change="metricsToggleGraph('gateway:'+id)" style="width:15px; height:15px; cursor:pointer;">
+              <span class="text-sm dark:text-neutral-200" style="flex:1;">{{ metricsKeyLabel('gateway:'+id) }}</span>
+            </label>
+          </div>
+        </div>
+        <div style="padding:12px 24px 20px; display:flex; justify-content:flex-end; gap:10px;">
+          <button @click="metricsCloseConfig()"
+            class="text-sm text-gray-500 dark:text-neutral-400 hover:text-gray-700"
+            style="padding:8px 16px; border:none; background:none; cursor:pointer;">Cancel</button>
+          <button @click="metricsSaveConfig()"
+            class="text-sm text-white rounded"
+            style="padding:8px 20px; background:#2563eb; border:none; cursor:pointer;">Save</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ==================== Toast Notifications ==================== -->
     <div style="position:fixed; top:16px; right:16px; z-index:9999; display:flex; flex-direction:column; gap:10px; pointer-events:none; width:360px; max-width:calc(100vw - 32px);">
       <transition-group name="toast">
         <div v-for="toast in toasts" :key="toast.id"
-          class="rounded-lg shadow-lg text-white text-sm"
-          style="pointer-events:auto; padding:14px 16px; display:flex; align-items:flex-start; gap:10px; backdrop-filter:blur(4px);"
-          :style="toast.type === 'error'
-            ? 'background:rgba(220,38,38,0.93);'
-            : 'background:rgba(22,163,74,0.93);'">
+          class="rounded-lg text-sm"
+          style="pointer-events:auto; padding:14px 16px; display:flex; align-items:flex-start; gap:10px; color:#fff; box-shadow:0 4px 16px rgba(0,0,0,0.35);"
+          :style="{ background: toast.type === 'error' ? 'rgba(220,38,38,0.88)' : 'rgba(22,163,74,0.88)' }">
           <!-- Icon -->
           <svg v-if="toast.type !== 'error'" style="flex-shrink:0; margin-top:1px;" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>

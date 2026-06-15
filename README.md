@@ -42,6 +42,10 @@
 | 🔐 **Auth** | Multi-user accounts, TOTP 2FA (Google Authenticator), long-lived API tokens |
 | 🔒 **TLS** | Let's Encrypt via acme.sh (bare IP shortlived cert or domain) |
 | 🎭 **Decoy site** | Caddy reverse proxy serves a fake streaming site on `/`; admin UI hidden behind a secret path |
+| 🖥️ **Multi-Server** 🆕 | Manage multiple Cascade routers from one UI — switch servers in the sidebar, proxy all API calls transparently, self-signed cert support |
+| 📊 **Monitoring** 🆕 | Real-time traffic metrics per interface, gateway status history (stacked bar chart), Diagnostics page with per-period history |
+| ⚡ **Speed Test** 🆕 | iperf3-based speed test between any two managed servers — Auto / Tunnel / Internet mode, S2S tunnel autodetect, result history |
+| 🚦 **Rate Limits** 🆕 | Per-client-group bandwidth limiting via tc HTB (kbps down/up enforced per IP) |
 
 ## 🎯 Why Cascade?
 
@@ -55,6 +59,9 @@
 - ✅ **Multi-user + TOTP 2FA** — per-user accounts with Google Authenticator support
 - ✅ **HTTPS by default** — Caddy + acme.sh, works with bare IPs via Let's Encrypt shortlived certs
 - ✅ **Decoy protection** — admin path is hidden; visitors see a fake streaming site
+- ✅ 🆕 **Multi-server management** — control multiple Cascade routers from one browser tab, with transparent API proxying
+- ✅ 🆕 **Built-in speed test** — iperf3 between any managed servers, S2S tunnel autodetect, result history
+- ✅ 🆕 **Traffic monitoring** — per-interface metrics and gateway health history with configurable time periods
 
 ## 📋 Requirements
 

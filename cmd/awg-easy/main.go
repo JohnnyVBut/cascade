@@ -23,6 +23,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/frontend"
 	"github.com/JohnnyVBut/cascade/internal/gateway"
 	"github.com/JohnnyVBut/cascade/internal/ipset"
+	"github.com/JohnnyVBut/cascade/internal/metrics"
 	"github.com/JohnnyVBut/cascade/internal/nat"
 	"github.com/JohnnyVBut/cascade/internal/routing"
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
@@ -58,6 +59,14 @@ func main() {
 		log.Fatalf("db init: %v", err)
 	}
 	defer db.Close()
+
+	// ── Metrics collector ─────────────────────────────────────────────────────
+	// Starts right after DB init — collects CPU/RAM/net every 5 s into SQLite.
+	{
+		stopMetrics := make(chan struct{})
+		metrics.Start(stopMetrics)
+		defer close(stopMetrics)
+	}
 
 	// ── Auth subsystem ────────────────────────────────────────────────────────
 	// Initialise before registering routes so middleware is ready.
@@ -151,6 +160,10 @@ func main() {
 	api.RegisterAliases(apiGroup)
 	api.RegisterFirewall(apiGroup)
 	api.RegisterGateways(apiGroup)
+	api.RegisterRemotes(apiGroup)
+	api.RegisterSpeedtest(apiGroup)
+	api.RegisterDiagnostics(apiGroup)
+	api.RegisterMetrics(apiGroup)
 
 	// Legacy shims that require auth (old wireguard/client list → empty array).
 	api.RegisterCompatAuth(apiGroup)
@@ -201,6 +214,32 @@ func main() {
 		log.Printf("gateway init warning: %v", err)
 	}
 	gateway.SetInstance(gwMgr)
+
+	// Register gateway status source for metrics collector.
+	// Done after SetInstance so gwMgr is ready before the first tick.
+	metrics.RegisterGatewaySource(func() map[string]int {
+		gws, err := gwMgr.GetAllGatewaysWithStatus()
+		if err != nil {
+			return nil
+		}
+		out := make(map[string]int, len(gws))
+		for _, g := range gws {
+			status := g.Status
+			var code int
+			switch status {
+			case "healthy":
+				code = 3
+			case "degraded":
+				code = 2
+			case "down":
+				code = 1
+			default: // admin_down, unknown
+				code = 0
+			}
+			out[g.ID] = code
+		}
+		return out
+	})
 
 	// 4. FirewallManager — depends on AliasManager + GatewayManager.
 	fwMgr := firewall.New(aliasMgr, gwMgr)

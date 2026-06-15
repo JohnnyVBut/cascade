@@ -34,12 +34,17 @@ func RegisterFirewall(api fiber.Router) {
 
 // GET /api/firewall/interfaces
 // Returns host network interfaces for the rule's "interface" dropdown.
+// WG/AWG interfaces are enriched with tunnel name label via enrichIfaceLabels.
 func getFirewallInterfaces(c *fiber.Ctx) error {
 	ifaces, err := firewall.Get().GetNetworkInterfaces()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(ifaces)
+	names := make([]string, len(ifaces))
+	for i, iface := range ifaces {
+		names[i] = iface.Name
+	}
+	return c.JSON(enrichIfaceLabels(names, nil))
 }
 
 // GET /api/firewall/rules

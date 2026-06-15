@@ -583,6 +583,19 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 					log.Printf("tunnel: UpdatePeer: rebuild new group ipset %s: %v", updated.GroupID, err)
 				}
 			}
+			// Apply group rate limits when peer has no individual limits.
+			if t.Enabled && updated.AllowedIPs != "" && updated.RateDown == 0 && updated.RateUp == 0 {
+				if updated.GroupID != "" {
+					if g, err := am.GetByID(updated.GroupID); err == nil && g != nil && (g.RateDown > 0 || g.RateUp > 0) {
+						tc.EnsureQdisc(t.ID)
+						tc.Apply(t.ID, updated.AllowedIPs, g.RateDown, g.RateUp, t.kernelMTU())
+					} else {
+						tc.Remove(t.ID, updated.AllowedIPs)
+					}
+				} else {
+					tc.Remove(t.ID, updated.AllowedIPs)
+				}
+			}
 		}
 	}
 
@@ -719,19 +732,40 @@ func (t *TunnelInterface) kernelMTU() int {
 }
 
 func (t *TunnelInterface) restoreTCLimits() {
+	am := aliases.Get()
+
+	// Pre-load group rate limits to avoid repeated DB lookups.
+	groupLimits := map[string][2]int{} // groupID → [rateDown, rateUp]
+	if am != nil {
+		if groups, err := am.GetClientGroups(); err == nil {
+			for _, g := range groups {
+				if g.RateDown > 0 || g.RateUp > 0 {
+					groupLimits[g.ID] = [2]int{g.RateDown, g.RateUp}
+				}
+			}
+		}
+	}
+
 	t.peersMu.RLock()
 	var limits []tc.PeerLimit
 	for _, p := range t.peers {
 		if p.PeerType != "client" {
 			continue
 		}
-		if p.RateDown <= 0 && p.RateUp <= 0 {
+		rd, ru := p.RateDown, p.RateUp
+		// Fall back to group rate limits when peer has no individual limits.
+		if rd == 0 && ru == 0 {
+			if gl, ok := groupLimits[p.GroupID]; ok {
+				rd, ru = gl[0], gl[1]
+			}
+		}
+		if rd <= 0 && ru <= 0 {
 			continue
 		}
 		limits = append(limits, tc.PeerLimit{
 			IP:       p.AllowedIPs,
-			RateDown: p.RateDown,
-			RateUp:   p.RateUp,
+			RateDown: rd,
+			RateUp:   ru,
 		})
 	}
 	t.peersMu.RUnlock()

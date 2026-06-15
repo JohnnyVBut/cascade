@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/remoteclient"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
@@ -594,6 +595,11 @@ func validateGatewayInput(inp GatewayInput) error {
 	rule := inp.MonitorRule
 	if rule != "" && rule != "icmp_only" && rule != "http_only" && rule != "all" && rule != "any" {
 		return fmt.Errorf("monitorRule must be icmp_only, http_only, all, or any")
+	}
+	if url := strings.TrimSpace(inp.MonitorHttp.URL); url != "" {
+		if err := remoteclient.ValidateRemoteURL(url); err != nil {
+			return fmt.Errorf("monitorHttp.url: %w", err)
+		}
 	}
 	return nil
 }

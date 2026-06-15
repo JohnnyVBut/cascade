@@ -45,6 +45,9 @@ type Alias struct {
 	GeneratorOpts *GeneratorOpts `json:"generatorOpts"` // null unless generated via RIPEstat
 	LastUpdated   string         `json:"lastUpdated,omitempty"`
 	CreatedAt     string         `json:"createdAt"`
+	// Rate limits for client-group type (kbps; 0 = unlimited).
+	RateDown      int            `json:"rateDown"`
+	RateUp        int            `json:"rateUp"`
 }
 
 // GeneratorOpts stores the source parameters used to generate an ipset alias.
@@ -87,7 +90,7 @@ func New(im *ipset.Manager) *Manager {
 func (m *Manager) GetAll() ([]Alias, error) {
 	rows, err := db.DB().Query(`
 		SELECT id, name, description, type, entries, member_ids, ipset_name,
-		       entry_count, generator_opts, last_updated, created_at
+		       entry_count, generator_opts, last_updated, created_at, rate_down, rate_up
 		FROM aliases ORDER BY created_at ASC
 	`)
 	if err != nil {
@@ -640,7 +643,7 @@ func (m *Manager) watchJob(jobID, aliasID string) {
 func queryAlias(where string, args ...any) (*Alias, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, name, description, type, entries, member_ids, ipset_name,
-		       entry_count, generator_opts, last_updated, created_at
+		       entry_count, generator_opts, last_updated, created_at, rate_down, rate_up
 		FROM aliases `+where, args...)
 
 	a, err := scanAliasRow(row)
@@ -667,6 +670,7 @@ func scanAliasRow(s scannable) (*Alias, error) {
 		&a.ID, &a.Name, &a.Description, &a.Type,
 		&entriesJSON, &memberIDsJSON, &a.IPSetName,
 		&a.EntryCount, &generatorJSON, &lastUpdated, &a.CreatedAt,
+		&a.RateDown, &a.RateUp,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -707,11 +711,12 @@ func insertAlias(a *Alias) error {
 	_, err := db.DB().Exec(`
 		INSERT INTO aliases
 		    (id, name, description, type, entries, member_ids, ipset_name,
-		     entry_count, generator_opts, last_updated, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		     entry_count, generator_opts, last_updated, created_at, rate_down, rate_up)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		a.ID, a.Name, a.Description, a.Type,
 		string(entriesJSON), string(memberIDsJSON), a.IPSetName,
 		a.EntryCount, generatorJSON, a.LastUpdated, a.CreatedAt,
+		a.RateDown, a.RateUp,
 	)
 	if err != nil {
 		return fmt.Errorf("insert alias: %w", err)
@@ -727,11 +732,12 @@ func updateAlias(a *Alias) error {
 	_, err := db.DB().Exec(`
 		UPDATE aliases SET
 		    name=?, description=?, entries=?, member_ids=?, ipset_name=?,
-		    entry_count=?, generator_opts=?, last_updated=?
+		    entry_count=?, generator_opts=?, last_updated=?, rate_down=?, rate_up=?
 		WHERE id=?`,
 		a.Name, a.Description,
 		string(entriesJSON), string(memberIDsJSON), a.IPSetName,
 		a.EntryCount, generatorJSON, a.LastUpdated,
+		a.RateDown, a.RateUp,
 		a.ID,
 	)
 	if err != nil {

@@ -5,7 +5,38 @@
 
 class API {
 
-  async call({ method, path, body }) {
+  constructor() {
+    // When set, all calls are transparently proxied through the local server
+    // to a remote Cascade instance. The browser never communicates directly
+    // with the remote — the token stays on the backend.
+    this._remoteId = null;
+    // Optional callback invoked when a proxy call fails with an unrecoverable
+    // error (401 Unauthorized or 5xx server error). The app registers this to
+    // auto-switch back to local mode when the remote becomes unavailable.
+    this._onRemoteError = null;
+  }
+
+  /** Switch all subsequent calls to go through a remote server proxy. */
+  setRemote(id) { this._remoteId = id; }
+
+  /** Switch back to the local server. */
+  clearRemote() { this._remoteId = null; }
+
+  /** Returns the active remote id, or null if local. */
+  getRemoteId() { return this._remoteId; }
+
+  /** Like call(), but always targets the local server regardless of activeRemoteId. */
+  async callLocal(opts) {
+    const saved = this._remoteId;
+    this._remoteId = null;
+    try {
+      return await this.call(opts);
+    } finally {
+      this._remoteId = saved;
+    }
+  }
+
+  async call({ method, path, body, allowStatus = [] }) {
     // Compute API base URL from the first path segment of the current page.
     // Works correctly whether the page was loaded with or without a trailing slash,
     // and whether there is a reverse-proxy prefix (e.g. Caddy ADMIN_PATH) or not.
@@ -18,7 +49,13 @@ class API {
       ? `${window.location.origin}/${segs[0]}/api`
       : `${window.location.origin}/api`;
 
-    const res = await fetch(`${apiBase}${path}`, {
+    // If a remote is active, route through the proxy endpoint.
+    // Remotes-management calls (/remotes/*) always go to local.
+    const effectivePath = (this._remoteId && !path.startsWith('/remotes'))
+      ? `/remotes/${this._remoteId}/proxy${path}`
+      : path;
+
+    const res = await fetch(`${apiBase}${effectivePath}`, {
       method: method.toUpperCase(), // Node.js 22 llhttp: HTTP method must be uppercase
       headers: {
         'Content-Type': 'application/json',
@@ -27,6 +64,17 @@ class API {
         ? JSON.stringify(body)
         : undefined,
     });
+
+    // If a proxy call fails with an unrecoverable status (401 or 5xx),
+    // notify the app so it can switch back to local mode gracefully.
+    // This prevents the user from seeing a confusing "login window" when
+    // the remote becomes temporarily unreachable.
+    const isProxyCall = this._remoteId && effectivePath.startsWith(`/remotes/${this._remoteId}/proxy`);
+    if (isProxyCall && (res.status === 401 || res.status >= 500)) {
+      if (typeof this._onRemoteError === 'function') {
+        this._onRemoteError(res.status, effectivePath);
+      }
+    }
 
     if (res.status === 204) {
       return undefined;
@@ -40,7 +88,7 @@ class API {
       throw new Error(`Server error ${res.status}: ${res.statusText}`);
     }
 
-    if (!res.ok) {
+    if (!res.ok && !allowStatus.includes(res.status)) {
       throw new Error(json.message || json.error || res.statusText);
     }
 
@@ -221,12 +269,12 @@ class API {
   // Dashboard API
   // ============================================================
 
-  async getDashboardWidgets() {
-    return this.call({ method: 'get', path: '/dashboard/widgets' });
+  async getDashboardWidgets(page = 'dashboard') {
+    return this.call({ method: 'get', path: `/dashboard/widgets?page=${page}` });
   }
 
-  async putDashboardWidgets(widgets) {
-    return this.call({ method: 'put', path: '/dashboard/widgets', body: { widgets } });
+  async putDashboardWidgets(widgets, page = 'dashboard') {
+    return this.call({ method: 'put', path: `/dashboard/widgets?page=${page}`, body: { widgets } });
   }
 
   async getSystemInfo() {
@@ -428,6 +476,20 @@ class API {
       method: 'delete',
       path: `/tunnel-interfaces/${interfaceId}/peers/${peerId}`,
     });
+  }
+
+  async getPeerConfig({ interfaceId, peerId }) {
+    const segs = window.location.pathname.split('/').filter(Boolean);
+    const apiBase = segs.length > 0
+      ? `${window.location.origin}/${segs[0]}/api`
+      : `${window.location.origin}/api`;
+    const path = `/tunnel-interfaces/${interfaceId}/peers/${peerId}/config`;
+    const effectivePath = (this._remoteId && !path.startsWith('/remotes'))
+      ? `/remotes/${this._remoteId}/proxy${path}`
+      : path;
+    const res = await fetch(`${apiBase}${effectivePath}`);
+    if (!res.ok) throw new Error(res.statusText);
+    return res.text();
   }
 
   async enablePeer({ interfaceId, peerId }) {
@@ -665,6 +727,14 @@ class API {
       method: 'patch',
       path: `/routing/routes/${routeId}`,
       body: { enabled },
+    });
+  }
+
+  async updateStaticRoute({ routeId, data }) {
+    return this.call({
+      method: 'patch',
+      path: `/routing/routes/${routeId}`,
+      body: data,
     });
   }
 
@@ -1009,11 +1079,11 @@ class API {
    * Returns a Blob so the caller can trigger a file download.
    * @param {{ password?: string }}
    */
-  async downloadSystemBackup({ password = '' } = {}) {
+  async downloadSystemBackup({ password = '', includeMetrics = false } = {}) {
     const res = await fetch(`${this._systemApiBase()}/backup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, includeMetrics }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -1041,6 +1111,92 @@ class API {
       throw new Error(err.message || res.statusText);
     }
     return res.json();
+  }
+
+  // ── Remote servers ──────────────────────────────────────────────────────────
+
+  async getRemotes() {
+    return this.call({ method: 'get', path: '/remotes/' });
+  }
+
+  /**
+   * Add a remote server. Cascade will login with the credentials, obtain an API
+   * token and store it. The password is never persisted.
+   * @param {{ name: string, url: string, username: string, password: string }}
+   */
+  async addRemote({ name, url, username, password, totpCode, token, skipTlsVerify }) {
+    const body = { name, url };
+    if (skipTlsVerify) body.skipTlsVerify = true;
+    if (token) {
+      // Explicit-token mode — server validates and stores the token directly.
+      body.token = token;
+    } else {
+      // Login mode — server logs in to obtain a token.
+      body.username = username;
+      body.password = password;
+      if (totpCode) body.totpCode = totpCode;
+    }
+    // 422 = totp_required — not an error, returned as data to the caller.
+    return this.call({ method: 'post', path: '/remotes/', body, allowStatus: [422] });
+  }
+
+  async deleteRemote({ id }) {
+    return this.call({ method: 'delete', path: `/remotes/${id}` });
+  }
+
+  async testRemote({ id }) {
+    return this.call({ method: 'post', path: `/remotes/${id}/test` });
+  }
+
+  /**
+   * Call an API endpoint on a remote server via the proxy.
+   * @param {{ remoteId: string, method: string, path: string, body?: any }}
+   */
+  async remoteCall({ remoteId, method, path, body }) {
+    return this.call({ method, path: `/remotes/${remoteId}/proxy${path}`, body });
+  }
+
+  // ── Diagnostics ────────────────────────────────────────────────────────────
+
+  // Ping host from the server that receives this call (local or via proxy).
+  async ping({ host, count = 3, remoteId } = {}) {
+    const body = { host, count };
+    const path = '/diagnostics/ping';
+    return remoteId
+      ? this.remoteCall({ remoteId, method: 'post', path, body })
+      : this.call({ method: 'post', path, body });
+  }
+
+  // ── Speed test ─────────────────────────────────────────────────────────────
+
+  async speedtestRun(body) {
+    return this.callLocal({ method: 'post', path: '/speedtest/run', body });
+  }
+
+  async speedtestGetResult(jobId) {
+    return this.callLocal({ method: 'get', path: `/speedtest/result/${jobId}` });
+  }
+
+  async speedtestListResults() {
+    return this.callLocal({ method: 'get', path: '/speedtest/results' });
+  }
+
+  async speedtestClearResults() {
+    return this.callLocal({ method: 'delete', path: '/speedtest/results' });
+  }
+
+  // ── Metrics ────────────────────────────────────────────────────────────────
+
+  async getMetrics() {
+    return this.call({ method: 'get', path: '/metrics/' });
+  }
+
+  async getMetricsHistory({ key, period }) {
+    return this.call({ method: 'get', path: `/metrics/history?key=${encodeURIComponent(key)}&period=${period}` });
+  }
+
+  async getMetricsGatewayDist({ key, period }) {
+    return this.call({ method: 'get', path: `/metrics/gateway-dist?key=${encodeURIComponent(key)}&period=${period}` });
   }
 
 }
