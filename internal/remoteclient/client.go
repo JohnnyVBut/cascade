@@ -9,6 +9,7 @@ package remoteclient
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -39,6 +40,24 @@ var httpClient = &http.Client{
 	},
 }
 
+// clientFor returns httpClient, or a one-off client with TLS verification
+// disabled when skipTLS is true (for remotes with self-signed certificates).
+func clientFor(skipTLS bool) *http.Client {
+	if !skipTLS {
+		return httpClient
+	}
+	return &http.Client{
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{
+			DialContext:     SafeDialContext,
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
 // ObtainToken authenticates against a remote Cascade server using username and
 // password (and optionally a TOTP code), creates an API token, logs out, and
 // returns the raw token string.
@@ -46,7 +65,8 @@ var httpClient = &http.Client{
 // If the remote has 2FA enabled and totpCode is empty, ErrTOTPRequired is
 // returned so the caller can prompt the user. Retrying with the code completes
 // the flow.
-func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
+func ObtainToken(baseURL, username, password, totpCode string, skipTLS bool) (string, error) {
+	c := clientFor(skipTLS)
 	base := strings.TrimRight(baseURL, "/")
 
 	// ── Step 1: Login ──────────────────────────────────────────────────────
@@ -54,7 +74,7 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 		"username": username,
 		"password": password,
 	})
-	loginResp, err := httpClient.Post(base+"/api/session", "application/json", bytes.NewReader(loginBody))
+	loginResp, err := c.Post(base+"/api/session", "application/json", bytes.NewReader(loginBody))
 	if err != nil {
 		return "", fmt.Errorf("login request: %w", err)
 	}
@@ -72,9 +92,9 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 
 	// Extract session cookie — needed for TOTP verify and token creation.
 	var sessionCookie string
-	for _, c := range loginResp.Cookies() {
-		if c.Name == "session_id" {
-			sessionCookie = c.Name + "=" + c.Value
+	for _, ck := range loginResp.Cookies() {
+		if ck.Name == "session_id" {
+			sessionCookie = ck.Name + "=" + ck.Value
 			break
 		}
 	}
@@ -89,7 +109,7 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 			// Log out the pending session to avoid dangling sessions.
 			logoutReq, _ := http.NewRequest(http.MethodDelete, base+"/api/session", nil)
 			logoutReq.Header.Set("Cookie", sessionCookie)
-			if r, e := httpClient.Do(logoutReq); e == nil {
+			if r, e := c.Do(logoutReq); e == nil {
 				r.Body.Close()
 			}
 			return "", ErrTOTPRequired
@@ -100,7 +120,7 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 		verifyReq.Header.Set("Content-Type", "application/json")
 		verifyReq.Header.Set("Cookie", sessionCookie)
 
-		verifyResp, err := httpClient.Do(verifyReq)
+		verifyResp, err := c.Do(verifyReq)
 		if err != nil {
 			return "", fmt.Errorf("totp verify request: %w", err)
 		}
@@ -124,7 +144,7 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 	tokenReq.Header.Set("Content-Type", "application/json")
 	tokenReq.Header.Set("Cookie", sessionCookie)
 
-	tokenResp, err := httpClient.Do(tokenReq)
+	tokenResp, err := c.Do(tokenReq)
 	if err != nil {
 		return "", fmt.Errorf("create token request: %w", err)
 	}
@@ -147,7 +167,7 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 	// ── Step 4: Logout ─────────────────────────────────────────────────────
 	logoutReq, _ := http.NewRequest(http.MethodDelete, base+"/api/session", nil)
 	logoutReq.Header.Set("Cookie", sessionCookie)
-	if r, e := httpClient.Do(logoutReq); e == nil {
+	if r, e := c.Do(logoutReq); e == nil {
 		r.Body.Close()
 	}
 
@@ -156,12 +176,12 @@ func ObtainToken(baseURL, username, password, totpCode string) (string, error) {
 
 // Ping checks whether the remote server is reachable and the token is valid.
 // Returns nil if healthy.
-func Ping(baseURL, token string) error {
+func Ping(baseURL, token string, skipTLS bool) error {
 	base := strings.TrimRight(baseURL, "/")
 	req, _ := http.NewRequest(http.MethodGet, base+"/api/health", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	resp, err := httpClient.Do(req)
+	resp, err := clientFor(skipTLS).Do(req)
 	if err != nil {
 		return fmt.Errorf("ping failed: %w", err)
 	}

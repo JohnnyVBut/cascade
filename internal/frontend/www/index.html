@@ -4698,6 +4698,14 @@
                       style="padding:8px 10px;" @keyup.enter="addRemote()" />
                   </div>
                 </template>
+                <!-- TLS option -->
+                <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-top:4px;">
+                  <input type="checkbox" v-model="remoteAddForm.skipTlsVerify" />
+                  <span class="text-sm dark:text-neutral-300">Skip TLS certificate verification</span>
+                </label>
+                <p v-if="remoteAddForm.skipTlsVerify" class="text-xs" style="color:#f59e0b; margin-top:2px;">
+                  ⚠ Only use for servers with self-signed certificates on a trusted network.
+                </p>
               </template>
 
               <!-- Step 2: TOTP code -->

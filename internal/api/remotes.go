@@ -88,12 +88,13 @@ func listRemotes(c *fiber.Ctx) error {
 // against the remote (Ping) and stores it directly — no login is performed.
 func addRemote(c *fiber.Ctx) error {
 	var body struct {
-		Name     string `json:"name"`
-		URL      string `json:"url"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-		TOTPCode string `json:"totpCode"` // optional — only needed when remote has 2FA
-		Token    string `json:"token"`    // optional — when set, skip login and use this token directly
+		Name          string `json:"name"`
+		URL           string `json:"url"`
+		Username      string `json:"username"`
+		Password      string `json:"password"`
+		TOTPCode      string `json:"totpCode"`      // optional — only needed when remote has 2FA
+		Token         string `json:"token"`         // optional — when set, skip login and use this token directly
+		SkipTLSVerify bool   `json:"skipTlsVerify"` // optional — skip TLS cert verification (self-signed)
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
@@ -113,7 +114,7 @@ func addRemote(c *fiber.Ctx) error {
 		// ── Explicit-token mode ──────────────────────────────────────────────
 		// The user supplied an API token directly. Validate it against the remote
 		// before storing so a typo or revoked token is caught immediately.
-		if err := remoteclient.Ping(body.URL, body.Token); err != nil {
+		if err := remoteclient.Ping(body.URL, body.Token, body.SkipTLSVerify); err != nil {
 			return fiber.NewError(fiber.StatusBadGateway, fmt.Sprintf("token validation failed: %s", err.Error()))
 		}
 		token = body.Token
@@ -123,7 +124,7 @@ func addRemote(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusBadRequest, "username and password are required")
 		}
 		// Login → (TOTP verify) → create token → logout on remote.
-		t, err := remoteclient.ObtainToken(body.URL, body.Username, body.Password, body.TOTPCode)
+		t, err := remoteclient.ObtainToken(body.URL, body.Username, body.Password, body.TOTPCode, body.SkipTLSVerify)
 		if errors.Is(err, remoteclient.ErrTOTPRequired) {
 			// Remote has 2FA — tell the client to ask for the TOTP code.
 			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"totp_required": true})
@@ -134,7 +135,7 @@ func addRemote(c *fiber.Ctx) error {
 		token = t
 	}
 
-	remote, err := remotes.Add(body.Name, body.URL, token)
+	remote, err := remotes.Add(body.Name, body.URL, token, body.SkipTLSVerify)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
@@ -156,7 +157,7 @@ func testRemote(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, err.Error())
 	}
-	if err := remoteclient.Ping(r.URL, r.Token); err != nil {
+	if err := remoteclient.Ping(r.URL, r.Token, r.SkipTLSVerify); err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
 	return c.JSON(fiber.Map{"ok": true})

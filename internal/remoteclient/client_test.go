@@ -44,7 +44,7 @@ func TestPing_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := Ping(srv.URL, "ws_test"); err != nil {
+	if err := Ping(srv.URL, "ws_test", false); err != nil {
 		t.Errorf("Ping success: unexpected error %v", err)
 	}
 }
@@ -55,7 +55,7 @@ func TestPing_Non200_ReturnsError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if err := Ping(srv.URL, "ws_bad"); err == nil {
+	if err := Ping(srv.URL, "ws_bad", false); err == nil {
 		t.Error("Ping with 401 response: expected error, got nil")
 	}
 }
@@ -65,7 +65,7 @@ func TestPing_Unreachable_ReturnsError(t *testing.T) {
 	url := srv.URL
 	srv.Close() // close immediately so the port is no longer listening
 
-	if err := Ping(url, "ws_test"); err == nil {
+	if err := Ping(url, "ws_test", false); err == nil {
 		t.Error("Ping to closed server: expected error, got nil")
 	}
 }
@@ -143,7 +143,7 @@ func TestObtainToken_Success(t *testing.T) {
 	})
 	defer srv.Close()
 
-	tok, err := ObtainToken(srv.URL, "admin", "secret", "")
+	tok, err := ObtainToken(srv.URL, "admin", "secret", "", false)
 	if err != nil {
 		t.Fatalf("ObtainToken success: unexpected error %v", err)
 	}
@@ -163,7 +163,7 @@ func TestObtainToken_TOTPRequired_NoCode_ReturnsSentinel(t *testing.T) {
 	})
 	defer srv.Close()
 
-	_, err := ObtainToken(srv.URL, "admin", "secret", "")
+	_, err := ObtainToken(srv.URL, "admin", "secret", "", false)
 	if !errors.Is(err, ErrTOTPRequired) {
 		t.Errorf("expected ErrTOTPRequired, got %v", err)
 	}
@@ -182,7 +182,7 @@ func TestObtainToken_TOTPRequired_WithCode_Succeeds(t *testing.T) {
 	})
 	defer srv.Close()
 
-	tok, err := ObtainToken(srv.URL, "admin", "secret", "123456")
+	tok, err := ObtainToken(srv.URL, "admin", "secret", "123456", false)
 	if err != nil {
 		t.Fatalf("ObtainToken with TOTP code: unexpected error %v", err)
 	}
@@ -204,7 +204,7 @@ func TestObtainToken_TOTPWrongCode_ReturnsError(t *testing.T) {
 	})
 	defer srv.Close()
 
-	_, err := ObtainToken(srv.URL, "admin", "secret", "000000")
+	_, err := ObtainToken(srv.URL, "admin", "secret", "000000", false)
 	if err == nil {
 		t.Error("wrong TOTP code: expected error, got nil")
 	}
@@ -217,7 +217,7 @@ func TestObtainToken_LoginFailed_ReturnsError(t *testing.T) {
 	srv := loginServer(t, loginOpts{loginStatus: http.StatusUnauthorized})
 	defer srv.Close()
 
-	_, err := ObtainToken(srv.URL, "admin", "wrong", "")
+	_, err := ObtainToken(srv.URL, "admin", "wrong", "", false)
 	if err == nil {
 		t.Error("wrong password: expected error, got nil")
 	}
@@ -227,7 +227,7 @@ func TestObtainToken_NoSessionCookie_ReturnsError(t *testing.T) {
 	srv := loginServer(t, loginOpts{authenticated: true, noCookie: true})
 	defer srv.Close()
 
-	_, err := ObtainToken(srv.URL, "admin", "secret", "")
+	_, err := ObtainToken(srv.URL, "admin", "secret", "", false)
 	if err == nil {
 		t.Error("missing session cookie: expected error, got nil")
 	}
@@ -241,7 +241,7 @@ func TestObtainToken_NotAuthenticated_ReturnsError(t *testing.T) {
 	srv := loginServer(t, loginOpts{authenticated: false})
 	defer srv.Close()
 
-	_, err := ObtainToken(srv.URL, "admin", "secret", "")
+	_, err := ObtainToken(srv.URL, "admin", "secret", "", false)
 	if err == nil {
 		t.Error("authenticated=false: expected error, got nil")
 	}
@@ -251,7 +251,7 @@ func TestObtainToken_EmptyRawToken_ReturnsError(t *testing.T) {
 	srv := loginServer(t, loginOpts{authenticated: true, rawToken: ""})
 	defer srv.Close()
 
-	_, err := ObtainToken(srv.URL, "admin", "secret", "")
+	_, err := ObtainToken(srv.URL, "admin", "secret", "", false)
 	if err == nil {
 		t.Error("empty raw_token: expected error, got nil")
 	}

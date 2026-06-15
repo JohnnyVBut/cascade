@@ -1113,8 +1113,9 @@ class API {
    * token and store it. The password is never persisted.
    * @param {{ name: string, url: string, username: string, password: string }}
    */
-  async addRemote({ name, url, username, password, totpCode, token }) {
+  async addRemote({ name, url, username, password, totpCode, token, skipTlsVerify }) {
     const body = { name, url };
+    if (skipTlsVerify) body.skipTlsVerify = true;
     if (token) {
       // Explicit-token mode — server validates and stores the token directly.
       body.token = token;

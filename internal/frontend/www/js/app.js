@@ -355,7 +355,7 @@ new Vue({
     activeRemoteId: null,   // null = local server; string = remote id
     localServerName: '',    // name of the local server, set once on login and never overwritten by remote settings
     showRemoteAdd: false,
-    remoteAddForm: { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '' },
+    remoteAddForm: { name: '', url: '', mode: 'login', username: '', password: '', totpCode: '', token: '', skipTlsVerify: false },
     remoteAddError: '',
     remoteAddLoading: false,
     remoteAddNeedsTOTP: false,
