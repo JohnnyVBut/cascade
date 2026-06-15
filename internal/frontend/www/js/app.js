@@ -1045,6 +1045,10 @@ new Vue({
         this.dashGrid = null;
         this.metricsStopPoller();
       }
+      // GridStack leaves inline height on the <main> element after destroy(false).
+      // Reset it so subsequent pages are not clipped.
+      const mainEl = document.querySelector('.app-main');
+      if (mainEl) mainEl.style.height = '';
       if (this._dashResizeObs) {
         this._dashResizeObs.disconnect();
         this._dashResizeObs = null;
