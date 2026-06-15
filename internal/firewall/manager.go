@@ -1209,12 +1209,17 @@ func (m *Manager) applyRoutingForRule(rule *Rule) error {
 
 	fwmark := *rule.Fwmark
 
-	// ip route replace default via <gw> dev <iface> onlink table <fwmark>
-	// "onlink" bypasses the kernel's reachability check for the next-hop IP.
-	// Required when the gateway IP is not in the same subnet as the interface
-	// (e.g. a remote KZ server reachable via ens3, or a WireGuard peer whose
-	// address lives in a different /24 than the local interface address).
-	cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	// WireGuard/AmneziaWG interfaces are point-to-point — the kernel rejects
+	// "via <ip> onlink" with "Nexthop has invalid gateway". Route via dev only.
+	// For regular interfaces (ens*, eth*) keep "via <ip> onlink" so the kernel
+	// knows which next-hop to use when multiple routes exist in the table.
+	isWG := strings.HasPrefix(gw.iface, "wg") || strings.HasPrefix(gw.iface, "awg")
+	var cmd string
+	if isWG || gw.gatewayIP == "" {
+		cmd = fmt.Sprintf("ip route replace default dev %s table %d", gw.iface, fwmark)
+	} else {
+		cmd = fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	}
 	if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
 		return fmt.Errorf("ip route replace: %w", err)
 	}
