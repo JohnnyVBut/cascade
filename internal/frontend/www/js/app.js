@@ -1045,19 +1045,21 @@ new Vue({
         this.dashGrid = null;
         this.metricsStopPoller();
       }
-      // Reset scroll position and any inline styles left on the main container.
-      const mainEl = document.querySelector('.app-main');
-      if (mainEl) {
-        mainEl.scrollTop = 0;
-        mainEl.style.overflow = '';
-        mainEl.style.overflowY = '';
-        mainEl.style.height = '';
-      }
       if (this._dashResizeObs) {
         this._dashResizeObs.disconnect();
         this._dashResizeObs = null;
       }
       this.activePage = pageId;
+      // Reset scroll and any GridStack inline styles AFTER Vue updates the DOM.
+      this.$nextTick(() => {
+        const mainEl = document.querySelector('.app-main');
+        if (mainEl) {
+          mainEl.scrollTop = 0;
+          mainEl.style.overflow = '';
+          mainEl.style.overflowY = '';
+          mainEl.style.height = '';
+        }
+      });
       if (pageId === 'dashboard') {
         // loadDashboard already calls dashInitGrid after await $nextTick —
         // do not call it separately here to avoid a double-init race.
