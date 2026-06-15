@@ -45,6 +45,15 @@ var proxyClient = &http.Client{
 	// internal address in a Location header is still blocked.
 }
 
+var proxyClientInsecure = &http.Client{
+	Timeout: 5 * time.Second,
+	Transport: &http.Transport{
+		TLSNextProto:    make(map[string]func(string, *tls.Conn) http.RoundTripper),
+		DialContext:     remoteclient.SafeDialContext,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+	},
+}
+
 // speedtestProxyClient is used for /speedtest/client proxy calls which can take
 // up to 30 s (test duration) + overhead. The standard 5 s proxyClient would
 // cancel the request before the iperf3 run completes.
@@ -53,6 +62,15 @@ var speedtestProxyClient = &http.Client{
 	Transport: &http.Transport{
 		TLSNextProto: make(map[string]func(string, *tls.Conn) http.RoundTripper),
 		DialContext:  remoteclient.SafeDialContext,
+	},
+}
+
+var speedtestProxyClientInsecure = &http.Client{
+	Timeout: 120 * time.Second,
+	Transport: &http.Transport{
+		TLSNextProto:    make(map[string]func(string, *tls.Conn) http.RoundTripper),
+		DialContext:     remoteclient.SafeDialContext,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
 	},
 }
 
@@ -206,9 +224,17 @@ func proxyRemote(c *fiber.Ctx) error {
 	req.Header.Set("Authorization", "Bearer "+r.Token)
 
 	// Use a longer timeout for speedtest/client — iperf3 runs can take up to 30 s.
-	client := proxyClient
-	if strings.HasSuffix(subPath, "/speedtest/client") {
+	// Use insecure clients for remotes with self-signed certificates.
+	var client *http.Client
+	switch {
+	case strings.HasSuffix(subPath, "/speedtest/client") && r.SkipTLSVerify:
+		client = speedtestProxyClientInsecure
+	case strings.HasSuffix(subPath, "/speedtest/client"):
 		client = speedtestProxyClient
+	case r.SkipTLSVerify:
+		client = proxyClientInsecure
+	default:
+		client = proxyClient
 	}
 	resp, err := client.Do(req)
 	if err != nil {

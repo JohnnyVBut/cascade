@@ -17,6 +17,12 @@ ENV_FILE="$SCRIPT_DIR/.env"
 CADDY_DIR="$SCRIPT_DIR/caddy"
 CERT_DIR="/etc/ssl/cascade"
 REBOOT_FLAG="/var/lib/.cascade-needs-reboot"
+LOG_FILE="/var/log/cascade-setup.log"
+
+# ── Logging to file ──────────────────────────────────────────────────────────
+mkdir -p "$(dirname "$LOG_FILE")"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "=== cascade setup started at $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 G='\033[0;32m'; Y='\033[1;33m'; R='\033[0;31m'; B='\033[0;34m'; N='\033[0m'
