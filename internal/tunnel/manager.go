@@ -23,6 +23,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/settings"
+	"github.com/JohnnyVBut/cascade/internal/tc"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
@@ -836,5 +837,45 @@ func awg2ParamsFromGenerated(p *awgparams.Params) *peer.AWG2Settings {
 		I3:   p.I3,
 		I4:   p.I4,
 		I5:   p.I5,
+	}
+}
+
+// ApplyGroupTCLimits re-applies rate limits for all client peers in the given group
+// across all enabled interfaces. Called when a client-group's rate limits are updated.
+// rateDown/rateUp are in kbps; 0 removes the limit.
+func (m *Manager) ApplyGroupTCLimits(groupID string, rateDown, rateUp int) {
+	m.mu.RLock()
+	ifaces := make([]*TunnelInterface, 0, len(m.interfaces))
+	for _, t := range m.interfaces {
+		ifaces = append(ifaces, t)
+	}
+	m.mu.RUnlock()
+
+	for _, t := range ifaces {
+		if !t.Enabled {
+			continue
+		}
+		t.peersMu.RLock()
+		var targets []string
+		for _, p := range t.peers {
+			if p.PeerType == "client" && p.GroupID == groupID && p.RateDown == 0 && p.RateUp == 0 {
+				targets = append(targets, p.AllowedIPs)
+			}
+		}
+		t.peersMu.RUnlock()
+
+		if len(targets) == 0 {
+			continue
+		}
+		if rateDown > 0 || rateUp > 0 {
+			tc.EnsureQdisc(t.ID)
+		}
+		for _, ip := range targets {
+			if rateDown > 0 || rateUp > 0 {
+				tc.Apply(t.ID, ip, rateDown, rateUp, t.kernelMTU())
+			} else {
+				tc.Remove(t.ID, ip)
+			}
+		}
 	}
 }

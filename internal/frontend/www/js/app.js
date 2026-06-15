@@ -514,6 +514,8 @@ new Vue({
       genAsn: '',
       genAsnList: '',
       file: null,               // optional CIDR file for ipset (uploaded immediately after create)
+      rateDown: 0,              // kbps; 0 = unlimited (client-group only)
+      rateUp: 0,
     },
     aliasEdit: {
       id: null,
@@ -529,6 +531,8 @@ new Vue({
       genCountry: '',
       genAsn: '',
       genAsnList: '',
+      rateDown: 0,              // kbps; 0 = unlimited (client-group only)
+      rateUp: 0,
     },
     // Country picker combobox state (shared — only one modal open at a time)
     countrySearch: '',          // text in the filter input
@@ -3565,7 +3569,7 @@ new Vue({
       this.aliasCreate = {
         name: '', description: '', type: 'network', entries: '', ipsetEntries: '', memberIds: [],
         genSource: 'country', genCountry: '', genAsn: '', genAsnList: '',
-        file: null,
+        file: null, rateDown: 0, rateUp: 0,
       };
     },
 
@@ -3595,6 +3599,10 @@ new Vue({
         }
         if (data.type === 'group' || data.type === 'port-group') {
           data.memberIds = this.aliasCreate.memberIds;
+        }
+        if (data.type === 'client-group') {
+          data.rateDown = this.aliasCreate.rateDown || 0;
+          data.rateUp = this.aliasCreate.rateUp || 0;
         }
         // Сохраняем ipsetEntries, file и genOpts ДО сброса формы
         const ipsetText = this.aliasCreate.ipsetEntries.trim();
@@ -3688,6 +3696,8 @@ new Vue({
         genCountry: alias.generatorOpts?.country || '',
         genAsn: alias.generatorOpts?.asn || '',
         genAsnList: alias.generatorOpts?.asnList || '',
+        rateDown: alias.rateDown || 0,
+        rateUp: alias.rateUp || 0,
       };
       // Pre-fill country picker display if country was saved.
       const code = this.aliasEdit.genCountry;
@@ -3722,6 +3732,10 @@ new Vue({
         }
         if (this.aliasEdit.type === 'group' || this.aliasEdit.type === 'port-group') {
           data.memberIds = this.aliasEdit.memberIds;
+        }
+        if (this.aliasEdit.type === 'client-group') {
+          data.rateDown = this.aliasEdit.rateDown || 0;
+          data.rateUp = this.aliasEdit.rateUp || 0;
         }
         await this.api.updateAlias(data);
 

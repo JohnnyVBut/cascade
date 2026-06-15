@@ -770,6 +770,14 @@ DROP TABLE IF EXISTS metrics_history;
 DROP INDEX IF EXISTS metrics_history_key_ts;
 `,
 	},
+	{
+		version: 36,
+		sql: `
+-- Rate limits on client-group aliases (kbps; 0 = unlimited).
+ALTER TABLE aliases ADD COLUMN rate_down INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE aliases ADD COLUMN rate_up   INTEGER NOT NULL DEFAULT 0;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

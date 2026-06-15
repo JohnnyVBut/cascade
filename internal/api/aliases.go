@@ -23,6 +23,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/nat"
+	"github.com/JohnnyVBut/cascade/internal/tunnel"
 )
 
 // RegisterAliases registers all /api/aliases/* routes.
@@ -95,6 +96,11 @@ func updateAlias(c *fiber.Ctx) error {
 		nat.Get().RemoveForAlias(aliasID)
 	}
 
+	oldRateDown, oldRateUp := 0, 0
+	if oldAlias != nil && oldAlias.Type == "client-group" {
+		oldRateDown, oldRateUp = oldAlias.RateDown, oldAlias.RateUp
+	}
+
 	a, err := aliases.Get().Update(aliasID, upd)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -109,6 +115,13 @@ func updateAlias(c *fiber.Ctx) error {
 				log.Printf("aliases: updateAlias: firewall rebuild: %v", err)
 			}
 		}()
+	}
+
+	// Re-apply tc limits for all peers in this group if rate limits changed.
+	if a.Type == "client-group" && (a.RateDown != oldRateDown || a.RateUp != oldRateUp) {
+		if tm := tunnel.Get(); tm != nil {
+			go tm.ApplyGroupTCLimits(aliasID, a.RateDown, a.RateUp)
+		}
 	}
 
 	return c.JSON(a)

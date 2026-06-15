@@ -64,7 +64,7 @@ func (m *Manager) GetDefaultGroupID() (string, error) {
 func (m *Manager) GetClientGroups() ([]Alias, error) {
 	rows, err := db.DB().Query(`
 		SELECT id, name, description, type, entries, member_ids, ipset_name,
-		       entry_count, generator_opts, last_updated, created_at
+		       entry_count, generator_opts, last_updated, created_at, rate_down, rate_up
 		FROM aliases WHERE type = 'client-group' ORDER BY name ASC
 	`)
 	if err != nil {

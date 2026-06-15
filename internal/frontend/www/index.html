@@ -6040,6 +6040,19 @@
                   <option value="port-group">Port Group — combines multiple port aliases</option>
                 </select>
               </div>
+              <!-- Rate limits (client-group) -->
+              <div v-if="aliasCreate.type === 'client-group'" style="display:flex; gap:12px;">
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Download limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasCreate.rateDown" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Upload limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasCreate.rateUp" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+              </div>
               <!-- Entries (host/network) -->
               <div v-if="aliasCreate.type === 'host' || aliasCreate.type === 'network'">
                 <label class="text-sm font-medium dark:text-neutral-300">Entries (one per line)</label>
@@ -6209,6 +6222,19 @@
                     {{ aliasEdit.type }}
                   </span>
                   <span class="text-xs text-gray-400 dark:text-neutral-500 ml-2">Type cannot be changed after creation</span>
+                </div>
+              </div>
+              <!-- Rate limits (client-group) -->
+              <div v-if="aliasEdit.type === 'client-group'" style="display:flex; gap:12px;">
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Download limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasEdit.rateDown" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
+                </div>
+                <div style="flex:1;">
+                  <label class="text-sm font-medium dark:text-neutral-300">Upload limit <span class="text-gray-400 font-normal">(kbps, 0=unlimited)</span></label>
+                  <input v-model.number="aliasEdit.rateUp" type="number" min="0" placeholder="0"
+                    class="w-full border border-gray-300 dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-100 rounded px-3 py-2 text-sm mt-1">
                 </div>
               </div>
               <!-- Entries (host/network) -->
