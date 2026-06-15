@@ -180,6 +180,7 @@ new Vue({
     metricsAvailableKeys: [],       // all keys (populated on first snapshot)
     metricsHistory: {},             // { [widgetId+key]: [{x,y}] } rolling buffer
     metricsGatewayDist: {},         // { [widgetId+key]: [[ts_ms, healthy, degraded, down, adminDown]] }
+    metricsGatewaySeriesCache: {},  // { [widgetId+key]: [series] } — stable refs so ApexCharts skips re-render
     metricsPoller: null,            // setInterval handle
     metricsConfigWidget: null,      // widget being configured (modal open)
     metricsConfigPage: 'dashboard', // page the config modal was opened from
@@ -3111,6 +3112,7 @@ new Vue({
             const buf = [...prev, { x: now, y: Math.round(val * 100) / 100 }];
             if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
             this.$set(this.metricsHistory, bufKey, buf);
+            if (key.startsWith('gateway:')) this._updateGatewaySeriesCache(w.id, key);
           }
         }
       } catch (e) { /* non-fatal */ }
@@ -3172,6 +3174,7 @@ new Vue({
       try {
         const res = await this.api.getMetricsGatewayDist({ key, period });
         this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, res.buckets || []);
+        this._updateGatewaySeriesCache(widgetId, key);
       } catch (e) { /* non-fatal */ }
     },
 
@@ -3187,18 +3190,21 @@ new Vue({
       return function(v) { return v + '%'; };
     },
 
-    // Builds 4 stacked series for gateway bar chart from distribution data.
-    // For 5m realtime: derives from metricsHistory buffer (each tick = 1 status).
-    // For historical: uses metricsGatewayDist from backend.
+    // Returns cached series for gateway bar chart. Stable reference → ApexCharts skips re-render
+    // when data hasn't changed. Cache is updated only in _updateGatewaySeriesCache.
     metricsGetGatewayStackedSeries(widgetId, key) {
+      return this.metricsGatewaySeriesCache[`${widgetId}:${key}`] || [];
+    },
+
+    // Builds 4 stacked series and stores in cache. Call whenever underlying data changes.
+    _updateGatewaySeriesCache(widgetId, key) {
       const period = this.metricsWidgetPeriod[widgetId] || '5m';
-      const healthy   = { name: 'Healthy',    color: '#22c55e', data: [] };
-      const degraded  = { name: 'Degraded',   color: '#eab308', data: [] };
-      const down      = { name: 'Down',       color: '#ef4444', data: [] };
-      const adminDown = { name: 'Admin Down', color: '#9ca3af', data: [] };
+      const healthy   = { name: 'Healthy',    data: [] };
+      const degraded  = { name: 'Degraded',   data: [] };
+      const down      = { name: 'Down',       data: [] };
+      const adminDown = { name: 'Admin Down', data: [] };
 
       if (period === '5m') {
-        // Realtime: each point is a single status tick
         const buf = this.metricsHistory[`${widgetId}:${key}`] || [];
         for (const p of buf) {
           const v = Math.round(p.y);
@@ -3212,15 +3218,15 @@ new Vue({
         for (const b of dist) {
           const [ts, h, d, dn, ad] = b;
           const total = h + d + dn + ad || 1;
-          // Pre-compute percentages so tooltip shows correct values
           healthy.data.push(  { x: ts, y: Math.round(h  / total * 100) });
           degraded.data.push( { x: ts, y: Math.round(d  / total * 100) });
           down.data.push(     { x: ts, y: Math.round(dn / total * 100) });
           adminDown.data.push({ x: ts, y: Math.round(ad / total * 100) });
         }
       }
-      return [adminDown, down, degraded, healthy];
+      this.$set(this.metricsGatewaySeriesCache, `${widgetId}:${key}`, [adminDown, down, degraded, healthy]);
     },
+
 
     async metricsOnPeriodChange(widgetId, period) {
       this.$set(this.metricsWidgetPeriod, widgetId, period);
@@ -3242,6 +3248,7 @@ new Vue({
       for (const key of (w.graphs || [])) {
         this.$set(this.metricsHistory, `${widgetId}:${key}`, []);
         this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, []);
+        this.$set(this.metricsGatewaySeriesCache, `${widgetId}:${key}`, []);
       }
       if (period === '5m') return; // realtime — poller fills it from next tick
       for (const key of (w.graphs || [])) {
