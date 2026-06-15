@@ -1058,6 +1058,7 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 		return m.applyRuleKernelSubchain(rule, combos, srcParts, dstParts)
 	}
 
+	isPBR := rule.Action == "accept" && (rule.GatewayID != "" || rule.GatewayGroupID != "")
 	for _, combo := range combos {
 		for _, srcPart := range srcParts {
 			for _, dstPart := range dstParts {
@@ -1070,7 +1071,7 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 				}
 
 				// Mangle MARK (PBR) or RETURN (non-PBR) — in PREROUTING/FIREWALL_MANGLE.
-				if rule.Action == "accept" && (rule.GatewayID != "" || rule.GatewayGroupID != "") {
+				if isPBR {
 					cmd := fmt.Sprintf("iptables-nft -t mangle -A FIREWALL_MANGLE%s -j MARK --set-mark %d", flags, *rule.Fwmark)
 					if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
 						log.Printf("firewall: mangle MARK %q: %v", rule.Name, err)
@@ -1088,6 +1089,11 @@ func (m *Manager) applyRuleKernel(rule *Rule) error {
 				}
 			}
 		}
+	}
+	// PBR first-match semantics: once a mark is set, stop processing so that
+	// subsequent (more general) PBR rules cannot override it.
+	if isPBR {
+		util.Exec("iptables-nft -t mangle -A FIREWALL_MANGLE -m mark ! --mark 0 -j RETURN", 10*time.Second, true) //nolint
 	}
 	return nil
 }
@@ -1155,6 +1161,11 @@ func (m *Manager) applyRuleKernelSubchain(rule *Rule, combos []portCombo, srcPar
 			cmd = fmt.Sprintf("iptables-nft -t mangle -A FIREWALL_MANGLE%s -j %s", addrFlags, mangleChain)
 			util.Exec(cmd, 10*time.Second, true) //nolint
 		}
+	}
+	// PBR first-match semantics: once a mark is set, stop processing so that
+	// subsequent (more general) PBR rules cannot override it.
+	if isPBR {
+		util.Exec("iptables-nft -t mangle -A FIREWALL_MANGLE -m mark ! --mark 0 -j RETURN", 10*time.Second, true) //nolint
 	}
 	return nil
 }
