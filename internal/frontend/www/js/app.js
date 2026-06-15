@@ -1032,6 +1032,10 @@ new Vue({
       // inline styles and CSS vars it set on parent elements (which caused a
       // vertical gap on the interfaces page after visiting dashboard).
       if (this.activePage === 'diagnostics' && pageId !== 'diagnostics' && this.diagGrid) {
+        // Clear inline styles GridStack sets on .grid-stack-item-content before destroy(false).
+        // destroy(false) cleans up .grid-stack-item but NOT content children — those keep
+        // height/overflow styles, and Vue reuses the DOM nodes for the next page's elements.
+        document.querySelectorAll('.diag-grid .grid-stack-item-content').forEach(el => { el.style.cssText = ''; });
         this.diagGrid.destroy(false);
         this.diagGrid = null;
         this.metricsStopPoller();
