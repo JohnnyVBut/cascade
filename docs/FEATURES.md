@@ -69,7 +69,7 @@ Two peer types per interface:
 - Supports ipset membership test for alias-based rules
 
 ### Static Routes
-- Create persistent routes (`destination`, `via`, `dev`, `metric`, `table`)
+- Create / edit / delete persistent routes (`destination`, `via`, `dev`, `metric`, `table`)
 - Toggle enable / disable per route
 - Survive container restart — restored after `tunnel.Init()` ensures interfaces exist
 
@@ -266,6 +266,80 @@ See [API.en.md](API.en.md) for the full endpoint reference.
 - **Network modes:** `host` (default, shares host netns) or `bridge` (Docker-published port range via `docker-compose.bridge.yml`)
 - Sidebar badge shows current network mode: HOST (gray) / BRIDGE (amber) / NONE (red)
 - Sidebar badge shows WireGuard implementation: KERNEL (green) / USERSPACE (blue)
+
+---
+
+---
+
+## Multi-Server Management 🆕
+
+Manage multiple Cascade routers from a single browser session.
+
+- **Server switcher** in the sidebar — switch between local and any registered remote server
+- All API calls transparently proxied through the local server; the browser never communicates with the remote directly, and the remote token stays on the backend
+- **Add Remote Server** modal:
+  - Login mode: username + password → token obtained automatically
+  - Explicit-token mode: supply a pre-created API token directly
+  - **2FA support** — if the remote has TOTP enabled, a second prompt asks for the 6-digit code
+  - **Self-signed certificate support** — "Skip TLS verification" checkbox for servers with self-signed certs
+- Auto-switch back to local when the remote becomes unreachable (401 / 5xx)
+- Dashboard reloads automatically on server switch
+- **Remotes page** — list, add, test connectivity, delete registered servers
+
+---
+
+## Speed Test 🆕
+
+iperf3-based throughput measurement between any two managed Cascade servers.
+
+- **Route modes:**
+  - `Auto` — detects S2S tunnel automatically; falls back to internet
+  - `Tunnel` — forces traffic through the S2S WireGuard tunnel; requires a shared subnet
+  - `Internet` — direct connection via public IPs (ignores tunnel)
+  - `Manual` — pick specific interfaces on both servers for bind address
+- **S2S autodetect** — finds the common subnet between two servers' WireGuard interfaces and resolves the tunnel IP automatically
+- **Ping check** before test — warns if the target host is unreachable via ICMP (soft warning for internet mode, hard block for tunnel)
+- Async execution — `POST /run` returns `jobId` immediately; UI polls `GET /result/:jobId` every 2 s
+- Results persisted to `speedtest_results` table in SQLite — full history available
+- Orchestration always runs on the **local server** — remote IDs are resolved from the local DB, avoiding cross-server ID mismatch
+- Requires `iperf3` installed on both source and destination servers
+
+---
+
+## Monitoring & Diagnostics 🆕
+
+Real-time and historical metrics for interfaces and gateways.
+
+### Traffic Metrics
+- Per-interface RX/TX bytes/s collected every 5 seconds from `/proc/net/dev`
+- Stored in a separate **`metrics.db`** (not cascade.db) to avoid WAL contention during high-frequency writes
+- Configurable retention periods: 5 min (realtime), 1 h, 24 h, 7 days
+- ApexCharts area graphs per interface — color-coded, animated in realtime, paused when tab is hidden
+- Metrics DB optionally included in backup archive
+
+### Gateway Status History
+- Gateway up/down/degraded state sampled every monitoring tick
+- Stacked bar chart showing time distribution: online / degraded / offline / admin_down
+- Tooltip shows percentage breakdown per bar
+- Period selector: 5 min / 1 h / 24 h / 7 days
+
+### Diagnostics Page
+- Dedicated full-screen page for monitoring widgets
+- Per-interface traffic charts + gateway status history in one view
+- Accessible from the sidebar
+
+---
+
+## Rate Limits on Client Groups 🆕
+
+Per-IP bandwidth enforcement for groups of VPN clients using Linux Traffic Control (tc HTB).
+
+- Configured per **client-group alias** — applies to all peers in the group
+- Separate **download** and **upload** limits in kbps
+- Enforced via `tc qdisc` / `tc class` / `tc filter` on the WireGuard interface — one HTB class per client IP
+- Rules restored automatically on interface start/restart
+- When a peer moves between groups (or expires), old tc rules are removed and new ones applied
+- `0` = unlimited (no tc rule created)
 
 ---
 

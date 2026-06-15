@@ -14,6 +14,10 @@
 10. [Firewall: Rules and PBR](#10-firewall-rules-and-pbr)
 11. [Global Settings](#11-global-settings)
 12. [Administration](#12-administration)
+13. [Multi-Server Management 🆕](#13-multi-server-management-)
+14. [Speed Test 🆕](#14-speed-test-)
+15. [Monitoring & Diagnostics 🆕](#15-monitoring--diagnostics-)
+16. [Rate Limits 🆕](#16-rate-limits-)
 
 **Appendices:**
 - [Appendix A: Common Scenarios](#appendix-common-scenarios)
@@ -953,3 +957,160 @@ curl ifconfig.io       # should show Server B's exit IP (not Server A or client)
 
 On Server B, the peer card should show RX/TX and last handshake time — confirming the
 tunnel is working through the relay.
+
+---
+
+## 13. Multi-Server Management 🆕
+
+Cascade lets you manage multiple routers from a single browser session. All communication
+with remote servers is proxied through the local server — the browser never contacts remote
+servers directly, and tokens are never exposed to the client.
+
+### Adding a Remote Server
+
+Click **"+ Add Server"** in the **Remotes** sidebar section.
+
+**Login mode** (recommended):
+
+| Field | Description |
+|-------|-------------|
+| **Name** | Display name for this server in the sidebar |
+| **URL** | Base URL of the remote Cascade instance (e.g. `https://1.2.3.4/secret-path`) |
+| **Username / Password** | Credentials on the remote server |
+| **TOTP code** | 6-digit code — appears automatically if the remote has 2FA enabled |
+| **Skip TLS verification** | Enable for servers with self-signed certificates |
+
+**Token mode**: if you have a pre-created API token (`ws_...`) from the remote server,
+enter it directly in the **API Token** field instead of username/password.
+
+After saving, Cascade logs into the remote, creates a dedicated API token, and stores it
+locally. Your password is never saved.
+
+### Switching Servers
+
+Click any server name in the sidebar. The UI reloads and all subsequent actions target
+that server. A badge in the header shows which server is currently active.
+
+Click **Local** to return to the local server at any time.
+
+### Testing and Removing
+
+- **Test** — sends a ping to the remote's `/api/health` endpoint to verify the token is still valid
+- **Remove** — deletes the remote entry from the local database (does not affect the remote server)
+
+### Notes
+
+- If the remote becomes unreachable (401 or 5xx), Cascade automatically switches back to local
+- The Speed Test orchestration always runs on the local server regardless of which server is active
+
+---
+
+## 14. Speed Test 🆕
+
+Measure throughput between any two managed Cascade servers using iperf3.
+
+### Requirements
+
+- `iperf3` must be installed on **both** the source and destination servers
+- The servers must be reachable from each other on the chosen route (internet or tunnel)
+
+```bash
+# Install iperf3 on each server
+apt install iperf3
+```
+
+### Running a Speed Test
+
+Open **Speed Test** from the sidebar (or the Administration page).
+
+| Field | Description |
+|-------|-------------|
+| **From** | Source server — iperf3 server runs here |
+| **To** | Destination server — iperf3 client runs here |
+| **Route** | `Auto`, `Tunnel`, `Internet`, or `Manual` — see below |
+| **Duration** | Test duration in seconds (default: 10) |
+| **Streams** | Parallel iperf3 streams (default: 4) |
+
+### Route Modes
+
+| Mode | Behaviour |
+|------|-----------|
+| **Auto** | Detects a shared S2S subnet automatically; falls back to internet if none found |
+| **Tunnel** | Forces traffic through the WireGuard S2S tunnel between the two servers |
+| **Internet** | Uses public IPs regardless of any tunnel |
+| **Manual** | Lets you pick specific WireGuard interfaces on each server for the bind address |
+
+### Reading Results
+
+After the test completes the result card shows:
+
+| Metric | Description |
+|--------|-------------|
+| **Send** | Throughput from source to destination (Mbps) |
+| **Receive** | Throughput from destination to source (Mbps) |
+| **Retransmits** | TCP retransmissions — high values indicate packet loss |
+| **Latency** | Mean RTT across all streams (ms) |
+
+Previous results are saved and visible in the **History** table below the test form.
+
+---
+
+## 15. Monitoring & Diagnostics 🆕
+
+### Traffic Metrics Widget
+
+The **Monitoring** widget on the Dashboard shows real-time TX/RX traffic per WireGuard interface.
+
+- **Period selector** — choose between 5 min (live), 1 h, 24 h, or 7 days
+- Each interface gets its own area chart; colors are consistent across reloads
+- Charts pause automatically when the browser tab is hidden to save resources
+- The widget can be added to any dashboard page via **Add Widget**
+
+### Diagnostics Page
+
+The **Diagnostics** page (sidebar) shows all monitoring widgets in a full-screen layout:
+
+- Per-interface traffic charts for all active interfaces
+- Gateway status history charts for all gateway groups
+
+Use this page for a quick overview of the router's health without navigating between sections.
+
+### Gateway Status History
+
+Each gateway group card on the Diagnostics page includes a **stacked bar chart** showing
+the distribution of gateway states over time:
+
+| Color | State |
+|-------|-------|
+| Green | Online |
+| Yellow | Degraded |
+| Red | Offline |
+| Gray | Admin down (disabled) |
+
+Hover over any bar to see the exact percentage for each state in that time bucket.
+
+---
+
+## 16. Rate Limits 🆕
+
+Bandwidth limits can be applied per **client group** to cap the download and upload speed
+of all peers in that group. Limits are enforced per individual IP using Linux Traffic Control (tc HTB).
+
+### Configuring Rate Limits
+
+1. Go to **Firewall → Aliases**
+2. Open an existing **Client Group** alias or create a new one
+3. Set **Rate Limit Down** (kbps) and **Rate Limit Up** (kbps)
+4. Save — limits are applied immediately to all active peers in the group
+
+| Field | Description |
+|-------|-------------|
+| **Rate Limit Down** | Maximum download speed per client IP in kbps. `0` = unlimited |
+| **Rate Limit Up** | Maximum upload speed per client IP in kbps. `0` = unlimited |
+
+### Notes
+
+- Limits apply per IP address inside the group, not shared across the group
+- When a peer moves to a different group, the old limit is removed and the new group's limit is applied
+- Limits are restored automatically when a WireGuard interface is started or restarted
+- Setting both fields to `0` removes all tc rules for the group
