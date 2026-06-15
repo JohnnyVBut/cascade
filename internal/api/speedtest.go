@@ -498,9 +498,17 @@ func stProxyCall(remoteId, method, path string, body map[string]any) (map[string
 	req.Header.Set("Content-Type", "application/json")
 
 	// Use speedtestProxyClient for client calls (long timeout); proxyClient for the rest.
-	client := proxyClient
-	if method == "POST" && strings.HasSuffix(path, "/client") {
+	// Use insecure variants for remotes with self-signed certificates.
+	var client *http.Client
+	switch {
+	case method == "POST" && strings.HasSuffix(path, "/client") && r.SkipTLSVerify:
+		client = speedtestProxyClientInsecure
+	case method == "POST" && strings.HasSuffix(path, "/client"):
 		client = speedtestProxyClient
+	case r.SkipTLSVerify:
+		client = proxyClientInsecure
+	default:
+		client = proxyClient
 	}
 
 	resp, err := client.Do(req)

@@ -25,6 +25,17 @@ class API {
   /** Returns the active remote id, or null if local. */
   getRemoteId() { return this._remoteId; }
 
+  /** Like call(), but always targets the local server regardless of activeRemoteId. */
+  async callLocal(opts) {
+    const saved = this._remoteId;
+    this._remoteId = null;
+    try {
+      return await this.call(opts);
+    } finally {
+      this._remoteId = saved;
+    }
+  }
+
   async call({ method, path, body, allowStatus = [] }) {
     // Compute API base URL from the first path segment of the current page.
     // Works correctly whether the page was loaded with or without a trailing slash,
@@ -1159,19 +1170,19 @@ class API {
   // ── Speed test ─────────────────────────────────────────────────────────────
 
   async speedtestRun(body) {
-    return this.call({ method: 'post', path: '/speedtest/run', body });
+    return this.callLocal({ method: 'post', path: '/speedtest/run', body });
   }
 
   async speedtestGetResult(jobId) {
-    return this.call({ method: 'get', path: `/speedtest/result/${jobId}` });
+    return this.callLocal({ method: 'get', path: `/speedtest/result/${jobId}` });
   }
 
   async speedtestListResults() {
-    return this.call({ method: 'get', path: '/speedtest/results' });
+    return this.callLocal({ method: 'get', path: '/speedtest/results' });
   }
 
   async speedtestClearResults() {
-    return this.call({ method: 'delete', path: '/speedtest/results' });
+    return this.callLocal({ method: 'delete', path: '/speedtest/results' });
   }
 
   // ── Metrics ────────────────────────────────────────────────────────────────

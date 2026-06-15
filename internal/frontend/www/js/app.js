@@ -2012,7 +2012,7 @@ new Vue({
     openSpeedtest() {
       this.speedtestResult = null;
       this.speedtestError = '';
-      this.speedtest.fromId = '__local__';
+      this.speedtest.fromId = this.activeRemoteId || '__local__';
       this.speedtest.toId = this.remotes.length > 0 ? this.remotes[0].id : '__local__';
       this.speedtest.via = 'auto';
       this.speedtest.tunnelIp = '';
