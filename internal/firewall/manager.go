@@ -833,9 +833,17 @@ func (m *Manager) ReorderRules(ids []string) error {
 // each enabled rule. Returns the first matching rule and all evaluated steps.
 // Used by the route test API to determine which PBR fwmark (if any) applies.
 func (m *Manager) SimulateTrace(srcIP, dstIP string) (*TraceResult, error) {
-	rules, err := m.GetRules()
+	// Prefer the applied snapshot so results match what's actually in iptables.
+	// Fall back to live rules when the snapshot is empty (e.g. in tests).
+	rules, err := m.getAppliedRules()
 	if err != nil {
 		return nil, err
+	}
+	if len(rules) == 0 {
+		rules, err = m.GetRules()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	result := &TraceResult{Steps: []TraceStep{}}
