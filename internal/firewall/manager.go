@@ -848,7 +848,7 @@ func (m *Manager) SimulateTrace(srcIP, dstIP string) (*TraceResult, error) {
 
 	result := &TraceResult{Steps: []TraceStep{}}
 	for _, rule := range rules {
-		if !rule.Enabled {
+		if !rule.Enabled || rule.RuleType == "separator" {
 			continue
 		}
 		srcMatch, err := m.matchEndpoint(&rule.Source, srcIP)
