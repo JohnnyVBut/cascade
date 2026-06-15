@@ -1757,7 +1757,9 @@ func (m *Manager) matchEndpoint(ep *Endpoint, ip string) (bool, error) {
 func (m *Manager) matchAlias(aliasID, ip string) (bool, error) {
 	spec, err := m.am.GetMatchSpec(aliasID)
 	if err != nil || spec == nil {
-		return false, nil
+		// Return an error so the caller skips Invert logic — otherwise a missing
+		// alias with Invert=true would produce !false=true (spurious match).
+		return false, fmt.Errorf("alias %s not found", aliasID)
 	}
 	if spec.Type == "ipset" {
 		return m.ipsetTest(spec.Name, ip), nil
