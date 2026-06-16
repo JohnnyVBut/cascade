@@ -1032,20 +1032,23 @@ new Vue({
       // inline styles and CSS vars it set on parent elements (which caused a
       // vertical gap on the interfaces page after visiting dashboard).
       if (this.activePage === 'diagnostics' && pageId !== 'diagnostics' && this.diagGrid) {
-        // Clear inline styles GridStack sets on .grid-stack-item-content before destroy(false).
-        // destroy(false) cleans up .grid-stack-item but NOT content children — those keep
-        // height/overflow styles, and Vue reuses the DOM nodes for the next page's elements.
+        // Clear inline styles GridStack sets on content elements and the grid container.
+        // GridStack sets height on .diag-grid itself (e.g. height:60px for 1-row grid) and
+        // on .grid-stack-item-content children. Without this, Vue's DOM reuse could carry
+        // those heights over to unrelated elements on the next page.
         document.querySelectorAll('.diag-grid .grid-stack-item-content').forEach(el => { el.style.cssText = ''; });
         this.diagGrid.destroy(false);
+        // Clear AFTER destroy too — destroy(false) may re-apply inline styles during cleanup.
+        document.querySelectorAll('.diag-grid, .diag-grid .grid-stack-item-content, .diag-grid .grid-stack-item').forEach(el => { el.style.cssText = ''; });
         this.diagGrid = null;
         this.metricsStopPoller();
       }
       if (this.activePage === 'dashboard' && pageId !== 'dashboard' && this.dashGrid) {
         // destroy(false) — remove GridStack listeners/styles but keep DOM nodes
         // so that Vue's v-if can cleanly remove the subtree without conflict.
-        // destroy(true) removed GridStack-owned nodes before v-if ran, desynchronising
-        // Vue's vdom from the real DOM (visible as blank dashboard on return).
         this.dashGrid.destroy(false);
+        // Clear GridStack-set inline styles from the grid container and items after destroy.
+        document.querySelectorAll('#dashboard-grid, #dashboard-grid .grid-stack-item-content, #dashboard-grid .grid-stack-item').forEach(el => { el.style.cssText = ''; });
         this.dashGrid = null;
         this.metricsStopPoller();
       }
@@ -1056,13 +1059,16 @@ new Vue({
       this.activePage = pageId;
       // Reset scroll and any GridStack inline styles AFTER Vue updates the DOM.
       this.$nextTick(() => {
+        // Reset all inline styles GridStack may have set on the scroll container,
+        // then restore only the original padding. height/overflow come from CSS.
         const mainEl = document.querySelector('.app-main');
         if (mainEl) {
+          mainEl.style.cssText = 'padding: 24px 32px;';
           mainEl.scrollTop = 0;
-          mainEl.style.overflow = '';
-          mainEl.style.overflowY = '';
-          mainEl.style.height = '';
         }
+        // Also reset window scroll in case overflow:hidden on mainEl caused
+        // the window to be the scroll container while on the previous page.
+        window.scrollTo(0, 0);
       });
       if (pageId === 'dashboard') {
         // loadDashboard already calls dashInitGrid after await $nextTick —
@@ -1090,7 +1096,7 @@ new Vue({
         this.loadStaticRoutes();
         if (!this.gateways.length) this.loadGateways();
         if (!this.gatewayGroups.length) this.loadGatewayGroups();
-        if (!this.natInterfaces.length) this.loadNatInterfaces();
+        this.loadNatInterfaces();
       }
       if (pageId === 'nat') {
         this.loadNatInterfaces();
@@ -1161,6 +1167,8 @@ new Vue({
         this._resetInterfaceCreate();
 
         await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
         // Auto-switch to the new interface tab
         if (newIface && newIface.id) {
           this.activeInterfaceId = newIface.id;
@@ -1190,6 +1198,8 @@ new Vue({
         this.showInterfaceCreate = false;
         this._resetInterfaceCreate();
         await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
 
         const iface = data.interface || {};
         const addr  = iface.address    || '';
@@ -1240,6 +1250,8 @@ new Vue({
         this.showImportConf = false;
         this.importConfForm = { name: '', conf: '', fileName: '' };
         await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
 
         const iface = res.interface || {};
         const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
@@ -1285,6 +1297,8 @@ new Vue({
         this.showImportBackup = false;
         this.importBackupForm = { json: '', listenPort: '', fileName: '' };
         await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
 
         const iface = res.interface || {};
         const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
@@ -1476,6 +1490,8 @@ new Vue({
           this.selectedInterfacePeers = [];
         }
         await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
         this.showToast(`Interface "${iface.name}" deleted`);
       } catch (err) {
         console.error('Delete failed:', err);
@@ -1502,6 +1518,8 @@ new Vue({
       try {
         const data = await this.api.startTunnelInterface({ interfaceId: iface.id });
         if (data && data.interface) this._applyInterfaceUpdate(data.interface);
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
       } catch (err) {
         console.error('Start failed:', err);
         this.showToast(`Start failed: ${err.message}`, 'error');
@@ -1516,6 +1534,8 @@ new Vue({
       try {
         const data = await this.api.stopTunnelInterface({ interfaceId: iface.id });
         if (data && data.interface) this._applyInterfaceUpdate(data.interface);
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
       } catch (err) {
         console.error('Stop failed:', err);
         this.showToast(`Stop failed: ${err.message}`, 'error');
@@ -1530,6 +1550,8 @@ new Vue({
       try {
         const data = await this.api.restartTunnelInterface({ interfaceId: iface.id });
         if (data && data.interface) this._applyInterfaceUpdate(data.interface);
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
       } catch (err) {
         console.error('Restart failed:', err);
         this.showToast(`Restart failed: ${err.message}`, 'error');

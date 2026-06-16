@@ -195,6 +195,7 @@
     border-right: 1px solid rgba(0,0,0,0.08);
   }
   .app-main {
+    min-height: 0; /* allows overflow-y:auto to work correctly inside a flex row container */
     background: rgba(255,255,255,0.45);
     /* no backdrop-filter — it creates a stacking context that traps
        position:fixed children (toasts), making their background invisible */
@@ -364,7 +365,7 @@
       <!-- ==================== /First-Run Setup ==================== -->
 
       <!-- ==================== Main App ==================== -->
-      <div v-else-if="authenticated === true" class="flex h-screen">
+      <div v-else-if="authenticated === true" class="flex h-screen" style="overflow:hidden;">
 
         <!-- ==================== Sidebar ==================== -->
         <nav class="w-64 flex-shrink-0 overflow-y-auto flex flex-col"
@@ -554,7 +555,7 @@
         </nav>
 
         <!-- ==================== Content Area ==================== -->
-        <main class="flex-grow overflow-y-auto app-main" style="height: 100vh; padding: 24px 32px;">
+        <main class="flex-grow overflow-y-auto app-main" style="padding: 24px 32px;">
 
         <!-- Firewall pending changes global banner -->
         <div v-if="firewallPending && activePage !== 'firewall'"
@@ -584,7 +585,7 @@
         <!-- ============================================================== -->
         <!-- Dashboard Page                                                 -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'dashboard'">
+        <div v-if="activePage === 'dashboard'" key="page-dashboard">
           <!-- Toolbar -->
           <div class="flex items-center justify-between mb-4">
             <h1 class="text-xl font-semibold dark:text-neutral-100">Dashboard</h1>
@@ -1126,7 +1127,7 @@
         <!-- ============================================================== -->
         <!-- Diagnostics Page                                               -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'diagnostics'" style="display:flex; flex-direction:column; gap:16px; padding-bottom:40px;">
+        <div v-if="activePage === 'diagnostics'" key="page-diagnostics" style="display:flex; flex-direction:column; gap:16px; padding-bottom:40px;">
 
           <!-- Header -->
           <div style="display:flex; align-items:center; justify-content:space-between;">
@@ -1229,7 +1230,7 @@
         <!-- ============================================================== -->
         <!-- Administration Page                                            -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'administration'">
+        <div v-if="activePage === 'administration'" key="page-administration">
           <div class="flex gap-2 mb-4">
             <button class="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm">
               Admin Tunnel
@@ -1699,7 +1700,7 @@
         <!-- ============================================================== -->
         <!-- Interfaces Page                                                -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'interfaces'">
+        <div v-if="activePage === 'interfaces'" key="page-interfaces">
 
           <!-- Action buttons row -->
           <div class="flex gap-2" style="margin-bottom:10px;">
@@ -3023,7 +3024,7 @@
         <!-- ============================================================== -->
         <!-- Settings Page                                                  -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'settings'" class="mb-10" style="display: flex; flex-direction: column; gap: 24px;">
+        <div v-if="activePage === 'settings'" key="page-settings" class="mb-10" style="display: flex; flex-direction: column; gap: 24px;">
 
           <!-- Router -->
           <div class="shadow-md rounded-lg bg-white dark:bg-neutral-700 overflow-hidden">
@@ -3641,7 +3642,7 @@
         <!-- ============================================================== -->
         <!-- Gateways Page                                                  -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'gateways'" style="display:flex; flex-direction:column; gap:32px;">
+        <div v-if="activePage === 'gateways'" key="page-gateways" style="display:flex; flex-direction:column; gap:32px;">
 
           <!-- ── Section 1: Gateways ────────────────────────────────────── -->
           <div>
@@ -4325,7 +4326,7 @@
         <!-- ============================================================== -->
         <!-- Remotes Page                                                   -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'remotes'" style="display:flex; flex-direction:column; gap:24px; padding-bottom:32px;">
+        <div v-if="activePage === 'remotes'" key="page-remotes" style="display:flex; flex-direction:column; gap:24px; padding-bottom:32px;">
 
           <div class="flex items-center justify-between">
             <div>
@@ -4741,7 +4742,7 @@
         <!-- ============================================================== -->
         <!-- Routing Page                                                   -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'routing'">
+        <div v-if="activePage === 'routing'" key="page-routing">
 
           <!-- Tab bar: Status | Static | OSPF -->
           <div class="flex gap-2 mb-4">
@@ -5274,7 +5275,7 @@
         <!-- ============================================================== -->
         <!-- NAT Page                                                       -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'nat'">
+        <div v-if="activePage === 'nat'" key="page-nat">
 
           <!-- Tab bar: Outbound NAT | Port Forwarding -->
           <div class="flex gap-2 mb-4">
@@ -5925,7 +5926,7 @@
         <!-- ============================================================== -->
         <!-- Firewall Aliases Page                                          -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'firewall-aliases'" style="display:flex; flex-direction:column; gap:24px;">
+        <div v-if="activePage === 'firewall-aliases'" key="page-firewall-aliases" style="display:flex; flex-direction:column; gap:24px;">
           <!-- Header -->
           <div class="flex items-center justify-between">
             <h1 class="text-2xl font-bold dark:text-neutral-200">Firewall Aliases</h1>
@@ -6393,7 +6394,7 @@
         <!-- ============================================================== -->
         <!-- Firewall Rules Page                                             -->
         <!-- ============================================================== -->
-        <div v-if="activePage === 'firewall'" style="display:flex; flex-direction:column; gap:16px; padding-bottom:96px;">
+        <div v-if="activePage === 'firewall'" key="page-firewall" style="display:flex; flex-direction:column; gap:16px; padding-bottom:96px;">
 
           <!-- Header -->
           <div class="flex items-center justify-between">
