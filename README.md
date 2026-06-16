@@ -29,23 +29,23 @@
 
 ## ✨ Features
 
-| Module | Description |
-|--------|-------------|
-| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click, import `.conf` as uplink, per-interface MSS clamping |
+| Module | Description                                                                                                                                |
+|--------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| 🔌 **Interfaces** | Multiple WireGuard / AmneziaWG tunnel interfaces, quick-create in one click, import `.conf` as uplink, per-interface MSS clamping          |
 | 👥 **Peers** | Client and site-to-site (S2S) interconnect peers with QR codes, lifetime traffic stats, per-client bandwidth limiting and group membership |
-| 🌐 **Routing** | Static routes, policy-based routing (PBR), kernel route inspection |
-| 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support + Port Forwarding (DNAT) with per-interface scoping |
-| 🛡️ **Firewall** | Filter rules (ACCEPT / DROP / REJECT) + PBR via gateway |
-| 📋 **Aliases** | 7 types: host, network, ipset, client-group, group, port, port-group. Client groups are ipset-backed and auto-updated on peer changes |
-| 📡 **Gateways** | Live ping + HTTP monitoring, gateway groups, automatic failover |
-| 🎛️ **AWG2 Templates** | AmneziaWG 2.0 obfuscation parameter templates with built-in generator |
-| 🔐 **Auth** | Multi-user accounts, TOTP 2FA (Google Authenticator), long-lived API tokens |
-| 🔒 **TLS** | Let's Encrypt via acme.sh (bare IP shortlived cert or domain) |
-| 🎭 **Decoy site** | Caddy reverse proxy serves a fake streaming site on `/`; admin UI hidden behind a secret path |
-| 🖥️ **Multi-Server** 🆕 | Manage multiple Cascade routers from one UI — switch servers in the sidebar, proxy all API calls transparently, self-signed cert support |
-| 📊 **Monitoring** 🆕 | Real-time traffic metrics per interface, gateway status history (stacked bar chart), Diagnostics page with per-period history |
-| ⚡ **Speed Test** 🆕 | iperf3-based speed test between any two managed servers — Auto / Tunnel / Internet mode, S2S tunnel autodetect, result history |
-| 🚦 **Rate Limits** 🆕 | Per-client-group bandwidth limiting via tc HTB (kbps down/up enforced per IP) |
+| 🌐 **Routing** | Static routes, policy-based routing (PBR), kernel route inspection, OSPF is on plans                                                       |
+| 🔀 **NAT** | Outbound MASQUERADE / SNAT with alias support + Port Forwarding (DNAT) with per-interface scoping                                          |
+| 🛡️ **Firewall** | Filter rules (ACCEPT / DROP / REJECT) + PBR via gateway                                                                                    |
+| 📋 **Aliases** | 7 types: host, network, ipset, client-group, group, port, port-group. Client groups are ipset-backed and auto-updated on peer changes      |
+| 📡 **Gateways** | Live ping + HTTP monitoring, gateway groups, automatic failover                                                                            |
+| 🎛️ **AWG2 Templates** | AmneziaWG 2.0 obfuscation parameter templates with built-in generator                                                                      |
+| 🔐 **Auth** | Multi-user accounts, TOTP 2FA (Google Authenticator), long-lived API tokens                                                                |
+| 🔒 **TLS** | Let's Encrypt via acme.sh (bare IP shortlived cert or domain)                                                                              |
+| 🎭 **Decoy site** | Caddy reverse proxy serves a fake streaming site on `/`; admin UI hidden behind a secret path                                              |
+| 🖥️ **Multi-Server** 🆕 | Manage multiple Cascade routers from one UI — switch servers in the sidebar, proxy all API calls transparently, self-signed cert support   |
+| 📊 **Monitoring** 🆕 | Real-time traffic metrics per interface, gateway status history (stacked bar chart), Diagnostics page with per-period history              |
+| ⚡ **Speed Test** 🆕 | iperf3-based speed test between any two managed servers — Auto / Tunnel / Internet mode, S2S tunnel autodetect, result history             |
+| 🚦 **Rate Limits** 🆕 | Per-client-group bandwidth limiting via tc HTB (kbps down/up enforced per IP)                                                              |
 
 ## 🎯 Why Cascade?
 
