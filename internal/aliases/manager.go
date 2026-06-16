@@ -185,6 +185,8 @@ func (m *Manager) Create(data Alias) (*Alias, error) {
 		IPSetName:   "",
 		EntryCount:  0,
 		CreatedAt:   now,
+		RateDown:    data.RateDown,
+		RateUp:      data.RateUp,
 	}
 
 	if isIPSet || isClientGroup {
