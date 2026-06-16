@@ -282,6 +282,9 @@ func (m *Manager) Update(id string, data Alias) (*Alias, error) {
 			a.EntryCount = m.groupEntryCount(a.MemberIDs)
 			a.LastUpdated = now
 		}
+	case "client-group":
+		a.RateDown = data.RateDown
+		a.RateUp = data.RateUp
 	}
 
 	if err := updateAlias(a); err != nil {
