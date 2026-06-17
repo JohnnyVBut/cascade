@@ -1403,8 +1403,16 @@
                   :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
               </div>
 
+              <!-- Save PCAP checkbox -->
+              <div style="margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="tcpdumpSaveChk" v-model="tcpdumpSave" :disabled="tcpdumpRunning"
+                  style="width:15px; height:15px; cursor:pointer;" />
+                <label for="tcpdumpSaveChk" style="font-size:0.8rem; cursor:pointer;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Save PCAP</label>
+              </div>
+
               <!-- Action buttons -->
-              <div style="display:flex; gap:8px;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button @click="tcpdumpStart" :disabled="tcpdumpRunning || !tcpdumpIface"
                   class="text-sm text-white rounded"
                   style="padding:7px 20px; border:none; cursor:pointer; font-weight:500;"
@@ -1415,6 +1423,11 @@
                   class="text-sm rounded"
                   style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
                   Stop
+                </button>
+                <button v-if="tcpdumpPcapId && !tcpdumpRunning" @click="tcpdumpDownload"
+                  class="text-sm rounded"
+                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#16a34a; color:#fff;">
+                  ↓ Download .pcap
                 </button>
               </div>
 

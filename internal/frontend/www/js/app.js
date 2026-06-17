@@ -217,8 +217,10 @@ new Vue({
     // ── Tcpdump utility ───────────────────────────────────────────────────────
     tcpdumpIface: '',
     tcpdumpFilter: '',
+    tcpdumpSave: false,
     tcpdumpRunning: false,
     tcpdumpEventSource: null,
+    tcpdumpPcapId: null,   // capture ID returned by backend when save=true
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -3646,15 +3648,18 @@ new Vue({
       if (!this.tcpdumpIface) return;
       if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
       this.terminalLines = [];
+      this.tcpdumpPcapId = null;
       this.tcpdumpRunning = true;
 
       const params = new URLSearchParams({ iface: this.tcpdumpIface });
       if (this.tcpdumpFilter.trim()) params.set('filter', this.tcpdumpFilter.trim());
+      if (this.tcpdumpSave) params.set('save', 'true');
 
       const segs = window.location.pathname.split('/').filter(Boolean);
       const apiBase = segs.length > 0
         ? `${window.location.origin}/${segs[0]}/api`
         : `${window.location.origin}/api`;
+      this._tcpdumpApiBase = apiBase;
       const url = `${apiBase}/diagnostics/tcpdump/stream?` + params.toString();
       const es = new EventSource(url);
       this.tcpdumpEventSource = es;
@@ -3664,6 +3669,11 @@ new Vue({
           this.tcpdumpRunning = false;
           es.close();
           this.tcpdumpEventSource = null;
+          return;
+        }
+        // PCAP ready sentinel: [pcap:<id>]
+        if (e.data.startsWith('[pcap:') && e.data.endsWith(']')) {
+          this.tcpdumpPcapId = e.data.slice(6, -1);
           return;
         }
         this.terminalLines.push(e.data);
@@ -3683,6 +3693,22 @@ new Vue({
       if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
       this.tcpdumpRunning = false;
       if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
+    },
+
+    tcpdumpDownload() {
+      if (!this.tcpdumpPcapId) return;
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      const url = `${apiBase}/diagnostics/tcpdump/download?file=` + encodeURIComponent(this.tcpdumpPcapId);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'capture-' + this.tcpdumpPcapId.slice(0, 8) + '.pcap';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      this.tcpdumpPcapId = null;
     },
 
     // ── End ping utility ─────────────────────────────────────────────────────
