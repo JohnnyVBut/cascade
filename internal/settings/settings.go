@@ -65,6 +65,7 @@ type Template struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault"`
+	Host      string `json:"host"`  // self-stealing SNI host (empty = not set)
 	Jc        int    `json:"jc"`
 	Jmin      int    `json:"jmin"`
 	Jmax      int    `json:"jmax"`
@@ -213,7 +214,7 @@ func GetPeerDefaults() (*PeerDefaults, error) {
 // GetTemplates returns all templates ordered by created_at.
 func GetTemplates() ([]Template, error) {
 	rows, err := db.DB().Query(`
-		SELECT id, name, is_default,
+		SELECT id, name, is_default, host,
 		       jc, jmin, jmax, s1, s2, s3, s4,
 		       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at
 		FROM templates ORDER BY created_at ASC
@@ -228,7 +229,7 @@ func GetTemplates() ([]Template, error) {
 		var t Template
 		var isDefault int
 		if err := rows.Scan(
-			&t.ID, &t.Name, &isDefault,
+			&t.ID, &t.Name, &isDefault, &t.Host,
 			&t.Jc, &t.Jmin, &t.Jmax,
 			&t.S1, &t.S2, &t.S3, &t.S4,
 			&t.H1, &t.H2, &t.H3, &t.H4,
@@ -306,10 +307,10 @@ func CreateTemplate(data Template) (*Template, error) {
 
 	_, err = tx.Exec(`
 		INSERT INTO templates
-		    (id, name, is_default, jc, jmin, jmax, s1, s2, s3, s4,
+		    (id, name, is_default, host, jc, jmin, jmax, s1, s2, s3, s4,
 		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		data.ID, data.Name, boolInt(data.IsDefault),
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		data.ID, data.Name, boolInt(data.IsDefault), data.Host,
 		data.Jc, data.Jmin, data.Jmax,
 		data.S1, data.S2, data.S3, data.S4,
 		data.H1, data.H2, data.H3, data.H4,
@@ -357,6 +358,7 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	if v, ok := updates["i3"].(string); ok           { t.I3 = v }
 	if v, ok := updates["i4"].(string); ok           { t.I4 = v }
 	if v, ok := updates["i5"].(string); ok           { t.I5 = v }
+	if v, ok := updates["host"].(string); ok         { t.Host = v }
 
 	tx, err := db.DB().Begin()
 	if err != nil {
@@ -372,12 +374,12 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 
 	_, err = tx.Exec(`
 		UPDATE templates SET
-		    name=?, is_default=?, jc=?, jmin=?, jmax=?,
+		    name=?, is_default=?, host=?, jc=?, jmin=?, jmax=?,
 		    s1=?, s2=?, s3=?, s4=?,
 		    h1=?, h2=?, h3=?, h4=?,
 		    i1=?, i2=?, i3=?, i4=?, i5=?
 		WHERE id=?`,
-		t.Name, boolInt(t.IsDefault),
+		t.Name, boolInt(t.IsDefault), t.Host,
 		t.Jc, t.Jmin, t.Jmax,
 		t.S1, t.S2, t.S3, t.S4,
 		t.H1, t.H2, t.H3, t.H4,
@@ -468,7 +470,7 @@ func ApplyDefaultTemplate() (*AWG2Params, error) {
 
 func queryTemplate(where string, args ...any) (*Template, error) {
 	row := db.DB().QueryRow(`
-		SELECT id, name, is_default,
+		SELECT id, name, is_default, host,
 		       jc, jmin, jmax, s1, s2, s3, s4,
 		       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at
 		FROM templates `+where, args...)
@@ -476,7 +478,7 @@ func queryTemplate(where string, args ...any) (*Template, error) {
 	var t Template
 	var isDefault int
 	err := row.Scan(
-		&t.ID, &t.Name, &isDefault,
+		&t.ID, &t.Name, &isDefault, &t.Host,
 		&t.Jc, &t.Jmin, &t.Jmax,
 		&t.S1, &t.S2, &t.S3, &t.S4,
 		&t.H1, &t.H2, &t.H3, &t.H4,

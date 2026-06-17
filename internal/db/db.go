@@ -784,6 +784,12 @@ ALTER TABLE aliases ADD COLUMN rate_up   INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE remotes ADD COLUMN skip_tls_verify INTEGER NOT NULL DEFAULT 0;
 `,
 	},
+	{
+		version: 38,
+		sql: `
+ALTER TABLE templates ADD COLUMN host TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

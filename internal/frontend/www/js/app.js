@@ -326,6 +326,7 @@ new Vue({
     templateForm: {
       name: '',
       isDefault: false,
+      host: '',
       jc: 6, jmin: 10, jmax: 50,
       s1: 64, s2: 67, s3: 64, s4: 4,
       h1: '', h2: '', h3: '', h4: '',
@@ -5031,6 +5032,7 @@ new Vue({
       this.templateForm = {
         name: this.generateForm.saveName || '',
         isDefault: false,
+        host: this.generateForm.host || '',
         jc: p.jc, jmin: p.jmin, jmax: p.jmax,
         s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4,
         h1: p.h1, h2: p.h2, h3: p.h3, h4: p.h4,

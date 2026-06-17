@@ -7031,6 +7031,18 @@
                 </label>
               </div>
 
+              <!-- Host (SNI) -->
+              <div>
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                  Custom Host <span class="text-gray-400 dark:text-neutral-500 font-normal">(SNI, optional)</span>
+                </label>
+                <input v-model="templateForm.host" type="text" placeholder="e.g. 1.2.3.4 or example.com"
+                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 text-sm">
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  Self-stealing SNI — enter your server's IP or domain. AWG traffic will appear as TLS to this host.
+                </p>
+              </div>
+
               <!-- Jc / Jmin / Jmax -->
               <div>
                 <p class="text-xs font-semibold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-wide">Junk Parameters</p>
