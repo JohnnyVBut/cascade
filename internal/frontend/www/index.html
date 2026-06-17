@@ -1305,19 +1305,22 @@
                   style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
                   Stop
                 </button>
-                <button v-if="pingLines.length && !pingRunning" @click="pingClear"
+              </div>
+
+            </div>
+
+            <!-- Shared terminal — full width, used by all utilities -->
+            <div v-if="terminalLines.length || pingRunning">
+              <div style="display:flex; justify-content:flex-end; margin-bottom:4px;">
+                <button v-if="!pingRunning" @click="pingClear"
                   class="text-sm rounded"
-                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500;"
+                  style="padding:4px 12px; border:none; cursor:pointer; font-weight:500;"
                   :style="{ background: theme==='dark'?'#404040':'#e5e7eb', color: theme==='dark'?'#d4d4d4':'#374151' }">
                   Clear
                 </button>
               </div>
-
-              <!-- Terminal output -->
-              <div v-if="pingLines.length || pingRunning" style="margin-top:16px;">
-                <pre class="ping-terminal rounded"
-                  style="background:#111; color:#22c55e; font-family:'Courier New',Courier,monospace; font-size:0.8rem; line-height:1.5; padding:16px; min-height:80px; max-height:360px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid #333;">{{ pingLines.join('\n') }}<span v-if="pingRunning" style="animation:blink 1s step-end infinite;">▋</span></pre>
-              </div>
+              <pre class="ping-terminal rounded"
+                style="background:#111; color:#22c55e; font-family:'Courier New',Courier,monospace; font-size:0.8rem; line-height:1.5; padding:16px; min-height:80px; max-height:480px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid #333;">{{ terminalLines.join('\n') }}<span v-if="pingRunning" style="animation:blink 1s step-end infinite;">▋</span></pre>
             </div>
 
           </template>

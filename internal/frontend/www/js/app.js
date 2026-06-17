@@ -203,9 +203,9 @@ new Vue({
     pingDf: false,
     pingTos: '',
     pingRunning: false,
-    pingLines: [],
     pingEventSource: null,
     pingRouterIfaces: [],
+    terminalLines: [], // shared output terminal for all Utilities
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -3530,7 +3530,7 @@ new Vue({
     pingStart() {
       if (!this.pingHost.trim()) return;
       if (this.pingEventSource) { this.pingEventSource.close(); this.pingEventSource = null; }
-      this.pingLines = [];
+      this.terminalLines = [];
       this.pingRunning = true;
 
       const params = new URLSearchParams({ host: this.pingHost.trim(), count: this.pingCount });
@@ -3559,7 +3559,7 @@ new Vue({
           this.pingEventSource = null;
           return;
         }
-        this.pingLines.push(e.data);
+        this.terminalLines.push(e.data);
         this.$nextTick(() => {
           const el = this.$el && this.$el.querySelector('.ping-terminal');
           if (el) el.scrollTop = el.scrollHeight;
@@ -3575,11 +3575,11 @@ new Vue({
     pingStop() {
       if (this.pingEventSource) { this.pingEventSource.close(); this.pingEventSource = null; }
       this.pingRunning = false;
-      if (this.pingLines.length) this.pingLines.push('--- interrupted ---');
+      if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
     },
 
     pingClear() {
-      this.pingLines = [];
+      this.terminalLines = [];
     },
 
     // ── End ping utility ─────────────────────────────────────────────────────
