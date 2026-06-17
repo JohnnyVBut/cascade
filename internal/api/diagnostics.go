@@ -25,11 +25,16 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// tcpdumpFiles maps a random capture ID → absolute temp file path.
-// Files are created on demand (save=true) and deleted after download.
+// tcpdumpCapture tracks an active or completed PCAP save session.
+type tcpdumpCapture struct {
+	path    string       // absolute path to the .pcap file
+	process *os.Process  // nil until tcpdump starts
+	done    chan struct{} // closed when tcpdump exits and file is finalized
+}
+
 var (
-	tcpdumpFilesMu sync.Mutex
-	tcpdumpFiles   = map[string]string{}
+	tcpdumpCapsMu sync.Mutex
+	tcpdumpCaps   = map[string]*tcpdumpCapture{}
 )
 
 func RegisterDiagnostics(api fiber.Router) {
@@ -38,6 +43,7 @@ func RegisterDiagnostics(api fiber.Router) {
 	g.Get("/ping/stream", diagnosticsPingStream)
 	g.Get("/traceroute/stream", diagnosticsTracerouteStream)
 	g.Get("/tcpdump/stream", diagnosticsTcpdumpStream)
+	g.Post("/tcpdump/stop", diagnosticsTcpdumpStop)
 	g.Get("/tcpdump/download", diagnosticsTcpdumpDownload)
 }
 
@@ -321,7 +327,10 @@ func diagnosticsTracerouteStream(c *fiber.Ctx) error {
 //
 //	iface  — network interface to capture on (required)
 //	filter — optional BPF filter expression (e.g. "host 8.8.8.8 and port 53")
-//	save   — "true" to save capture to a temp PCAP file; on completion sends [pcap:<id>]
+//	save   — "true" to save capture to a temp PCAP file
+//
+// When save=true the FIRST message is [captureid:<id>] so the frontend knows
+// the ID immediately and can trigger a stop + download without waiting for [done].
 func diagnosticsTcpdumpStream(c *fiber.Ctx) error {
 	iface := strings.TrimSpace(c.Query("iface"))
 	if iface == "" {
@@ -353,30 +362,34 @@ func diagnosticsTcpdumpStream(c *fiber.Ctx) error {
 			w.Flush()
 		}
 
-		var cmd *exec.Cmd
-
 		if savePcap {
-			// Generate random capture ID and temp file path.
+			// Generate capture ID and register capture entry BEFORE starting process
+			// so the frontend receives the ID as the very first SSE event.
 			idBytes := make([]byte, 12)
 			rand.Read(idBytes) //nolint:errcheck
 			captureID := hex.EncodeToString(idBytes)
 			pcapPath := "/tmp/cascade-" + captureID + ".pcap"
 
-			// Register before starting so download is possible even if client disconnects.
-			tcpdumpFilesMu.Lock()
-			tcpdumpFiles[captureID] = pcapPath
-			tcpdumpFilesMu.Unlock()
+			cap := &tcpdumpCapture{
+				path: pcapPath,
+				done: make(chan struct{}),
+			}
+			tcpdumpCapsMu.Lock()
+			tcpdumpCaps[captureID] = cap
+			tcpdumpCapsMu.Unlock()
 
-			// -w: write to file; -n: no DNS; stderr gets status lines.
+			// Send ID first so frontend has it before any blocking I/O.
+			sendLine("[captureid:" + captureID + "]")
+
 			args := []string{"-n", "-i", iface, "-w", pcapPath}
 			args = append(args, filterArgs...)
-			cmd = exec.Command("tcpdump", args...)
+			cmd := exec.Command("tcpdump", args...)
 
-			// With -w, tcpdump writes status to stderr, not stdout.
 			stderr, err := cmd.StderrPipe()
 			if err != nil {
 				sendLine("error: failed to start tcpdump: " + err.Error())
 				sendLine("[done]")
+				close(cap.done)
 				return
 			}
 
@@ -386,12 +399,17 @@ func diagnosticsTcpdumpStream(c *fiber.Ctx) error {
 			if err := cmd.Start(); err != nil {
 				sendLine("error: " + err.Error())
 				sendLine("[done]")
+				close(cap.done)
 				return
 			}
 
-			sendLine("Saving capture to PCAP…")
+			// Store process handle so stop endpoint can send SIGINT.
+			tcpdumpCapsMu.Lock()
+			cap.process = cmd.Process
+			tcpdumpCapsMu.Unlock()
 
-			// Stream stderr (listening + final packet count) to terminal.
+			sendLine("Saving capture to PCAP… (Stop to finalize)")
+
 			errScanner := bufio.NewScanner(stderr)
 			for errScanner.Scan() {
 				sendLine(errScanner.Text())
@@ -399,25 +417,24 @@ func diagnosticsTcpdumpStream(c *fiber.Ctx) error {
 
 			cmd.Wait() //nolint:errcheck
 
-			// Check that file was actually created.
+			// Signal stop endpoint (if waiting) that file is finalized.
+			close(cap.done)
+
 			if _, statErr := os.Stat(pcapPath); statErr != nil {
-				tcpdumpFilesMu.Lock()
-				delete(tcpdumpFiles, captureID)
-				tcpdumpFilesMu.Unlock()
+				// File not created (e.g. permission error) — remove from registry.
+				tcpdumpCapsMu.Lock()
+				delete(tcpdumpCaps, captureID)
+				tcpdumpCapsMu.Unlock()
 				sendLine("error: pcap file not created")
-				sendLine("[done]")
-				return
 			}
 
-			// Send PCAP ready sentinel so frontend shows Download button.
-			sendLine("[pcap:" + captureID + "]")
 			sendLine("[done]")
 
 		} else {
-			// -l: line-buffered stdout; -n: no DNS reverse lookup.
+			// Live text mode: -l line-buffered stdout, -n no DNS.
 			args := []string{"-l", "-n", "-i", iface}
 			args = append(args, filterArgs...)
-			cmd = exec.Command("tcpdump", args...)
+			cmd := exec.Command("tcpdump", args...)
 
 			stdout, err := cmd.StdoutPipe()
 			if err != nil {
@@ -455,38 +472,81 @@ func diagnosticsTcpdumpStream(c *fiber.Ctx) error {
 	return nil
 }
 
+// diagnosticsTcpdumpStop sends SIGINT to a running PCAP capture and waits for
+// the process to exit so the file is fully flushed before the client downloads it.
+// Query params:
+//
+//	file — capture ID from [captureid:<id>] SSE event
+func diagnosticsTcpdumpStop(c *fiber.Ctx) error {
+	id := strings.TrimSpace(c.Query("file"))
+	if !validCaptureID(id) {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid file id")
+	}
+
+	tcpdumpCapsMu.Lock()
+	cap, ok := tcpdumpCaps[id]
+	tcpdumpCapsMu.Unlock()
+
+	if !ok {
+		// Already done or never existed — not an error from client's perspective.
+		return c.JSON(fiber.Map{"ok": true})
+	}
+
+	// Send SIGINT so tcpdump flushes pcap headers and closes the file cleanly.
+	if cap.process != nil {
+		cap.process.Signal(os.Interrupt) //nolint:errcheck
+	}
+
+	// Wait for the stream goroutine to close cap.done (max 10s).
+	select {
+	case <-cap.done:
+	case <-time.After(10 * time.Second):
+		if cap.process != nil {
+			cap.process.Kill() //nolint:errcheck
+		}
+	}
+
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 // diagnosticsTcpdumpDownload serves a previously saved PCAP capture file.
 // The file is deleted from disk and from the in-memory registry after download.
 // Query params:
 //
-//	file — capture ID returned in [pcap:<id>] SSE sentinel
+//	file — capture ID from [captureid:<id>] SSE event
 func diagnosticsTcpdumpDownload(c *fiber.Ctx) error {
 	id := strings.TrimSpace(c.Query("file"))
-	// Validate: only lowercase hex characters (output of hex.EncodeToString).
-	for _, ch := range id {
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
-			return fiber.NewError(fiber.StatusBadRequest, "invalid file id")
-		}
-	}
-	if id == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "file is required")
+	if !validCaptureID(id) {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid file id")
 	}
 
-	tcpdumpFilesMu.Lock()
-	pcapPath, ok := tcpdumpFiles[id]
+	tcpdumpCapsMu.Lock()
+	cap, ok := tcpdumpCaps[id]
 	if ok {
-		delete(tcpdumpFiles, id)
+		delete(tcpdumpCaps, id)
 	}
-	tcpdumpFilesMu.Unlock()
+	tcpdumpCapsMu.Unlock()
 
 	if !ok {
 		return fiber.NewError(fiber.StatusNotFound, "capture not found or already downloaded")
 	}
 
-	// Serve the file and remove it afterwards.
 	c.Set("Content-Disposition", `attachment; filename="capture-`+id[:8]+`.pcap"`)
 	c.Set("Content-Type", "application/vnd.tcpdump.pcap")
-	err := c.SendFile(pcapPath)
-	os.Remove(pcapPath) //nolint:errcheck
+	err := c.SendFile(cap.path)
+	os.Remove(cap.path) //nolint:errcheck
 	return err
+}
+
+// validCaptureID returns true for non-empty lowercase hex strings (hex.EncodeToString output).
+func validCaptureID(id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, ch := range id {
+		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+			return false
+		}
+	}
+	return true
 }

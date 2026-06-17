@@ -220,7 +220,8 @@ new Vue({
     tcpdumpSave: false,
     tcpdumpRunning: false,
     tcpdumpEventSource: null,
-    tcpdumpPcapId: null,   // capture ID returned by backend when save=true
+    tcpdumpPcapId: null,        // capture ID sent as first SSE event [captureid:<id>]
+    tcpdumpDownloadReady: false, // true once file is finalized and ready to download
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -3649,6 +3650,7 @@ new Vue({
       if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
       this.terminalLines = [];
       this.tcpdumpPcapId = null;
+      this.tcpdumpDownloadReady = false;
       this.tcpdumpRunning = true;
 
       const params = new URLSearchParams({ iface: this.tcpdumpIface });
@@ -3669,12 +3671,14 @@ new Vue({
           this.tcpdumpRunning = false;
           es.close();
           this.tcpdumpEventSource = null;
+          // If a capture ID was received, file is now ready to download.
+          if (this.tcpdumpPcapId) this.tcpdumpDownloadReady = true;
           return;
         }
-        // PCAP ready sentinel: [pcap:<id>]
-        if (e.data.startsWith('[pcap:') && e.data.endsWith(']')) {
-          this.tcpdumpPcapId = e.data.slice(6, -1);
-          return;
+        // Backend sends capture ID as first event when save=true.
+        if (e.data.startsWith('[captureid:') && e.data.endsWith(']')) {
+          this.tcpdumpPcapId = e.data.slice(11, -1);
+          return; // don't print to terminal
         }
         this.terminalLines.push(e.data);
         this.$nextTick(() => {
@@ -3692,15 +3696,22 @@ new Vue({
     tcpdumpStop() {
       if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
       this.tcpdumpRunning = false;
-      if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
+      if (this.terminalLines.length) this.terminalLines.push('--- stopping, finalizing file…');
+
+      if (this.tcpdumpSave && this.tcpdumpPcapId) {
+        // Ask backend to SIGINT tcpdump so it flushes and closes the pcap file.
+        const apiBase = this._tcpdumpApiBase || (window.location.origin + '/api');
+        fetch(`${apiBase}/diagnostics/tcpdump/stop?file=` + encodeURIComponent(this.tcpdumpPcapId), { method: 'POST' })
+          .then(() => { this.tcpdumpDownloadReady = true; })
+          .catch(() => { this.tcpdumpDownloadReady = true; }); // show button anyway
+      } else {
+        if (this.terminalLines.length) this.terminalLines[this.terminalLines.length - 1] = '--- interrupted ---';
+      }
     },
 
     tcpdumpDownload() {
       if (!this.tcpdumpPcapId) return;
-      const segs = window.location.pathname.split('/').filter(Boolean);
-      const apiBase = segs.length > 0
-        ? `${window.location.origin}/${segs[0]}/api`
-        : `${window.location.origin}/api`;
+      const apiBase = this._tcpdumpApiBase || (window.location.origin + '/api');
       const url = `${apiBase}/diagnostics/tcpdump/download?file=` + encodeURIComponent(this.tcpdumpPcapId);
       const a = document.createElement('a');
       a.href = url;
@@ -3709,6 +3720,7 @@ new Vue({
       a.click();
       document.body.removeChild(a);
       this.tcpdumpPcapId = null;
+      this.tcpdumpDownloadReady = false;
     },
 
     // ── End ping utility ─────────────────────────────────────────────────────

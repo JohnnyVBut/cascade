@@ -1424,7 +1424,7 @@
                   style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
                   Stop
                 </button>
-                <button v-if="tcpdumpPcapId && !tcpdumpRunning" @click="tcpdumpDownload"
+                <button v-if="tcpdumpDownloadReady" @click="tcpdumpDownload"
                   class="text-sm rounded"
                   style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#16a34a; color:#fff;">
                   ↓ Download .pcap
