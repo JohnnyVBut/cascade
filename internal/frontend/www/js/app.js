@@ -181,6 +181,7 @@ new Vue({
     metricsHistory: {},             // { [widgetId+key]: [{x,y}] } rolling buffer
     metricsGatewayDist: {},         // { [widgetId+key]: [[ts_ms, healthy, degraded, down, adminDown]] }
     metricsGatewaySeriesCache: {},  // { [widgetId+key]: [series] } — stable refs so ApexCharts skips re-render
+    metricsAreaSeriesCache: {},     // { [widgetId+key]: [{name, data:[]}] } — stable refs for area charts
     metricsPoller: null,            // setInterval handle
     metricsConfigWidget: null,      // widget being configured (modal open)
     metricsConfigPage: 'dashboard', // page the config modal was opened from
@@ -3149,11 +3150,12 @@ new Vue({
             const val = this.metricsValueFromSnap(snap, key);
             if (val === null) continue;
             const bufKey = `${w.id}:${key}`;
-            const prev = this.metricsHistory[bufKey] || [];
-            const buf = [...prev, { x: now, y: Math.round(val * 100) / 100 }];
-            if (buf.length > MAX_POINTS) buf.splice(0, buf.length - MAX_POINTS);
-            this.$set(this.metricsHistory, bufKey, buf);
+            let buf = this.metricsHistory[bufKey];
+            if (!buf) { buf = []; this.$set(this.metricsHistory, bufKey, buf); }
+            buf.push({ x: now, y: Math.round(val * 100) / 100 });
+            if (buf.length > MAX_POINTS) buf.shift();
             if (key.startsWith('gateway:')) this._updateGatewaySeriesCache(w.id, key);
+            else this._updateAreaSeriesCache(w.id, key);
           }
         }
       } catch (e) { /* non-fatal */ }
@@ -3208,6 +3210,7 @@ new Vue({
         const res = await this.api.getMetricsHistory({ key, period });
         const points = (res.points || []).map(p => ({ x: p[0], y: Math.round(p[1] * 100) / 100 }));
         this.$set(this.metricsHistory, `${widgetId}:${key}`, points);
+        this._updateAreaSeriesCache(widgetId, key);
       } catch (e) { /* non-fatal */ }
     },
 
@@ -3290,6 +3293,11 @@ new Vue({
         this.$set(this.metricsHistory, `${widgetId}:${key}`, []);
         this.$set(this.metricsGatewayDist, `${widgetId}:${key}`, []);
         this.$set(this.metricsGatewaySeriesCache, `${widgetId}:${key}`, []);
+        this.$set(this.metricsAreaSeriesCache, `${widgetId}:${key}`, []);
+        if (this._chartOptionsCache) {
+          const prefix = `${widgetId}:${key}:`;
+          Object.keys(this._chartOptionsCache).forEach(k => { if (k.startsWith(prefix)) delete this._chartOptionsCache[k]; });
+        }
       }
       if (period === '5m') return; // realtime — poller fills it from next tick
       for (const key of (w.graphs || [])) {
@@ -3305,6 +3313,50 @@ new Vue({
       const data = this.metricsHistory[`${widgetId}:${key}`] || [];
       if (!key.startsWith('gateway:')) return data;
       return data.map(p => ({ x: p.x, y: 1 }));
+    },
+
+    // Builds stable series wrapper for area charts; call whenever underlying data changes.
+    _updateAreaSeriesCache(widgetId, key) {
+      const cacheKey = `${widgetId}:${key}`;
+      const buf = this.metricsHistory[cacheKey] || [];
+      const cached = this.metricsAreaSeriesCache[cacheKey];
+      if (cached) {
+        cached[0].data.splice(0, cached[0].data.length, ...buf);
+      } else {
+        this.$set(this.metricsAreaSeriesCache, cacheKey, [
+          { name: this.metricsKeyLabel(key), data: buf.slice() },
+        ]);
+      }
+    },
+
+    metricsGetCachedAreaSeries(widgetId, key) {
+      return this.metricsAreaSeriesCache[`${widgetId}:${key}`] || [];
+    },
+
+    // Returns stable chart options object for area charts.
+    // Keyed by all fields that affect the options so changes (theme, period, color) get fresh object.
+    metricsAreaChartOptions(widgetId, key) {
+      const w = [...this.dashWidgets, ...this.diagWidgets].find(w => w.id === widgetId);
+      const period = this.metricsWidgetPeriod[widgetId] || '5m';
+      const color = (w && w.graphColors && w.graphColors[key]) || '#22d3ee';
+      const ck = `${widgetId}:${key}:${period}:${this.theme}:${color}`;
+      if (!this._chartOptionsCache) this._chartOptionsCache = {};
+      if (!this._chartOptionsCache[ck]) {
+        this._chartOptionsCache[ck] = {
+          chart: { id: widgetId+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+          colors: [color],
+          stroke: { curve:'smooth', width:2 },
+          markers: { size: 0 },
+          dataLabels: { enabled: false },
+          fill: { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
+          xaxis: { type:'datetime', labels:{ show: period !== '5m', datetimeUTC:false, style:{ fontSize:'9px', colors: this.theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+          yaxis: { labels:{ show:true, style:{ fontSize:'9px', colors: this.theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
+          grid: { borderColor: this.theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+          tooltip: { x:{ format:'HH:mm:ss' }, theme: this.theme==='dark'?'dark':'light' },
+          theme: { mode: this.theme==='dark'?'dark':'light' },
+        };
+      }
+      return this._chartOptionsCache[ck];
     },
 
     // Returns pre-computed per-bar color array for gateway bar charts.

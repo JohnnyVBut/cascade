@@ -1095,20 +1095,8 @@
                         <apexchart v-else-if="!metricsConfigWidget"
                           type="area"
                           height="90"
-                          :options="{
-                            chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
-                            stroke: { curve:'smooth', width:2 },
-                            colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
-                            markers: { size: 0 },
-                            dataLabels: { enabled: false },
-                            fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
-                            xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
-                            yaxis:  { labels:{ show:true, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
-                            grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-                            tooltip:{ x:{ format:'HH:mm:ss' }, theme: theme==='dark'?'dark':'light' },
-                            theme:  { mode: theme==='dark'?'dark':'light' },
-                          }"
-                          :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                          :options="metricsAreaChartOptions(w.id, key)"
+                          :series="metricsGetCachedAreaSeries(w.id, key)"
                         ></apexchart>
                       </div>
                     </template>
@@ -1204,20 +1192,8 @@
                       <apexchart v-else-if="!metricsConfigWidget"
                         type="area"
                         height="120"
-                        :options="{
-                          chart: { id: w.id+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
-                          colors: [(w.graphColors && w.graphColors[key]) || '#22d3ee'],
-                          stroke: { curve:'smooth', width:2 },
-                          markers: { size: 0 },
-                          dataLabels: { enabled: false },
-                          fill:   { type:'gradient', gradient:{ shadeIntensity:1, opacityFrom:0.4, opacityTo:0.05 } },
-                          xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
-                          yaxis:  { labels:{ show:true, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
-                          grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-                          tooltip:{ x:{ format:'HH:mm:ss' }, theme: theme==='dark'?'dark':'light' },
-                          theme:  { mode: theme==='dark'?'dark':'light' },
-                        }"
-                        :series="[{ name: metricsKeyLabel(key), data: metricsGetSeries(w.id, key) }]"
+                        :options="metricsAreaChartOptions(w.id, key)"
+                        :series="metricsGetCachedAreaSeries(w.id, key)"
                       ></apexchart>
                     </div>
                   </div>
