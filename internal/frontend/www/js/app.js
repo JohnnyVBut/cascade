@@ -2945,8 +2945,10 @@ new Vue({
           const gsItem = entry.target.closest('[gs-id]');
           const widgetId = gsItem ? gsItem.getAttribute('gs-id') : null;
           const widget = widgetId ? this.dashWidgets.find(w => w.id === widgetId) : null;
-          const card = entry.target.querySelector('.dash-card');
-          if (card) card.style.zoom = zoomFor(entry.contentRect.width, widget ? widget.fontScale : 1.0);
+          // CSS zoom on dash-card breaks ApexCharts tooltip coordinate mapping:
+          // getBoundingClientRect() on SVG <g> elements does not account for ancestor
+          // CSS zoom in all browsers, while event.clientX does → proportional drift.
+          // Font scaling is handled via font-size on dash-card-body (fontScale setting).
         }
       });
 
@@ -2963,17 +2965,7 @@ new Vue({
       const current = w.fontScale || 1.0;
       const next = Math.round(Math.max(0.5, Math.min(2.0, current + delta)) * 10) / 10;
       this.dashWidgets.splice(idx, 1, { ...w, fontScale: next });
-      // Apply zoom immediately without waiting for ResizeObserver
-      this.$nextTick(() => {
-        const gsItem = document.querySelector(`[gs-id="${widgetId}"]`);
-        if (!gsItem) return;
-        const content = gsItem.querySelector('.grid-stack-item-content');
-        const card = gsItem.querySelector('.dash-card');
-        if (card && content) {
-          const autoZoom = Math.max(0.55, Math.min(1.5, content.offsetWidth / 450));
-          card.style.zoom = Math.max(0.55, Math.min(1.5, autoZoom * next));
-        }
-      });
+      // fontScale is applied as font-size on dash-card-body (see template); no zoom needed.
       this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
     },
 
