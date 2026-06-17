@@ -166,7 +166,9 @@ func diagnosticsPingStream(c *fiber.Ctx) error {
 			w.Flush()
 		}
 
-		cmd := exec.Command("ping", args...)
+		// stdbuf -oL forces line-buffered stdout so each ping reply
+		// is streamed immediately rather than batched at the end.
+		cmd := exec.Command("stdbuf", append([]string{"-oL", "ping"}, args...)...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			sendLine("error: failed to start ping: " + err.Error())
