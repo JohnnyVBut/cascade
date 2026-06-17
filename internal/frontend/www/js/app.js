@@ -3539,7 +3539,11 @@ new Vue({
       if (this.pingDf) params.set('df', 'true');
       if (this.pingTos !== '') params.set('tos', this.pingTos);
 
-      const url = '/api/diagnostics/ping/stream?' + params.toString();
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      const url = `${apiBase}/diagnostics/ping/stream?` + params.toString();
       const es = new EventSource(url);
       this.pingEventSource = es;
 
