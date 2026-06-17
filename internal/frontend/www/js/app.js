@@ -193,6 +193,19 @@ new Vue({
     // ── Diagnostics page ──────────────────────────────────────────────────────
     diagWidgets: [],
     diagGrid: null,
+    diagActiveTab: 'graphs', // 'graphs' | 'utilities'
+
+    // ── Ping utility ──────────────────────────────────────────────────────────
+    pingHost: '',
+    pingSource: '',
+    pingCount: 5,
+    pingSize: '',
+    pingDf: false,
+    pingTos: '',
+    pingRunning: false,
+    pingLines: [],
+    pingEventSource: null,
+    pingRouterIfaces: [],
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -1082,6 +1095,7 @@ new Vue({
       if (pageId === 'diagnostics') {
         this.loadDiagnostics();
         this.metricsStartPoller();
+        this.pingLoadInterfaces();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
       if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
@@ -3502,6 +3516,64 @@ new Vue({
       this.diagWidgets.splice(idx, 1);
       this.api.putDashboardWidgets(this.diagWidgets, 'diagnostics').catch(console.error);
     },
+
+    // ── Ping utility ─────────────────────────────────────────────────────────
+
+    async pingLoadInterfaces() {
+      if (this.pingRouterIfaces.length) return;
+      try {
+        const res = await this.api.getSystemInterfaces();
+        this.pingRouterIfaces = res.interfaces || [];
+      } catch (e) { /* silent */ }
+    },
+
+    pingStart() {
+      if (!this.pingHost.trim()) return;
+      if (this.pingEventSource) { this.pingEventSource.close(); this.pingEventSource = null; }
+      this.pingLines = [];
+      this.pingRunning = true;
+
+      const params = new URLSearchParams({ host: this.pingHost.trim(), count: this.pingCount });
+      if (this.pingSource) params.set('source', this.pingSource);
+      if (this.pingSize !== '') params.set('size', this.pingSize);
+      if (this.pingDf) params.set('df', 'true');
+      if (this.pingTos !== '') params.set('tos', this.pingTos);
+
+      const url = '/api/diagnostics/ping/stream?' + params.toString();
+      const es = new EventSource(url);
+      this.pingEventSource = es;
+
+      es.onmessage = (e) => {
+        if (e.data === '[done]') {
+          this.pingRunning = false;
+          es.close();
+          this.pingEventSource = null;
+          return;
+        }
+        this.pingLines.push(e.data);
+        this.$nextTick(() => {
+          const el = this.$el && this.$el.querySelector('.ping-terminal');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+      es.onerror = () => {
+        this.pingRunning = false;
+        es.close();
+        this.pingEventSource = null;
+      };
+    },
+
+    pingStop() {
+      if (this.pingEventSource) { this.pingEventSource.close(); this.pingEventSource = null; }
+      this.pingRunning = false;
+      if (this.pingLines.length) this.pingLines.push('--- interrupted ---');
+    },
+
+    pingClear() {
+      this.pingLines = [];
+    },
+
+    // ── End ping utility ─────────────────────────────────────────────────────
 
     // Compact elapsed time: "5s", "20m", "3h", "2d"
     dashTimeShort(ts) {
