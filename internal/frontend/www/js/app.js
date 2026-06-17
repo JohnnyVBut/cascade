@@ -3534,7 +3534,12 @@ new Vue({
       this.pingRunning = true;
 
       const params = new URLSearchParams({ host: this.pingHost.trim(), count: this.pingCount });
-      if (this.pingSource) params.set('source', this.pingSource);
+      if (this.pingSource) {
+        // Resolve interface name to its first IPv4 address (Cisco-style source IP routing).
+        const iface = this.pingRouterIfaces.find(i => i.name === this.pingSource);
+        const sourceIp = iface && iface.addrs && iface.addrs.length ? iface.addrs[0] : this.pingSource;
+        params.set('source', sourceIp);
+      }
       if (this.pingSize !== '') params.set('size', this.pingSize);
       if (this.pingDf) params.set('df', 'true');
       if (this.pingTos !== '') params.set('tos', this.pingTos);

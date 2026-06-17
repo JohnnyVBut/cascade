@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -94,7 +95,8 @@ type NatRuleInput struct {
 
 // HostInterface is one item returned by GetNetworkInterfaces.
 type HostInterface struct {
-	Name string `json:"name"`
+	Name  string   `json:"name"`
+	Addrs []string `json:"addrs,omitempty"` // primary IPv4 addresses (without prefix length)
 }
 
 // Manager manages Source NAT rules.
@@ -137,6 +139,7 @@ func (m *Manager) RestoreAll() {
 
 // GetNetworkInterfaces returns host network interfaces for outbound interface selection.
 // Parses "ip -o link show" text output — no -j flag (FIX-11).
+// Also populates Addrs with primary IPv4 addresses via "ip -o -4 addr show".
 func (m *Manager) GetNetworkInterfaces() ([]HostInterface, error) {
 	out, err := util.ExecFast("ip -o link show")
 	if err != nil {
@@ -164,6 +167,25 @@ func (m *Manager) GetNetworkInterfaces() ([]HostInterface, error) {
 		}
 		ifaces = append(ifaces, HostInterface{Name: name})
 	}
+
+	// Enrich with IPv4 addresses: "ip -o -4 addr show" lines look like:
+	// "2: eth0    inet 1.2.3.4/24 brd ..."
+	addrOut, err := util.ExecFast("ip -o -4 addr show")
+	if err == nil {
+		addrByName := make(map[string][]string)
+		reAddr := regexp.MustCompile(`^\d+:\s+(\S+)\s+inet\s+([\d.]+)/`)
+		for _, line := range strings.Split(addrOut, "\n") {
+			if m := reAddr.FindStringSubmatch(strings.TrimSpace(line)); len(m) == 3 {
+				addrByName[m[1]] = append(addrByName[m[1]], m[2])
+			}
+		}
+		for i := range ifaces {
+			if addrs, ok := addrByName[ifaces[i].Name]; ok {
+				ifaces[i].Addrs = addrs
+			}
+		}
+	}
+
 	return ifaces, nil
 }
 

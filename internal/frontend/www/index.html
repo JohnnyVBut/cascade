@@ -1252,7 +1252,7 @@
                     style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
                     :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }">
                     <option value="">Auto (by routing table)</option>
-                    <option v-for="iface in pingRouterIfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}</option>
+                    <option v-for="iface in pingRouterIfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}{{ iface.addrs && iface.addrs.length ? ' (' + iface.addrs[0] + ')' : '' }}</option>
                   </select>
                 </div>
               </div>
