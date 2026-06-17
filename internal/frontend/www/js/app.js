@@ -207,6 +207,13 @@ new Vue({
     pingRouterIfaces: [],
     terminalLines: [], // shared output terminal for all Utilities
 
+    // ── Traceroute utility ────────────────────────────────────────────────────
+    traceHost: '',
+    traceSource: '',
+    traceType: 'udp',
+    traceRunning: false,
+    traceEventSource: null,
+
     // Tunnel Interfaces
     tunnelInterfaces: [],
     selectedInterface: null,
@@ -3580,6 +3587,53 @@ new Vue({
 
     pingClear() {
       this.terminalLines = [];
+    },
+
+    traceStart() {
+      if (!this.traceHost.trim()) return;
+      if (this.traceEventSource) { this.traceEventSource.close(); this.traceEventSource = null; }
+      this.terminalLines = [];
+      this.traceRunning = true;
+
+      const params = new URLSearchParams({ host: this.traceHost.trim(), type: this.traceType });
+      if (this.traceSource) {
+        const iface = this.pingRouterIfaces.find(i => i.name === this.traceSource);
+        const sourceIp = iface && iface.addrs && iface.addrs.length ? iface.addrs[0] : this.traceSource;
+        params.set('source', sourceIp);
+      }
+
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      const url = `${apiBase}/diagnostics/traceroute/stream?` + params.toString();
+      const es = new EventSource(url);
+      this.traceEventSource = es;
+
+      es.onmessage = (e) => {
+        if (e.data === '[done]') {
+          this.traceRunning = false;
+          es.close();
+          this.traceEventSource = null;
+          return;
+        }
+        this.terminalLines.push(e.data);
+        this.$nextTick(() => {
+          const el = this.$el && this.$el.querySelector('.ping-terminal');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+      es.onerror = () => {
+        this.traceRunning = false;
+        es.close();
+        this.traceEventSource = null;
+      };
+    },
+
+    traceStop() {
+      if (this.traceEventSource) { this.traceEventSource.close(); this.traceEventSource = null; }
+      this.traceRunning = false;
+      if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
     },
 
     // ── End ping utility ─────────────────────────────────────────────────────

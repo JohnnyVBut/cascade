@@ -59,6 +59,7 @@ RUN apk add --no-cache \
     conntrack-tools \
     iperf3 \
     iputils-ping \
+    traceroute \
     coreutils
 
 # Use iptables-legacy as default iptables.

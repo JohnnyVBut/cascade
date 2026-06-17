@@ -1227,8 +1227,11 @@
           <!-- ── Utilities tab ──────────────────────────────────────────── -->
           <div v-show="diagActiveTab === 'utilities'">
 
+            <!-- Utility cards row -->
+            <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start;">
+
             <!-- Ping section -->
-            <div class="rounded-lg" style="padding:16px 20px; max-width:33%;"
+            <div class="rounded-lg" style="padding:16px 20px; flex:0 0 calc(33% - 8px);"
               :style="{ background: theme==='dark'?'#262626':'#f9fafb', border: '1px solid ' + (theme==='dark'?'#404040':'#e5e7eb') }">
 
               <div style="font-size:0.95rem; font-weight:600; margin-bottom:16px;"
@@ -1309,10 +1312,73 @@
 
             </div>
 
+            <!-- Traceroute section -->
+            <div class="rounded-lg" style="padding:16px 20px; flex:0 0 calc(33% - 8px);"
+              :style="{ background: theme==='dark'?'#262626':'#f9fafb', border: '1px solid ' + (theme==='dark'?'#404040':'#e5e7eb') }">
+
+              <div style="font-size:0.95rem; font-weight:600; margin-bottom:16px;"
+                :style="{ color: theme==='dark'?'#f5f5f5':'#111827' }">Traceroute</div>
+
+              <!-- Destination -->
+              <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Destination *</label>
+                <input v-model="traceHost" @keyup.enter="!traceRunning && traceStart()"
+                  placeholder="8.8.8.8 or hostname"
+                  class="rounded"
+                  style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid; box-sizing:border-box;"
+                  :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+              </div>
+
+              <!-- Source interface -->
+              <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Source interface</label>
+                <select v-model="traceSource" class="rounded"
+                  style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                  :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }">
+                  <option value="">Auto (by routing table)</option>
+                  <option v-for="iface in pingRouterIfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}{{ iface.addrs && iface.addrs.length ? ' (' + iface.addrs[0] + ')' : '' }}</option>
+                </select>
+              </div>
+
+              <!-- Type -->
+              <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:8px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Protocol</label>
+                <div style="display:flex; gap:16px;">
+                  <label v-for="t in [{v:'udp',l:'UDP'},{v:'icmp',l:'ICMP'},{v:'tcp',l:'TCP'}]" :key="t.v"
+                    style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.875rem;"
+                    :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
+                    <input type="radio" v-model="traceType" :value="t.v" style="cursor:pointer;" />
+                    {{ t.l }}
+                  </label>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="display:flex; gap:8px;">
+                <button @click="traceStart" :disabled="traceRunning || !traceHost.trim()"
+                  class="text-sm text-white rounded"
+                  style="padding:7px 20px; border:none; cursor:pointer; font-weight:500;"
+                  :style="{ background: traceRunning || !traceHost.trim() ? '#6b7280' : '#2563eb', cursor: traceRunning || !traceHost.trim() ? 'not-allowed' : 'pointer' }">
+                  {{ traceRunning ? 'Tracing…' : 'Traceroute' }}
+                </button>
+                <button v-if="traceRunning" @click="traceStop"
+                  class="text-sm rounded"
+                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
+                  Stop
+                </button>
+              </div>
+
+            </div>
+
+            </div><!-- /utility cards row -->
+
             <!-- Shared terminal — full width, used by all utilities -->
-            <div v-if="terminalLines.length || pingRunning">
+            <div v-if="terminalLines.length || pingRunning || traceRunning">
               <div style="display:flex; justify-content:flex-end; margin-bottom:4px;">
-                <button v-if="!pingRunning" @click="pingClear"
+                <button v-if="!pingRunning && !traceRunning" @click="pingClear"
                   class="text-sm rounded"
                   style="padding:4px 12px; border:none; cursor:pointer; font-weight:500;"
                   :style="{ background: theme==='dark'?'#404040':'#e5e7eb', color: theme==='dark'?'#d4d4d4':'#374151' }">
@@ -1320,7 +1386,7 @@
                 </button>
               </div>
               <pre class="ping-terminal rounded"
-                style="background:#111; color:#22c55e; font-family:'Courier New',Courier,monospace; font-size:0.8rem; line-height:1.5; padding:16px; min-height:80px; max-height:480px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid #333;">{{ terminalLines.join('\n') }}<span v-if="pingRunning" style="animation:blink 1s step-end infinite;">▋</span></pre>
+                style="background:#111; color:#22c55e; font-family:'Courier New',Courier,monospace; font-size:0.8rem; line-height:1.5; padding:16px; min-height:80px; max-height:480px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid #333;">{{ terminalLines.join('\n') }}<span v-if="pingRunning || traceRunning" style="animation:blink 1s step-end infinite;">▋</span></pre>
             </div>
 
           </div>

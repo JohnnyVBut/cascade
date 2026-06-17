@@ -22,6 +22,7 @@ func RegisterDiagnostics(api fiber.Router) {
 	g := api.Group("/diagnostics")
 	g.Post("/ping", diagnosticsPing)
 	g.Get("/ping/stream", diagnosticsPingStream)
+	g.Get("/traceroute/stream", diagnosticsTracerouteStream)
 }
 
 type PingRequest struct {
@@ -193,6 +194,98 @@ func diagnosticsPingStream(c *fiber.Ctx) error {
 			sendLine(scanner.Text())
 		}
 		// Flush any stderr (e.g. "ping: unknown host").
+		if stderr != nil {
+			errScanner := bufio.NewScanner(stderr)
+			for errScanner.Scan() {
+				sendLine(errScanner.Text())
+			}
+		}
+
+		cmd.Wait() //nolint:errcheck
+		sendLine("[done]")
+	})
+
+	return nil
+}
+
+// diagnosticsTracerouteStream runs traceroute and streams output line-by-line via SSE.
+// Query params:
+//
+//	host   — destination (required)
+//	source — source interface IP (optional, passed as -s)
+//	type   — "udp" (default) | "icmp" | "tcp"
+func diagnosticsTracerouteStream(c *fiber.Ctx) error {
+	host := strings.TrimSpace(c.Query("host"))
+	if host == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "host is required")
+	}
+	for _, ch := range host {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == ':' || ch == '[' || ch == ']' {
+			continue
+		}
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("invalid host: %q", host))
+	}
+
+	args := []string{"-n"} // no DNS reverse lookup — faster output
+
+	switch c.Query("type") {
+	case "icmp":
+		args = append(args, "-I")
+	case "tcp":
+		args = append(args, "-T")
+	// udp is default — no flag needed
+	}
+
+	if src := c.Query("source"); src != "" {
+		ok := true
+		for _, ch := range src {
+			if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+				(ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '_') {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			args = append(args, "-s", src)
+		}
+	}
+
+	args = append(args, host)
+
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
+
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		sendLine := func(line string) {
+			fmt.Fprintf(w, "data: %s\n\n", line)
+			w.Flush()
+		}
+
+		cmd := exec.Command("stdbuf", append([]string{"-oL", "traceroute"}, args...)...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			sendLine("error: failed to start traceroute: " + err.Error())
+			sendLine("[done]")
+			return
+		}
+		stderr, _ := cmd.StderrPipe()
+
+		timer := time.AfterFunc(120*time.Second, func() { cmd.Process.Kill() }) //nolint:errcheck
+		defer timer.Stop()
+
+		if err := cmd.Start(); err != nil {
+			sendLine("error: " + err.Error())
+			sendLine("[done]")
+			return
+		}
+
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			sendLine(scanner.Text())
+		}
 		if stderr != nil {
 			errScanner := bufio.NewScanner(stderr)
 			for errScanner.Scan() {
