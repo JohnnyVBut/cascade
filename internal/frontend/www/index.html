@@ -1147,7 +1147,7 @@
           </div>
 
           <!-- ── Graphs tab ─────────────────────────────────────────────── -->
-          <template v-if="diagActiveTab === 'graphs'">
+          <div v-show="diagActiveTab === 'graphs'">
             <!-- Empty state -->
             <div v-if="!diagWidgets.length"
               class="text-sm text-gray-400 dark:text-neutral-500"
@@ -1222,13 +1222,13 @@
                 </div>
               </div>
             </div>
-          </template>
+          </div>
 
           <!-- ── Utilities tab ──────────────────────────────────────────── -->
-          <template v-if="diagActiveTab === 'utilities'">
+          <div v-show="diagActiveTab === 'utilities'">
 
             <!-- Ping section -->
-            <div class="rounded-lg" style="padding:20px 24px; max-width:33%;"
+            <div class="rounded-lg" style="padding:16px 20px; max-width:33%;"
               :style="{ background: theme==='dark'?'#262626':'#f9fafb', border: '1px solid ' + (theme==='dark'?'#404040':'#e5e7eb') }">
 
               <div style="font-size:0.95rem; font-weight:600; margin-bottom:16px;"
@@ -1323,7 +1323,7 @@
                 style="background:#111; color:#22c55e; font-family:'Courier New',Courier,monospace; font-size:0.8rem; line-height:1.5; padding:16px; min-height:80px; max-height:480px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid #333;">{{ terminalLines.join('\n') }}<span v-if="pingRunning" style="animation:blink 1s step-end infinite;">▋</span></pre>
             </div>
 
-          </template>
+          </div>
 
         </div><!-- /activePage === 'diagnostics' -->
 
