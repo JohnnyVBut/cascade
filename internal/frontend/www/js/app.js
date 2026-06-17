@@ -214,6 +214,12 @@ new Vue({
     traceRunning: false,
     traceEventSource: null,
 
+    // ── Tcpdump utility ───────────────────────────────────────────────────────
+    tcpdumpIface: '',
+    tcpdumpFilter: '',
+    tcpdumpRunning: false,
+    tcpdumpEventSource: null,
+
     // Tunnel Interfaces
     tunnelInterfaces: [],
     selectedInterface: null,
@@ -3633,6 +3639,49 @@ new Vue({
     traceStop() {
       if (this.traceEventSource) { this.traceEventSource.close(); this.traceEventSource = null; }
       this.traceRunning = false;
+      if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
+    },
+
+    tcpdumpStart() {
+      if (!this.tcpdumpIface) return;
+      if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
+      this.terminalLines = [];
+      this.tcpdumpRunning = true;
+
+      const params = new URLSearchParams({ iface: this.tcpdumpIface });
+      if (this.tcpdumpFilter.trim()) params.set('filter', this.tcpdumpFilter.trim());
+
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      const url = `${apiBase}/diagnostics/tcpdump/stream?` + params.toString();
+      const es = new EventSource(url);
+      this.tcpdumpEventSource = es;
+
+      es.onmessage = (e) => {
+        if (e.data === '[done]') {
+          this.tcpdumpRunning = false;
+          es.close();
+          this.tcpdumpEventSource = null;
+          return;
+        }
+        this.terminalLines.push(e.data);
+        this.$nextTick(() => {
+          const el = this.$el && this.$el.querySelector('.ping-terminal');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+      es.onerror = () => {
+        this.tcpdumpRunning = false;
+        es.close();
+        this.tcpdumpEventSource = null;
+      };
+    },
+
+    tcpdumpStop() {
+      if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
+      this.tcpdumpRunning = false;
       if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
     },
 

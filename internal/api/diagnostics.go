@@ -23,6 +23,7 @@ func RegisterDiagnostics(api fiber.Router) {
 	g.Post("/ping", diagnosticsPing)
 	g.Get("/ping/stream", diagnosticsPingStream)
 	g.Get("/traceroute/stream", diagnosticsTracerouteStream)
+	g.Get("/tcpdump/stream", diagnosticsTcpdumpStream)
 }
 
 type PingRequest struct {
@@ -285,6 +286,78 @@ func diagnosticsTracerouteStream(c *fiber.Ctx) error {
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
 			sendLine(scanner.Text())
+		}
+		if stderr != nil {
+			errScanner := bufio.NewScanner(stderr)
+			for errScanner.Scan() {
+				sendLine(errScanner.Text())
+			}
+		}
+
+		cmd.Wait() //nolint:errcheck
+		sendLine("[done]")
+	})
+
+	return nil
+}
+
+// diagnosticsTcpdumpStream runs tcpdump and streams output line-by-line via SSE.
+// Query params:
+//
+//	iface  — network interface to capture on (required)
+//	filter — optional BPF filter expression (e.g. "host 8.8.8.8 and port 53")
+func diagnosticsTcpdumpStream(c *fiber.Ctx) error {
+	iface := strings.TrimSpace(c.Query("iface"))
+	if iface == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "iface is required")
+	}
+	for _, ch := range iface {
+		if !((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+			(ch >= '0' && ch <= '9') || ch == '-' || ch == '.' || ch == '_') {
+			return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("invalid interface: %q", iface))
+		}
+	}
+
+	// -l: line-buffered stdout; -n: no DNS reverse lookup.
+	args := []string{"-l", "-n", "-i", iface}
+
+	// Append BPF filter as separate args to avoid shell injection.
+	if filter := strings.TrimSpace(c.Query("filter")); filter != "" {
+		args = append(args, strings.Fields(filter)...)
+	}
+
+	c.Set("Content-Type", "text/event-stream")
+	c.Set("Cache-Control", "no-cache")
+	c.Set("Connection", "keep-alive")
+	c.Set("X-Accel-Buffering", "no")
+
+	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+		sendLine := func(line string) {
+			fmt.Fprintf(w, "data: %s\n\n", line)
+			w.Flush()
+		}
+
+		cmd := exec.Command("tcpdump", args...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			sendLine("error: failed to start tcpdump: " + err.Error())
+			sendLine("[done]")
+			return
+		}
+		stderr, _ := cmd.StderrPipe()
+
+		timer := time.AfterFunc(300*time.Second, func() { cmd.Process.Kill() }) //nolint:errcheck
+		defer timer.Stop()
+
+		if err := cmd.Start(); err != nil {
+			sendLine("error: " + err.Error())
+			sendLine("[done]")
+			return
+		}
+
+		tcpScanner := bufio.NewScanner(stdout)
+		for tcpScanner.Scan() {
+			sendLine(tcpScanner.Text())
 		}
 		if stderr != nil {
 			errScanner := bufio.NewScanner(stderr)
