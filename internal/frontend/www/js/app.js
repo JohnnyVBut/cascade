@@ -3374,7 +3374,7 @@ new Vue({
           xaxis: { type:'datetime', labels:{ show: period !== '5m', datetimeUTC:false, style:{ fontSize:'9px', colors: this.theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
           yaxis: { labels:{ show:true, minWidth:42, maxWidth:42, style:{ fontSize:'9px', colors: this.theme==='dark'?'#a3a3a3':'#9ca3af' } }, min:0 },
           grid: { borderColor: this.theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-          tooltip: { x:{ format:'HH:mm:ss' }, theme: this.theme==='dark'?'dark':'light' },
+          tooltip: { x:{ format:'HH:mm:ss' }, theme: this.theme==='dark'?'dark':'light', fixed:{ enabled:true, position:'topRight', offsetX:0, offsetY:0 } },
           theme: { mode: this.theme==='dark'?'dark':'light' },
         };
       }
