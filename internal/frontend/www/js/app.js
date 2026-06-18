@@ -3365,7 +3365,15 @@ new Vue({
       if (!this._chartOptionsCache) this._chartOptionsCache = {};
       if (!this._chartOptionsCache[ck]) {
         this._chartOptionsCache[ck] = {
-          chart: { id: widgetId+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+          chart: { id: widgetId+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent',
+            events: {
+              mouseMove: function(event, chartContext) {
+                // ApexCharts sets style.top on each mouseMove — override it to pin tooltip to top.
+                var tt = chartContext.el && chartContext.el.querySelector('.apexcharts-tooltip');
+                if (tt) tt.style.top = '4px';
+              },
+            },
+          },
           colors: [color],
           stroke: { curve:'smooth', width:2 },
           markers: { size: 0 },
