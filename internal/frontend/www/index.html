@@ -20,7 +20,9 @@
   .line-chart .apexcharts-svg{
     transform: translateY(3px);
   }
+  /* Pin tooltip to top of chart area; left still follows cursor */
   .apexcharts-tooltip {
+    top: 4px !important;
     background: rgba(30, 30, 30, 0.72) !important;
     border-color: rgba(80, 80, 80, 0.4) !important;
     backdrop-filter: blur(6px);
