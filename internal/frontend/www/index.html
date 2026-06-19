@@ -996,12 +996,15 @@
                                   :style="{ background: theme==='dark'?'rgba(34,197,94,0.18)':'rgba(34,197,94,0.1)', color: theme==='dark'?'#4ade80':'#16a34a' }"
                                   :title="'Group: ' + peerGroupName(peer.groupId)">{{ peerGroupName(peer.groupId) }}</span>
                                 <!-- rate limit badge -->
-                                <span v-if="(peer.rateDown > 0 || peer.rateUp > 0)"
-                                  style="font-size:0.6rem; padding:1px 4px; border-radius:3px; margin-left:2px; font-weight:600;"
-                                  :style="{ background: theme==='dark'?'rgba(251,146,60,0.18)':'rgba(234,88,12,0.08)', color: theme==='dark'?'#fb923c':'#c2410c' }"
-                                  :title="(peer.rateDown>0 ? '↓ ' + formatRate(peer.rateDown) + 'bit/s ' : '') + (peer.rateUp>0 ? '↑ ' + formatRate(peer.rateUp) + 'bit/s' : '')">
-                                  <span v-if="peer.rateDown > 0">↓{{ formatRate(peer.rateDown) }}</span><span v-if="peer.rateDown > 0 && peer.rateUp > 0"> </span><span v-if="peer.rateUp > 0">↑{{ formatRate(peer.rateUp) }}</span>
-                                </span>
+                                <template v-if="peerEffectiveRate(peer).rateDown > 0 || peerEffectiveRate(peer).rateUp > 0">
+                                  <span style="font-size:0.6rem; padding:1px 4px; border-radius:3px; margin-left:2px; font-weight:600;"
+                                    :style="peerEffectiveRate(peer).fromGroup
+                                      ? { background: theme==='dark'?'rgba(99,102,241,0.18)':'rgba(99,102,241,0.1)', color: theme==='dark'?'#a5b4fc':'#4338ca' }
+                                      : { background: theme==='dark'?'rgba(251,146,60,0.18)':'rgba(234,88,12,0.08)', color: theme==='dark'?'#fb923c':'#c2410c' }"
+                                    :title="(peerEffectiveRate(peer).fromGroup ? 'Group limit: ' : '') + (peerEffectiveRate(peer).rateDown>0 ? '↓ ' + formatRate(peerEffectiveRate(peer).rateDown) + 'bit/s ' : '') + (peerEffectiveRate(peer).rateUp>0 ? '↑ ' + formatRate(peerEffectiveRate(peer).rateUp) + 'bit/s' : '')">
+                                    <span v-if="peerEffectiveRate(peer).fromGroup" style="opacity:0.7;margin-right:1px;">G</span><span v-if="peerEffectiveRate(peer).rateDown > 0">↓{{ formatRate(peerEffectiveRate(peer).rateDown) }}</span><span v-if="peerEffectiveRate(peer).rateDown > 0 && peerEffectiveRate(peer).rateUp > 0"> </span><span v-if="peerEffectiveRate(peer).rateUp > 0">↑{{ formatRate(peerEffectiveRate(peer).rateUp) }}</span>
+                                  </span>
+                                </template>
                                 <!-- handshake time -->
                                 <span v-if="peer.latestHandshakeAt"
                                   style="font-size:0.6rem; font-weight:400; margin-left:4px; opacity:0.7; display:inline-flex; align-items:center; gap:2px;"
@@ -2070,15 +2073,17 @@
                               :title="'Group: ' + peerGroupName(peer.groupId)">
                               {{peerGroupName(peer.groupId)}}
                             </span>
-                            <span v-if="peer.peerType !== 'interconnect' && peer.rateDown > 0 && peerEditNameId !== peer.id"
-                              style="margin-left:4px;font-size:0.65rem;padding:1px 5px;background:rgba(220,38,38,0.1);color:#dc2626;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
-                              :title="'Download limit: ' + formatRate(peer.rateDown) + 'bit/s'">
-                              ↓{{formatRate(peer.rateDown)}}
+                            <span v-if="peer.peerType !== 'interconnect' && peerEffectiveRate(peer).rateDown > 0 && peerEditNameId !== peer.id"
+                              style="margin-left:4px;font-size:0.65rem;padding:1px 5px;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                              :style="peerEffectiveRate(peer).fromGroup ? {background:'rgba(99,102,241,0.1)',color:'#4338ca'} : {background:'rgba(220,38,38,0.1)',color:'#dc2626'}"
+                              :title="(peerEffectiveRate(peer).fromGroup?'Group limit: ':'Download limit: ') + formatRate(peerEffectiveRate(peer).rateDown) + 'bit/s'">
+                              <span v-if="peerEffectiveRate(peer).fromGroup" style="opacity:0.7;">G</span>↓{{formatRate(peerEffectiveRate(peer).rateDown)}}
                             </span>
-                            <span v-if="peer.peerType !== 'interconnect' && peer.rateUp > 0 && peerEditNameId !== peer.id"
-                              style="margin-left:4px;font-size:0.65rem;padding:1px 5px;background:rgba(22,163,74,0.1);color:#16a34a;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
-                              :title="'Upload limit: ' + formatRate(peer.rateUp) + 'bit/s'">
-                              ↑{{formatRate(peer.rateUp)}}
+                            <span v-if="peer.peerType !== 'interconnect' && peerEffectiveRate(peer).rateUp > 0 && peerEditNameId !== peer.id"
+                              style="margin-left:4px;font-size:0.65rem;padding:1px 5px;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                              :style="peerEffectiveRate(peer).fromGroup ? {background:'rgba(99,102,241,0.1)',color:'#4338ca'} : {background:'rgba(22,163,74,0.1)',color:'#16a34a'}"
+                              :title="(peerEffectiveRate(peer).fromGroup?'Group limit: ':'Upload limit: ') + formatRate(peerEffectiveRate(peer).rateUp) + 'bit/s'">
+                              <span v-if="peerEffectiveRate(peer).fromGroup" style="opacity:0.7;">G</span>↑{{formatRate(peerEffectiveRate(peer).rateUp)}}
                             </span>
                             <span v-show="peerEditNameId !== peer.id"
                               @click="peerEditName = peer.name; peerEditNameId = peer.id; setTimeout(() => $refs['dpeer-' + peer.id + '-name'][0].select(), 1);"
@@ -2412,15 +2417,17 @@
                             :title="'Group: ' + peerGroupName(peer.groupId)">
                             {{peerGroupName(peer.groupId)}}
                           </span>
-                          <span v-if="peer.peerType !== 'interconnect' && peer.rateDown > 0 && peerEditNameId !== peer.id"
-                            style="margin-left:6px;font-size:0.65rem;padding:1px 5px;background:rgba(220,38,38,0.1);color:#dc2626;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
-                            :title="'Download limit: ' + formatRate(peer.rateDown) + 'bit/s'">
-                            ↓{{formatRate(peer.rateDown)}}
+                          <span v-if="peer.peerType !== 'interconnect' && peerEffectiveRate(peer).rateDown > 0 && peerEditNameId !== peer.id"
+                            style="margin-left:6px;font-size:0.65rem;padding:1px 5px;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                            :style="peerEffectiveRate(peer).fromGroup ? {background:'rgba(99,102,241,0.1)',color:'#4338ca'} : {background:'rgba(220,38,38,0.1)',color:'#dc2626'}"
+                            :title="(peerEffectiveRate(peer).fromGroup?'Group limit: ':'Download limit: ') + formatRate(peerEffectiveRate(peer).rateDown) + 'bit/s'">
+                            <span v-if="peerEffectiveRate(peer).fromGroup" style="opacity:0.7;">G</span>↓{{formatRate(peerEffectiveRate(peer).rateDown)}}
                           </span>
-                          <span v-if="peer.peerType !== 'interconnect' && peer.rateUp > 0 && peerEditNameId !== peer.id"
-                            style="margin-left:4px;font-size:0.65rem;padding:1px 5px;background:rgba(22,163,74,0.1);color:#16a34a;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
-                            :title="'Upload limit: ' + formatRate(peer.rateUp) + 'bit/s'">
-                            ↑{{formatRate(peer.rateUp)}}
+                          <span v-if="peer.peerType !== 'interconnect' && peerEffectiveRate(peer).rateUp > 0 && peerEditNameId !== peer.id"
+                            style="margin-left:4px;font-size:0.65rem;padding:1px 5px;border-radius:4px;font-weight:600;vertical-align:middle;display:inline-block;letter-spacing:0.02em;"
+                            :style="peerEffectiveRate(peer).fromGroup ? {background:'rgba(99,102,241,0.1)',color:'#4338ca'} : {background:'rgba(22,163,74,0.1)',color:'#16a34a'}"
+                            :title="(peerEffectiveRate(peer).fromGroup?'Group limit: ':'Upload limit: ') + formatRate(peerEffectiveRate(peer).rateUp) + 'bit/s'">
+                            <span v-if="peerEffectiveRate(peer).fromGroup" style="opacity:0.7;">G</span>↑{{formatRate(peerEffectiveRate(peer).rateUp)}}
                           </span>
                           <span v-show="peerEditNameId !== peer.id"
                             @click="peerEditName = peer.name; peerEditNameId = peer.id; setTimeout(() => $refs['peer-' + peer.id + '-name'][0].select(), 1);"
