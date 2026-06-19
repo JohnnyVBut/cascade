@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
@@ -720,5 +721,53 @@ func TestGenerateWgConfig_MTUZeroOmitted(t *testing.T) {
 
 	if strings.Contains(cfg, "MTU =") {
 		t.Error("config must NOT include MTU line when MTU=0")
+	}
+}
+
+// ── peerEffectiveRateLimits ───────────────────────────────────────────────────
+
+func TestPeerEffectiveRateLimits_PeerLimitsTakePrecedence(t *testing.T) {
+	group := &aliases.Alias{RateDown: 500, RateUp: 250}
+	rd, ru := peerEffectiveRateLimits(1000, 500, group)
+	if rd != 1000 || ru != 500 {
+		t.Errorf("got (%d,%d), want (1000,500) — peer limits must override group", rd, ru)
+	}
+}
+
+func TestPeerEffectiveRateLimits_GroupUsedWhenPeerIsZero(t *testing.T) {
+	group := &aliases.Alias{RateDown: 500, RateUp: 250}
+	rd, ru := peerEffectiveRateLimits(0, 0, group)
+	if rd != 500 || ru != 250 {
+		t.Errorf("got (%d,%d), want (500,250) — group limits must apply when peer has none", rd, ru)
+	}
+}
+
+func TestPeerEffectiveRateLimits_NilGroupReturnsZero(t *testing.T) {
+	rd, ru := peerEffectiveRateLimits(0, 0, nil)
+	if rd != 0 || ru != 0 {
+		t.Errorf("got (%d,%d), want (0,0) — nil group must return zero", rd, ru)
+	}
+}
+
+func TestPeerEffectiveRateLimits_GroupWithZeroLimitsReturnsZero(t *testing.T) {
+	group := &aliases.Alias{RateDown: 0, RateUp: 0}
+	rd, ru := peerEffectiveRateLimits(0, 0, group)
+	if rd != 0 || ru != 0 {
+		t.Errorf("got (%d,%d), want (0,0) — group with zero limits must return zero", rd, ru)
+	}
+}
+
+func TestPeerEffectiveRateLimits_OnlyDownstreamPeerLimit(t *testing.T) {
+	rd, ru := peerEffectiveRateLimits(1000, 0, nil)
+	if rd != 1000 || ru != 0 {
+		t.Errorf("got (%d,%d), want (1000,0)", rd, ru)
+	}
+}
+
+func TestPeerEffectiveRateLimits_OnlyDownstreamGroupLimit(t *testing.T) {
+	group := &aliases.Alias{RateDown: 500, RateUp: 0}
+	rd, ru := peerEffectiveRateLimits(0, 0, group)
+	if rd != 500 || ru != 0 {
+		t.Errorf("got (%d,%d), want (500,0)", rd, ru)
 	}
 }

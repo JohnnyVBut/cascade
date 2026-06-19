@@ -392,6 +392,19 @@ func (t *TunnelInterface) PeerCount() int {
 
 // ── Peer CRUD ─────────────────────────────────────────────────────────────────
 
+// peerEffectiveRateLimits returns the rate limits that should be applied via tc
+// for the given peer. If the peer has individual limits, they take precedence.
+// Otherwise the group's limits are returned. group may be nil.
+func peerEffectiveRateLimits(peerRateDown, peerRateUp int, group *aliases.Alias) (rateDown, rateUp int) {
+	if peerRateDown > 0 || peerRateUp > 0 {
+		return peerRateDown, peerRateUp
+	}
+	if group != nil {
+		return group.RateDown, group.RateUp
+	}
+	return 0, 0
+}
+
 // AddPeer creates a new peer in SQLite, updates the in-memory cache,
 // regenerates the wg-quick config, and applies the peer to the kernel.
 func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
@@ -507,6 +520,17 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 	}
 	if t.Enabled {
 		t.KernelSetPeer(p)
+		// Apply group rate limits for new client peers with no individual limits.
+		if p.PeerType == "client" && p.AllowedIPs != "" && p.RateDown == 0 && p.RateUp == 0 && p.GroupID != "" {
+			if am := aliases.Get(); am != nil {
+				if g, err := am.GetByID(p.GroupID); err == nil {
+					if rd, ru := peerEffectiveRateLimits(0, 0, g); rd > 0 || ru > 0 {
+						tc.EnsureQdisc(t.ID)
+						tc.Apply(t.ID, p.AllowedIPs, rd, ru, t.kernelMTU())
+					}
+				}
+			}
+		}
 	}
 	return p, nil
 }
@@ -585,13 +609,13 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 			}
 			// Apply group rate limits when peer has no individual limits.
 			if t.Enabled && updated.AllowedIPs != "" && updated.RateDown == 0 && updated.RateUp == 0 {
+				var g *aliases.Alias
 				if updated.GroupID != "" {
-					if g, err := am.GetByID(updated.GroupID); err == nil && g != nil && (g.RateDown > 0 || g.RateUp > 0) {
-						tc.EnsureQdisc(t.ID)
-						tc.Apply(t.ID, updated.AllowedIPs, g.RateDown, g.RateUp, t.kernelMTU())
-					} else {
-						tc.Remove(t.ID, updated.AllowedIPs)
-					}
+					g, _ = am.GetByID(updated.GroupID)
+				}
+				if rd, ru := peerEffectiveRateLimits(0, 0, g); rd > 0 || ru > 0 {
+					tc.EnsureQdisc(t.ID)
+					tc.Apply(t.ID, updated.AllowedIPs, rd, ru, t.kernelMTU())
 				} else {
 					tc.Remove(t.ID, updated.AllowedIPs)
 				}
