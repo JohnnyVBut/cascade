@@ -3312,7 +3312,7 @@ new Vue({
       const cacheKey = `${widgetId}:${key}`;
       const buf = this.metricsHistory[cacheKey] || [];
       const cached = this.metricsAreaSeriesCache[cacheKey];
-      if (cached) {
+      if (cached && cached.length) {
         cached[0].data.splice(0, cached[0].data.length, ...buf);
       } else {
         this.$set(this.metricsAreaSeriesCache, cacheKey, [
