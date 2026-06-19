@@ -3307,18 +3307,15 @@ new Vue({
       return data.map(p => ({ x: p.x, y: 1 }));
     },
 
-    // Builds stable series wrapper for area charts; call whenever underlying data changes.
+    // Builds series wrapper for area charts; call whenever underlying data changes.
+    // Always replaces with $set so ApexCharts detects the change and re-renders.
+    // Chart options are stable via _chartOptionsCache, so this does not cause re-init.
     _updateAreaSeriesCache(widgetId, key) {
       const cacheKey = `${widgetId}:${key}`;
       const buf = this.metricsHistory[cacheKey] || [];
-      const cached = this.metricsAreaSeriesCache[cacheKey];
-      if (cached && cached.length) {
-        cached[0].data.splice(0, cached[0].data.length, ...buf);
-      } else {
-        this.$set(this.metricsAreaSeriesCache, cacheKey, [
-          { name: this.metricsKeyLabel(key), data: buf.slice() },
-        ]);
-      }
+      this.$set(this.metricsAreaSeriesCache, cacheKey, [
+        { name: this.metricsKeyLabel(key), data: buf.slice() },
+      ]);
     },
 
     metricsGetCachedAreaSeries(widgetId, key) {
