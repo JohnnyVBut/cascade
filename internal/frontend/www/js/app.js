@@ -4063,6 +4063,7 @@ new Vue({
 
         this.showAliasEdit = false;
         await this.loadAliases();
+        if (this.aliasEdit.type === 'client-group') await this.loadClientGroups();
       } catch (err) {
         this.showToast(err.message || 'Failed to update alias', 'error');
       }
