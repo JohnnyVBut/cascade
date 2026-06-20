@@ -193,6 +193,35 @@ new Vue({
     // ── Diagnostics page ──────────────────────────────────────────────────────
     diagWidgets: [],
     diagGrid: null,
+    diagActiveTab: 'graphs', // 'graphs' | 'utilities'
+
+    // ── Ping utility ──────────────────────────────────────────────────────────
+    pingHost: '',
+    pingSource: '',
+    pingCount: 5,
+    pingSize: '',
+    pingDf: false,
+    pingTos: '',
+    pingRunning: false,
+    pingEventSource: null,
+    pingRouterIfaces: [],
+    terminalLines: [], // shared output terminal for all Utilities
+
+    // ── Traceroute utility ────────────────────────────────────────────────────
+    traceHost: '',
+    traceSource: '',
+    traceType: 'udp',
+    traceRunning: false,
+    traceEventSource: null,
+
+    // ── Tcpdump utility ───────────────────────────────────────────────────────
+    tcpdumpIface: '',
+    tcpdumpFilter: '',
+    tcpdumpSave: false,
+    tcpdumpRunning: false,
+    tcpdumpEventSource: null,
+    tcpdumpPcapId: null,        // capture ID sent as first SSE event [captureid:<id>]
+    tcpdumpDownloadReady: false, // true once file is finalized and ready to download
 
     // Tunnel Interfaces
     tunnelInterfaces: [],
@@ -1082,6 +1111,7 @@ new Vue({
       if (pageId === 'diagnostics') {
         this.loadDiagnostics();
         this.metricsStartPoller();
+        this.pingLoadInterfaces();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
       if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
@@ -3332,7 +3362,15 @@ new Vue({
       if (!this._chartOptionsCache) this._chartOptionsCache = {};
       if (!this._chartOptionsCache[ck]) {
         this._chartOptionsCache[ck] = {
-          chart: { id: widgetId+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent' },
+          chart: { id: widgetId+'_'+key, type:'area', animations:{ enabled:false }, toolbar:{ show:false }, sparkline:{ enabled:false }, background:'transparent',
+            events: {
+              mouseMove: function(event, chartContext) {
+                // ApexCharts sets style.top on each mouseMove — override it to pin tooltip to top.
+                var tt = chartContext.el && chartContext.el.querySelector('.apexcharts-tooltip');
+                if (tt) tt.style.top = '4px';
+              },
+            },
+          },
           colors: [color],
           stroke: { curve:'smooth', width:2 },
           markers: { size: 0 },
@@ -3499,6 +3537,198 @@ new Vue({
       this.diagWidgets.splice(idx, 1);
       this.api.putDashboardWidgets(this.diagWidgets, 'diagnostics').catch(console.error);
     },
+
+    // ── Ping utility ─────────────────────────────────────────────────────────
+
+    async pingLoadInterfaces() {
+      if (this.pingRouterIfaces.length) return;
+      try {
+        const res = await this.api.getSystemInterfaces();
+        this.pingRouterIfaces = res.interfaces || [];
+      } catch (e) { /* silent */ }
+    },
+
+    pingStart() {
+      if (!this.pingHost.trim()) return;
+      if (this.pingEventSource) { this.pingEventSource.close(); this.pingEventSource = null; }
+      this.terminalLines = [];
+      this.pingRunning = true;
+
+      const params = new URLSearchParams({ host: this.pingHost.trim(), count: this.pingCount });
+      if (this.pingSource) {
+        // Resolve interface name to its first IPv4 address (Cisco-style source IP routing).
+        const iface = this.pingRouterIfaces.find(i => i.name === this.pingSource);
+        const sourceIp = iface && iface.addrs && iface.addrs.length ? iface.addrs[0] : this.pingSource;
+        params.set('source', sourceIp);
+      }
+      if (this.pingSize !== '') params.set('size', this.pingSize);
+      if (this.pingDf) params.set('df', 'true');
+      if (this.pingTos !== '') params.set('tos', this.pingTos);
+
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      const url = `${apiBase}/diagnostics/ping/stream?` + params.toString();
+      const es = new EventSource(url);
+      this.pingEventSource = es;
+
+      es.onmessage = (e) => {
+        if (e.data === '[done]') {
+          this.pingRunning = false;
+          es.close();
+          this.pingEventSource = null;
+          return;
+        }
+        this.terminalLines.push(e.data);
+        this.$nextTick(() => {
+          const el = this.$el && this.$el.querySelector('.ping-terminal');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+      es.onerror = () => {
+        this.pingRunning = false;
+        es.close();
+        this.pingEventSource = null;
+      };
+    },
+
+    pingStop() {
+      if (this.pingEventSource) { this.pingEventSource.close(); this.pingEventSource = null; }
+      this.pingRunning = false;
+      if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
+    },
+
+    pingClear() {
+      this.terminalLines = [];
+    },
+
+    traceStart() {
+      if (!this.traceHost.trim()) return;
+      if (this.traceEventSource) { this.traceEventSource.close(); this.traceEventSource = null; }
+      this.terminalLines = [];
+      this.traceRunning = true;
+
+      const params = new URLSearchParams({ host: this.traceHost.trim(), type: this.traceType });
+      if (this.traceSource) {
+        const iface = this.pingRouterIfaces.find(i => i.name === this.traceSource);
+        const sourceIp = iface && iface.addrs && iface.addrs.length ? iface.addrs[0] : this.traceSource;
+        params.set('source', sourceIp);
+      }
+
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      const url = `${apiBase}/diagnostics/traceroute/stream?` + params.toString();
+      const es = new EventSource(url);
+      this.traceEventSource = es;
+
+      es.onmessage = (e) => {
+        if (e.data === '[done]') {
+          this.traceRunning = false;
+          es.close();
+          this.traceEventSource = null;
+          return;
+        }
+        this.terminalLines.push(e.data);
+        this.$nextTick(() => {
+          const el = this.$el && this.$el.querySelector('.ping-terminal');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+      es.onerror = () => {
+        this.traceRunning = false;
+        es.close();
+        this.traceEventSource = null;
+      };
+    },
+
+    traceStop() {
+      if (this.traceEventSource) { this.traceEventSource.close(); this.traceEventSource = null; }
+      this.traceRunning = false;
+      if (this.terminalLines.length) this.terminalLines.push('--- interrupted ---');
+    },
+
+    tcpdumpStart() {
+      if (!this.tcpdumpIface) return;
+      if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
+      this.terminalLines = [];
+      this.tcpdumpPcapId = null;
+      this.tcpdumpDownloadReady = false;
+      this.tcpdumpRunning = true;
+
+      const params = new URLSearchParams({ iface: this.tcpdumpIface });
+      if (this.tcpdumpFilter.trim()) params.set('filter', this.tcpdumpFilter.trim());
+      if (this.tcpdumpSave) params.set('save', 'true');
+
+      const segs = window.location.pathname.split('/').filter(Boolean);
+      const apiBase = segs.length > 0
+        ? `${window.location.origin}/${segs[0]}/api`
+        : `${window.location.origin}/api`;
+      this._tcpdumpApiBase = apiBase;
+      const url = `${apiBase}/diagnostics/tcpdump/stream?` + params.toString();
+      const es = new EventSource(url);
+      this.tcpdumpEventSource = es;
+
+      es.onmessage = (e) => {
+        if (e.data === '[done]') {
+          this.tcpdumpRunning = false;
+          es.close();
+          this.tcpdumpEventSource = null;
+          // If a capture ID was received, file is now ready to download.
+          if (this.tcpdumpPcapId) this.tcpdumpDownloadReady = true;
+          return;
+        }
+        // Backend sends capture ID as first event when save=true.
+        if (e.data.startsWith('[captureid:') && e.data.endsWith(']')) {
+          this.tcpdumpPcapId = e.data.slice(11, -1);
+          return; // don't print to terminal
+        }
+        this.terminalLines.push(e.data);
+        this.$nextTick(() => {
+          const el = this.$el && this.$el.querySelector('.ping-terminal');
+          if (el) el.scrollTop = el.scrollHeight;
+        });
+      };
+      es.onerror = () => {
+        this.tcpdumpRunning = false;
+        es.close();
+        this.tcpdumpEventSource = null;
+      };
+    },
+
+    tcpdumpStop() {
+      if (this.tcpdumpEventSource) { this.tcpdumpEventSource.close(); this.tcpdumpEventSource = null; }
+      this.tcpdumpRunning = false;
+      if (this.terminalLines.length) this.terminalLines.push('--- stopping, finalizing file…');
+
+      if (this.tcpdumpSave && this.tcpdumpPcapId) {
+        // Ask backend to SIGINT tcpdump so it flushes and closes the pcap file.
+        const apiBase = this._tcpdumpApiBase || (window.location.origin + '/api');
+        fetch(`${apiBase}/diagnostics/tcpdump/stop?file=` + encodeURIComponent(this.tcpdumpPcapId), { method: 'POST' })
+          .then(() => { this.tcpdumpDownloadReady = true; })
+          .catch(() => { this.tcpdumpDownloadReady = true; }); // show button anyway
+      } else {
+        if (this.terminalLines.length) this.terminalLines[this.terminalLines.length - 1] = '--- interrupted ---';
+      }
+    },
+
+    tcpdumpDownload() {
+      if (!this.tcpdumpPcapId) return;
+      const apiBase = this._tcpdumpApiBase || (window.location.origin + '/api');
+      const url = `${apiBase}/diagnostics/tcpdump/download?file=` + encodeURIComponent(this.tcpdumpPcapId);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'capture-' + this.tcpdumpPcapId.slice(0, 8) + '.pcap';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      this.tcpdumpPcapId = null;
+      this.tcpdumpDownloadReady = false;
+    },
+
+    // ── End ping utility ─────────────────────────────────────────────────────
 
     // Compact elapsed time: "5s", "20m", "3h", "2d"
     dashTimeShort(ts) {
@@ -3833,6 +4063,7 @@ new Vue({
 
         this.showAliasEdit = false;
         await this.loadAliases();
+        if (this.aliasEdit.type === 'client-group') await this.loadClientGroups();
       } catch (err) {
         this.showToast(err.message || 'Failed to update alias', 'error');
       }

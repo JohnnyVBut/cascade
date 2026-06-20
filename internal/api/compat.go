@@ -99,10 +99,7 @@ func RegisterCompatAuth(r fiber.Router) {
 		if err != nil || ifaces == nil {
 			ifaces = []nat.HostInterface{}
 		}
-		names := make([]string, len(ifaces))
-		for i, iface := range ifaces {
-			names[i] = iface.Name
-		}
-		return c.JSON(fiber.Map{"interfaces": enrichIfaceLabels(names, nil)})
+		names, addrs := ifaceNamesAndAddrs(ifaces)
+		return c.JSON(fiber.Map{"interfaces": enrichIfaceLabelsWithAddrs(names, nil, addrs)})
 	})
 }

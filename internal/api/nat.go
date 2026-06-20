@@ -38,14 +38,20 @@ func RegisterNat(api fiber.Router) {
 // it is "<id> <tunnel-name>" (e.g. "wg10-s2s Finland"), for everything else
 // it equals Name.
 type ifaceWithLabel struct {
-	Name      string `json:"name"`
-	Label     string `json:"label"`
-	Operstate string `json:"operstate,omitempty"`
+	Name      string   `json:"name"`
+	Label     string   `json:"label"`
+	Operstate string   `json:"operstate,omitempty"`
+	Addrs     []string `json:"addrs,omitempty"`
 }
 
 // enrichIfaceLabels builds a slice of ifaceWithLabel from raw interface names,
 // annotating WG/AWG tunnel interfaces with their human-readable tunnel name.
+// addrsByName optionally provides IPv4 addresses per interface name.
 func enrichIfaceLabels(names []string, operByName map[string]string) []ifaceWithLabel {
+	return enrichIfaceLabelsWithAddrs(names, operByName, nil)
+}
+
+func enrichIfaceLabelsWithAddrs(names []string, operByName map[string]string, addrsByName map[string][]string) []ifaceWithLabel {
 	nameByID := make(map[string]string)
 	if tm := tunnel.Get(); tm != nil {
 		for _, t := range tm.GetAllInterfaces() {
@@ -60,11 +66,15 @@ func enrichIfaceLabels(names []string, operByName map[string]string) []ifaceWith
 		if tn, ok := nameByID[n]; ok {
 			label = n + " " + tn
 		}
-		result = append(result, ifaceWithLabel{
+		item := ifaceWithLabel{
 			Name:      n,
 			Label:     label,
 			Operstate: operByName[n],
-		})
+		}
+		if addrsByName != nil {
+			item.Addrs = addrsByName[n]
+		}
+		result = append(result, item)
 	}
 	return result
 }
@@ -72,16 +82,26 @@ func enrichIfaceLabels(names []string, operByName map[string]string) []ifaceWith
 // GET /api/nat/interfaces
 // Returns host network interfaces for the outInterface dropdown in the UI.
 // Wrapped as { interfaces: [...] } because the frontend does `res.interfaces || []`.
+// ifaceNamesAndAddrs extracts names and builds addrsByName map from HostInterface slice.
+func ifaceNamesAndAddrs(ifaces []nat.HostInterface) ([]string, map[string][]string) {
+	names := make([]string, len(ifaces))
+	addrs := make(map[string][]string, len(ifaces))
+	for i, iface := range ifaces {
+		names[i] = iface.Name
+		if len(iface.Addrs) > 0 {
+			addrs[iface.Name] = iface.Addrs
+		}
+	}
+	return names, addrs
+}
+
 func getNatInterfaces(c *fiber.Ctx) error {
 	ifaces, err := nat.Get().GetNetworkInterfaces()
 	if err != nil || ifaces == nil {
 		ifaces = []nat.HostInterface{}
 	}
-	names := make([]string, len(ifaces))
-	for i, iface := range ifaces {
-		names[i] = iface.Name
-	}
-	return c.JSON(fiber.Map{"interfaces": enrichIfaceLabels(names, nil)})
+	names, addrs := ifaceNamesAndAddrs(ifaces)
+	return c.JSON(fiber.Map{"interfaces": enrichIfaceLabelsWithAddrs(names, nil, addrs)})
 }
 
 // GET /api/nat/rules

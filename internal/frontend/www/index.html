@@ -20,6 +20,24 @@
   .line-chart .apexcharts-svg{
     transform: translateY(3px);
   }
+  .apexcharts-tooltip {
+    background: rgba(30, 30, 30, 0.52) !important;
+    border-color: rgba(80, 80, 80, 0.3) !important;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  .apexcharts-tooltip-title {
+    background: rgba(15, 15, 15, 0.3) !important;
+    border-bottom-color: rgba(80, 80, 80, 0.2) !important;
+  }
+  .apexcharts-tooltip.apexcharts-theme-light {
+    background: rgba(255, 255, 255, 0.52) !important;
+    border-color: rgba(200, 200, 200, 0.3) !important;
+  }
+  .apexcharts-tooltip.apexcharts-theme-light .apexcharts-tooltip-title {
+    background: rgba(240, 240, 240, 0.4) !important;
+    border-bottom-color: rgba(200, 200, 200, 0.2) !important;
+  }
   /* Toast animations */
   .toast-enter-active, .toast-leave-active {
     transition: all 0.3s ease;
@@ -285,6 +303,10 @@
   .dark .shadow-md [class*="border-b"],
   .dark .shadow-md [class*="border-t"] {
     border-color: rgba(255,255,255,0.07) !important;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
   }
 </style>
 </head>
@@ -1123,87 +1145,333 @@
           <!-- Header -->
           <div style="display:flex; align-items:center; justify-content:space-between;">
             <h2 class="text-lg font-semibold dark:text-neutral-100">Diagnostics</h2>
-            <button @click="diagAddWidget()"
+            <button v-if="diagActiveTab === 'graphs'" @click="diagAddWidget()"
               class="text-sm text-white rounded"
               style="padding:7px 16px; background:#2563eb; border:none; cursor:pointer;">
               + Add Graph
             </button>
           </div>
 
-          <!-- Empty state -->
-          <div v-if="!diagWidgets.length"
-            class="text-sm text-gray-400 dark:text-neutral-500"
-            style="padding:60px 0; text-align:center;">
-            No graphs yet — click <strong>+ Add Graph</strong> to create one.
+          <!-- Tabs -->
+          <div style="display:flex; gap:0; border-bottom:2px solid; border-color: transparent;"
+            :style="{ borderColor: theme==='dark'?'#404040':'#e5e7eb' }">
+            <button @click="diagActiveTab='graphs'"
+              style="padding:7px 18px; border:none; cursor:pointer; font-size:0.875rem; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-2px; background:none;"
+              :style="{ color: diagActiveTab==='graphs' ? '#2563eb' : (theme==='dark'?'#a3a3a3':'#6b7280'), borderBottomColor: diagActiveTab==='graphs' ? '#2563eb' : 'transparent' }">
+              Graphs
+            </button>
+            <button @click="diagActiveTab='utilities'"
+              style="padding:7px 18px; border:none; cursor:pointer; font-size:0.875rem; font-weight:500; border-bottom:2px solid transparent; margin-bottom:-2px; background:none;"
+              :style="{ color: diagActiveTab==='utilities' ? '#2563eb' : (theme==='dark'?'#a3a3a3':'#6b7280'), borderBottomColor: diagActiveTab==='utilities' ? '#2563eb' : 'transparent' }">
+              Utilities
+            </button>
           </div>
 
-          <!-- GridStack grid -->
-          <div class="grid-stack diag-grid" style="min-height:100px;">
-            <div v-for="w in diagWidgets" :key="w.id"
-              class="grid-stack-item"
-              :gs-id="w.id" :gs-x="w.x" :gs-y="w.y" :gs-w="w.w" :gs-h="w.h">
-              <div class="grid-stack-item-content">
-                <div class="dash-card">
-                  <div class="dash-card-header">
-                    <span>{{ w.title || 'Graph' }}</span>
-                    <div style="display:flex; align-items:center; gap:4px;">
-                      <select :value="metricsWidgetPeriod[w.id]||'5m'" @change="metricsOnPeriodChange(w.id, $event.target.value)"
-                        class="text-xs dark:text-neutral-300 rounded"
-                        style="padding:1px 4px; border:1px solid transparent; cursor:pointer; background:none; opacity:0.7;"
-                        :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
-                        <option value="5m">5m</option>
-                        <option value="1h">1h</option>
-                        <option value="6h">6h</option>
-                        <option value="24h">24h</option>
-                        <option value="7d">7d</option>
-                        <option value="30d">30d</option>
-                      </select>
-                      <button @click="metricsOpenConfig(w.id)" title="Configure graph"
-                        style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
-                      <button @click="diagRemoveWidget(w.id)" title="Remove"
-                        style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit; margin-left:2px;">✕</button>
+          <!-- ── Graphs tab ─────────────────────────────────────────────── -->
+          <div v-show="diagActiveTab === 'graphs'">
+            <!-- Empty state -->
+            <div v-if="!diagWidgets.length"
+              class="text-sm text-gray-400 dark:text-neutral-500"
+              style="padding:60px 0; text-align:center;">
+              No graphs yet — click <strong>+ Add Graph</strong> to create one.
+            </div>
+
+            <!-- GridStack grid -->
+            <div class="grid-stack diag-grid" style="min-height:100px;">
+              <div v-for="w in diagWidgets" :key="w.id"
+                class="grid-stack-item"
+                :gs-id="w.id" :gs-x="w.x" :gs-y="w.y" :gs-w="w.w" :gs-h="w.h">
+                <div class="grid-stack-item-content">
+                  <div class="dash-card">
+                    <div class="dash-card-header">
+                      <span>{{ w.title || 'Graph' }}</span>
+                      <div style="display:flex; align-items:center; gap:4px;">
+                        <select :value="metricsWidgetPeriod[w.id]||'5m'" @change="metricsOnPeriodChange(w.id, $event.target.value)"
+                          class="text-xs dark:text-neutral-300 rounded"
+                          style="padding:1px 4px; border:1px solid transparent; cursor:pointer; background:none; opacity:0.7;"
+                          :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
+                          <option value="5m">5m</option>
+                          <option value="1h">1h</option>
+                          <option value="6h">6h</option>
+                          <option value="24h">24h</option>
+                          <option value="7d">7d</option>
+                          <option value="30d">30d</option>
+                        </select>
+                        <button @click="metricsOpenConfig(w.id)" title="Configure graph"
+                          style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
+                        <button @click="diagRemoveWidget(w.id)" title="Remove"
+                          style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit; margin-left:2px;">✕</button>
+                      </div>
                     </div>
-                  </div>
-                  <div class="dash-card-body" :style="{ fontSize: (w.fontScale||1) + 'rem' }">
-                    <!-- No graphs configured -->
-                    <div v-if="!(w.graphs||[]).length" style="display:flex; align-items:center; justify-content:center; height:60px;">
-                      <span class="text-xs text-gray-400 dark:text-neutral-500">Click ⚙ to add metrics</span>
-                    </div>
-                    <!-- Charts -->
-                    <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
-                      <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
-                        :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
-                      <!-- Gateway: stacked bar showing proportional status distribution -->
-                      <apexchart v-if="key.startsWith('gateway:') && !metricsConfigWidget"
-                        type="bar"
-                        height="120"
-                        :options="{
-                          chart: { id: w.id+'_'+key, type:'bar', stacked:true, stackType:'100%', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
-                          plotOptions: { bar: { columnWidth:'95%', borderRadius:0 } },
-                          colors: ['#9ca3af','#ef4444','#eab308','#22c55e'],
-                          dataLabels: { enabled: false },
-                          legend: { show: false },
-                          xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
-                          yaxis:  { min:0, max:100, labels:{ show:false } },
-                          grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
-                          tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: metricsGatewayTooltipFormatter(w.id) }, theme: theme==='dark'?'dark':'light' },
-                          theme:  { mode: theme==='dark'?'dark':'light' },
-                        }"
-                        :series="metricsGetGatewayStackedSeries(w.id, key)"
-                      ></apexchart>
-                      <!-- Area chart for all other metrics -->
-                      <apexchart v-else-if="!metricsConfigWidget"
-                        type="area"
-                        height="120"
-                        :options="metricsAreaChartOptions(w.id, key)"
-                        :series="metricsGetCachedAreaSeries(w.id, key)"
-                      ></apexchart>
+                    <div class="dash-card-body" :style="{ fontSize: (w.fontScale||1) + 'rem' }">
+                      <!-- No graphs configured -->
+                      <div v-if="!(w.graphs||[]).length" style="display:flex; align-items:center; justify-content:center; height:60px;">
+                        <span class="text-xs text-gray-400 dark:text-neutral-500">Click ⚙ to add metrics</span>
+                      </div>
+                      <!-- Charts -->
+                      <div v-for="key in (w.graphs||[])" :key="key" style="position:relative; margin-bottom:2px;">
+                        <span style="position:absolute; top:4px; left:36px; z-index:1; font-size:9px; font-weight:600; pointer-events:none;"
+                          :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">{{ metricsKeyLabel(key) }}</span>
+                        <!-- Gateway: stacked bar showing proportional status distribution -->
+                        <apexchart v-if="key.startsWith('gateway:') && !metricsConfigWidget"
+                          type="bar"
+                          height="120"
+                          :options="{
+                            chart: { id: w.id+'_'+key, type:'bar', stacked:true, stackType:'100%', animations:{ enabled:false }, toolbar:{ show:false }, background:'transparent' },
+                            plotOptions: { bar: { columnWidth:'95%', borderRadius:0 } },
+                            colors: ['#9ca3af','#ef4444','#eab308','#22c55e'],
+                            dataLabels: { enabled: false },
+                            legend: { show: false },
+                            xaxis:  { type:'datetime', labels:{ show: (metricsWidgetPeriod[w.id]||'5m')!=='5m', datetimeUTC:false, style:{ fontSize:'9px', colors: theme==='dark'?'#a3a3a3':'#9ca3af' } }, axisBorder:{ show:false }, axisTicks:{ show:false }, tooltip:{ enabled:false } },
+                            yaxis:  { min:0, max:100, labels:{ show:false } },
+                            grid:   { borderColor: theme==='dark'?'#404040':'#f0f0f0', padding:{ left:0, right:0, top:0 } },
+                            tooltip:{ x:{ format:'HH:mm:ss' }, y:{ formatter: metricsGatewayTooltipFormatter(w.id) }, theme: theme==='dark'?'dark':'light' },
+                            theme:  { mode: theme==='dark'?'dark':'light' },
+                          }"
+                          :series="metricsGetGatewayStackedSeries(w.id, key)"
+                        ></apexchart>
+                        <!-- Area chart for all other metrics -->
+                        <apexchart v-else-if="!metricsConfigWidget"
+                          type="area"
+                          height="120"
+                          :options="metricsAreaChartOptions(w.id, key)"
+                          :series="metricsGetCachedAreaSeries(w.id, key)"
+                        ></apexchart>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
+          <!-- ── Utilities tab ──────────────────────────────────────────── -->
+          <div v-show="diagActiveTab === 'utilities'">
+
+            <!-- Utility cards row -->
+            <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start;">
+
+            <!-- Ping section -->
+            <div class="rounded-lg" style="padding:16px 20px; flex:0 0 calc(33% - 8px);"
+              :style="{ background: theme==='dark'?'#262626':'#f9fafb', border: '1px solid ' + (theme==='dark'?'#404040':'#e5e7eb') }">
+
+              <div style="font-size:0.95rem; font-weight:600; margin-bottom:16px;"
+                :style="{ color: theme==='dark'?'#f5f5f5':'#111827' }">Ping</div>
+
+              <!-- Form row 1: destination + source -->
+              <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:12px; align-items:flex-end;">
+                <div style="flex:2; min-width:180px;">
+                  <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                    :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Destination *</label>
+                  <input v-model="pingHost" @keyup.enter="!pingRunning && pingStart()"
+                    placeholder="8.8.8.8 or hostname"
+                    class="rounded"
+                    style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                    :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+                </div>
+                <div style="flex:2; min-width:160px;">
+                  <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                    :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Source interface</label>
+                  <select v-model="pingSource" class="rounded"
+                    style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                    :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }">
+                    <option value="">Auto (by routing table)</option>
+                    <option v-for="iface in pingRouterIfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}{{ iface.addrs && iface.addrs.length ? ' (' + iface.addrs[0] + ')' : '' }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Form row 2: count, size, DF, ToS -->
+              <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:16px; align-items:flex-end;">
+                <div style="flex:1; min-width:80px;">
+                  <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                    :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Count</label>
+                  <input v-model.number="pingCount" type="number" min="1" max="20"
+                    class="rounded"
+                    style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                    :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+                </div>
+                <div style="flex:1; min-width:100px;">
+                  <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                    :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Payload size (bytes)</label>
+                  <input v-model.number="pingSize" type="number" min="0" max="65507" placeholder="56"
+                    class="rounded"
+                    style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                    :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+                </div>
+                <div style="flex:1; min-width:80px;">
+                  <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                    :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">ToS (0–255)</label>
+                  <input v-model.number="pingTos" type="number" min="0" max="255" placeholder="0"
+                    class="rounded"
+                    style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                    :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+                </div>
+                <div style="flex:0; min-width:80px; padding-bottom:8px;">
+                  <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.875rem;"
+                    :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
+                    <input type="checkbox" v-model="pingDf" style="cursor:pointer;" />
+                    DF bit
+                  </label>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="display:flex; gap:8px;">
+                <button @click="pingStart" :disabled="pingRunning || !pingHost.trim()"
+                  class="text-sm text-white rounded"
+                  style="padding:7px 20px; border:none; cursor:pointer; font-weight:500;"
+                  :style="{ background: pingRunning || !pingHost.trim() ? '#6b7280' : '#2563eb', cursor: pingRunning || !pingHost.trim() ? 'not-allowed' : 'pointer' }">
+                  {{ pingRunning ? 'Pinging…' : 'Ping' }}
+                </button>
+                <button v-if="pingRunning" @click="pingStop"
+                  class="text-sm rounded"
+                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
+                  Stop
+                </button>
+              </div>
+
+            </div>
+
+            <!-- Traceroute section -->
+            <div class="rounded-lg" style="padding:16px 20px; flex:0 0 calc(33% - 8px);"
+              :style="{ background: theme==='dark'?'#262626':'#f9fafb', border: '1px solid ' + (theme==='dark'?'#404040':'#e5e7eb') }">
+
+              <div style="font-size:0.95rem; font-weight:600; margin-bottom:16px;"
+                :style="{ color: theme==='dark'?'#f5f5f5':'#111827' }">Traceroute</div>
+
+              <!-- Destination -->
+              <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Destination *</label>
+                <input v-model="traceHost" @keyup.enter="!traceRunning && traceStart()"
+                  placeholder="8.8.8.8 or hostname"
+                  class="rounded"
+                  style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid; box-sizing:border-box;"
+                  :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+              </div>
+
+              <!-- Source interface -->
+              <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Source interface</label>
+                <select v-model="traceSource" class="rounded"
+                  style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                  :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }">
+                  <option value="">Auto (by routing table)</option>
+                  <option v-for="iface in pingRouterIfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}{{ iface.addrs && iface.addrs.length ? ' (' + iface.addrs[0] + ')' : '' }}</option>
+                </select>
+              </div>
+
+              <!-- Type -->
+              <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:8px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Protocol</label>
+                <div style="display:flex; gap:16px;">
+                  <label v-for="t in [{v:'udp',l:'UDP'},{v:'icmp',l:'ICMP'},{v:'tcp',l:'TCP'}]" :key="t.v"
+                    style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.875rem;"
+                    :style="{ color: theme==='dark'?'#d4d4d4':'#374151' }">
+                    <input type="radio" v-model="traceType" :value="t.v" style="cursor:pointer;" />
+                    {{ t.l }}
+                  </label>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="display:flex; gap:8px;">
+                <button @click="traceStart" :disabled="traceRunning || !traceHost.trim()"
+                  class="text-sm text-white rounded"
+                  style="padding:7px 20px; border:none; cursor:pointer; font-weight:500;"
+                  :style="{ background: traceRunning || !traceHost.trim() ? '#6b7280' : '#2563eb', cursor: traceRunning || !traceHost.trim() ? 'not-allowed' : 'pointer' }">
+                  {{ traceRunning ? 'Tracing…' : 'Traceroute' }}
+                </button>
+                <button v-if="traceRunning" @click="traceStop"
+                  class="text-sm rounded"
+                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
+                  Stop
+                </button>
+              </div>
+
+            </div>
+
+            <!-- Tcpdump section -->
+            <div class="rounded-lg" style="padding:16px 20px; flex:0 0 calc(33% - 8px);"
+              :style="{ background: theme==='dark'?'#262626':'#f9fafb', border: '1px solid ' + (theme==='dark'?'#404040':'#e5e7eb') }">
+
+              <div style="font-size:0.95rem; font-weight:600; margin-bottom:16px;"
+                :style="{ color: theme==='dark'?'#f5f5f5':'#111827' }">Tcpdump</div>
+
+              <!-- Interface -->
+              <div style="margin-bottom:12px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Interface *</label>
+                <select v-model="tcpdumpIface" class="rounded"
+                  style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid;"
+                  :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }">
+                  <option value="">— select interface —</option>
+                  <option v-for="iface in pingRouterIfaces" :key="iface.name" :value="iface.name">{{ iface.label || iface.name }}{{ iface.addrs && iface.addrs.length ? ' (' + iface.addrs[0] + ')' : '' }}</option>
+                </select>
+              </div>
+
+              <!-- Filter -->
+              <div style="margin-bottom:16px;">
+                <label style="display:block; font-size:0.75rem; font-weight:500; margin-bottom:4px;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">BPF Filter</label>
+                <input v-model="tcpdumpFilter" @keyup.enter="!tcpdumpRunning && tcpdumpIface && tcpdumpStart()"
+                  placeholder="host 8.8.8.8 and port 53"
+                  class="rounded"
+                  style="width:100%; padding:7px 10px; font-size:0.875rem; border:1px solid; box-sizing:border-box;"
+                  :style="{ background: theme==='dark'?'#1a1a1a':'#fff', color: theme==='dark'?'#f5f5f5':'#111827', borderColor: theme==='dark'?'#525252':'#d1d5db' }" />
+              </div>
+
+              <!-- Save PCAP checkbox -->
+              <div style="margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="tcpdumpSaveChk" v-model="tcpdumpSave" :disabled="tcpdumpRunning"
+                  style="width:15px; height:15px; cursor:pointer;" />
+                <label for="tcpdumpSaveChk" style="font-size:0.8rem; cursor:pointer;"
+                  :style="{ color: theme==='dark'?'#a3a3a3':'#6b7280' }">Save PCAP</label>
+              </div>
+
+              <!-- Action buttons -->
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button @click="tcpdumpStart" :disabled="tcpdumpRunning || !tcpdumpIface"
+                  class="text-sm text-white rounded"
+                  style="padding:7px 20px; border:none; cursor:pointer; font-weight:500;"
+                  :style="{ background: tcpdumpRunning || !tcpdumpIface ? '#6b7280' : '#2563eb', cursor: tcpdumpRunning || !tcpdumpIface ? 'not-allowed' : 'pointer' }">
+                  {{ tcpdumpRunning ? 'Capturing…' : 'Start' }}
+                </button>
+                <button v-if="tcpdumpRunning" @click="tcpdumpStop"
+                  class="text-sm rounded"
+                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#ef4444; color:#fff;">
+                  Stop
+                </button>
+                <button v-if="tcpdumpDownloadReady" @click="tcpdumpDownload"
+                  class="text-sm rounded"
+                  style="padding:7px 16px; border:none; cursor:pointer; font-weight:500; background:#16a34a; color:#fff;">
+                  ↓ Download .pcap
+                </button>
+              </div>
+
+            </div>
+
+            </div><!-- /utility cards row -->
+
+            <!-- Shared terminal — full width, used by all utilities -->
+            <div v-if="terminalLines.length || pingRunning || traceRunning || tcpdumpRunning">
+              <div style="display:flex; justify-content:flex-end; margin-bottom:4px;">
+                <button v-if="!pingRunning && !traceRunning" @click="pingClear"
+                  class="text-sm rounded"
+                  style="padding:4px 12px; border:none; cursor:pointer; font-weight:500;"
+                  :style="{ background: theme==='dark'?'#404040':'#e5e7eb', color: theme==='dark'?'#d4d4d4':'#374151' }">
+                  Clear
+                </button>
+              </div>
+              <pre class="ping-terminal rounded"
+                style="background:#111; color:#22c55e; font-family:'Courier New',Courier,monospace; font-size:0.8rem; line-height:1.5; padding:16px; min-height:80px; max-height:480px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid #333;">{{ terminalLines.join('\n') }}<span v-if="pingRunning || traceRunning || tcpdumpRunning" style="animation:blink 1s step-end infinite;">▋</span></pre>
+            </div>
+
+          </div>
+
         </div><!-- /activePage === 'diagnostics' -->
 
         <!-- ============================================================== -->
