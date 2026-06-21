@@ -790,6 +790,12 @@ ALTER TABLE remotes ADD COLUMN skip_tls_verify INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE templates ADD COLUMN host TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 39,
+		sql: `
+ALTER TABLE peers ADD COLUMN latest_handshake_at TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

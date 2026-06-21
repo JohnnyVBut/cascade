@@ -1214,7 +1214,12 @@ func (t *TunnelInterface) GetStatus() {
 			}
 			if ts, e := strconv.ParseInt(tsStr, 10, 64); e == nil && ts > 0 {
 				s := time.Unix(ts, 0).UTC().Format(time.RFC3339)
-				p.LatestHandshakeAt = &s
+				if p.LatestHandshakeAt == nil || *p.LatestHandshakeAt != s {
+					p.LatestHandshakeAt = &s
+					if err := peer.SaveHandshake(p.ID, s); err != nil {
+						log.Printf("tunnel: save handshake %s: %v", p.ID, err)
+					}
+				}
 			} else {
 				p.LatestHandshakeAt = nil
 			}
