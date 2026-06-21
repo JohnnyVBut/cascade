@@ -1007,10 +1007,9 @@
                                   </span>
                                 </template>
                                 <!-- handshake time -->
-                                <span v-if="peer.latestHandshakeAt"
-                                  style="font-size:0.6rem; font-weight:400; margin-left:4px; opacity:0.7; display:inline-flex; align-items:center; gap:2px;"
-                                  :title="'Last handshake: ' + new Date(peer.latestHandshakeAt).toLocaleString()">
-                                  🤝{{ dashTimeShort(peer.latestHandshakeAt) }}
+                                <span style="font-size:0.6rem; font-weight:400; margin-left:4px; opacity:0.7; display:inline-flex; align-items:center; gap:2px;"
+                                  :title="peer.latestHandshakeAt ? 'Last handshake: ' + new Date(peer.latestHandshakeAt).toLocaleString() : 'Never connected'">
+                                  🤝{{ peer.latestHandshakeAt ? dashTimeShort(peer.latestHandshakeAt) : 'Never' }}
                                 </span>
                                 <!-- expiry badge -->
                                 <span v-if="peer.expiredAt"
@@ -2125,9 +2124,9 @@
                               {{peer.transferRxCurrent | bytes}}/s
                             </span>
                             <!-- Last seen -->
-                            <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap" v-if="peer.latestHandshakeAt"
-                              :title="'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt))">
-                              {{!uiTrafficStats ? " · " : ""}}{{new Date(peer.latestHandshakeAt) | timeago}}
+                            <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap"
+                              :title="peer.latestHandshakeAt ? 'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt)) : 'Never connected'">
+                              {{!uiTrafficStats ? " · " : ""}}{{peer.latestHandshakeAt ? $options.filters.timeago(new Date(peer.latestHandshakeAt)) : 'Never'}}
                             </span>
                             <!-- Runtime endpoint: full IP:port for interconnect, IP only for client -->
                             <span v-if="peer.runtimeEndpoint"
@@ -2496,9 +2495,9 @@
                             {{peer.transferRxCurrent | bytes}}/s
                           </span>
                           <!-- Last seen -->
-                          <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap" v-if="peer.latestHandshakeAt"
-                            :title="'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt))">
-                            {{!uiTrafficStats ? " · " : ""}}{{new Date(peer.latestHandshakeAt) | timeago}}
+                          <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap"
+                            :title="peer.latestHandshakeAt ? 'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt)) : 'Never connected'">
+                            {{!uiTrafficStats ? " · " : ""}}{{peer.latestHandshakeAt ? $options.filters.timeago(new Date(peer.latestHandshakeAt)) : 'Never'}}
                           </span>
                           <!-- Runtime endpoint: full IP:port for interconnect, IP only for client -->
                           <span v-if="peer.runtimeEndpoint"
