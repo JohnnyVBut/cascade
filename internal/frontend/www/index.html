@@ -1070,10 +1070,12 @@
                                 </svg>
                               </button>
                               <!-- One-time link -->
-                              <button v-if="enableOneTimeLinks && peer.peerType !== 'interconnect'"
-                                @click="showPeerOneTimeLink(peer)"
-                                title="Generate one-time link"
-                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                              <button v-if="enableOneTimeLinks"
+                                @click="peer.peerType !== 'interconnect' ? showPeerOneTimeLink(peer) : null"
+                                :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Generate one-time link'"
+                                :style="peer.peerType === 'interconnect'
+                                  ? 'padding:3px; background:rgba(107,114,128,0.05); border:none; border-radius:4px; cursor:default; color:inherit; display:flex; align-items:center; line-height:0; opacity:0.25; pointer-events:none;'
+                                  : 'padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;'">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
                                 </svg>
