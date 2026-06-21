@@ -4,13 +4,12 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "Pulling latest code..."
-git pull
+git pull origin master
 
-echo "Building new image..."
-./build.sh
+echo "Pulling latest Docker image..."
+docker compose -f docker-compose.yml pull
 
 echo "Restarting container..."
-docker compose down
-docker compose up -d
+docker compose -f docker-compose.yml up -d
 
 echo "Done. Check logs: docker logs cascade"

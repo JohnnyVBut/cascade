@@ -596,7 +596,7 @@
           <div style="flex:1; color:#fff;">
             <span style="font-weight:600; font-size:14px;">Update available: {{ versionInfo.latestVersion }}</span>
             <span style="font-size:13px; margin-left:8px; opacity:0.85;">(current: {{ versionInfo.version }})</span>
-            <div style="font-size:12px; margin-top:4px; opacity:0.75;">Run on server: <code style="background:rgba(0,0,0,0.25); padding:1px 6px; border-radius:4px;">./deploy/update.sh</code></div>
+            <div style="font-size:12px; margin-top:4px; opacity:0.75;">Run on server: <code style="background:rgba(0,0,0,0.25); padding:1px 6px; border-radius:4px;">cd /root/cascade &amp;&amp; ./deploy/update.sh</code></div>
           </div>
           <a :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
             target="_blank"
