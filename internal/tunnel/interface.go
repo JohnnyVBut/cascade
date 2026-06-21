@@ -1220,9 +1220,9 @@ func (t *TunnelInterface) GetStatus() {
 						log.Printf("tunnel: save handshake %s: %v", p.ID, err)
 					}
 				}
-			} else {
-				p.LatestHandshakeAt = nil
 			}
+			// ts == 0 means peer has not handshaked since wg started — keep the
+			// persisted value so "last seen" survives container restarts.
 
 			var newRx, newTx int64
 			if rx, e := strconv.ParseInt(rxStr, 10, 64); e == nil {
