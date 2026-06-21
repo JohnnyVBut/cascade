@@ -4716,7 +4716,13 @@ new Vue({
 
     async showPeerOneTimeLink(peer) {
       try {
-        await this.api.generatePeerOneTimeLink({ interfaceId: this._peerIfaceId(peer), peerId: peer.id });
+        const res = await this.api.generatePeerOneTimeLink({ interfaceId: this._peerIfaceId(peer), peerId: peer.id });
+        const token = (res.peer || {}).oneTimeLink;
+        if (token) {
+          const url = `${location.protocol}//${location.host}/cnf/${token}`;
+          await navigator.clipboard.writeText(url);
+          this.showToast('One-time link copied to clipboard', 'success');
+        }
         await this._refreshPeersOrAll();
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');

@@ -2485,10 +2485,6 @@
                             · {{peer.peerType === 'interconnect' ? peer.runtimeEndpoint : peerPublicIP(peer.runtimeEndpoint)}}
                           </span>
                         </div>
-                        <!-- One-time link -->
-                        <div v-if="enableOneTimeLinks && peer.oneTimeLink" class="text-gray-400 text-xs">
-                          <a :href="'./cnf/' + peer.oneTimeLink">{{document.location.protocol}}//{{document.location.host}}/cnf/{{peer.oneTimeLink}}</a>
-                        </div>
                         <!-- Expire Date -->
                         <div class="block md:inline-block pb-1 md:pb-0 text-gray-500 dark:text-neutral-400 text-xs">
                           <span class="group">
