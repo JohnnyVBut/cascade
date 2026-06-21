@@ -3203,7 +3203,9 @@ new Vue({
       if (key === 'mem') return 'RAM %';
       if (key.startsWith('net:')) {
         const [, iface, dir] = key.split(':');
-        return `${iface} ${dir.toUpperCase()} Mbps`;
+        const ti = (this.tunnelInterfaces || []).find(t => t.id === iface);
+        const label = ti && ti.name ? `${ti.name} (${iface})` : iface;
+        return `${label} ${dir.toUpperCase()} Mbps`;
       }
       if (key.startsWith('gateway:')) {
         const id = key.slice(8);
