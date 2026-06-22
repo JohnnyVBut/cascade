@@ -1056,7 +1056,7 @@
                               </div>
                               <!-- QR: active for client peers, dimmed/disabled for S2S -->
                               <button
-                                @click="!peer.peerType || peer.peerType !== 'interconnect' ? (qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg') : null"
+                                @click="!peer.peerType || peer.peerType !== 'interconnect' ? (qrcode = peerQrUrl(peer.interfaceId, peer.id)) : null"
                                 :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Show QR'"
                                 :style="{ padding:'3px', border:'none', borderRadius:'4px', display:'flex', alignItems:'center', lineHeight:'0',
                                   background: peer.peerType === 'interconnect' ? (theme==='dark' ? 'rgba(255,255,255,0.04)' : 'rgba(107,114,128,0.05)') : (theme==='dark' ? '#525252' : 'rgba(107,114,128,0.1)'),
@@ -2207,7 +2207,7 @@
                             'is-disabled': !peer.downloadableConfig
                           }"
                           :title="!peer.downloadableConfig ? 'No private key' : 'Show QR'"
-                          @click="qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg'">
+                          @click="qrcode = peerQrUrl(peer.interfaceId, peer.id)">
                           <svg class="w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                           </svg>
@@ -2597,7 +2597,7 @@
                           'is-disabled': !peer.downloadableConfig
                         }"
                         :title="!peer.downloadableConfig ? 'No private key' : 'Show QR'"
-                        @click="qrcode = './api/tunnel-interfaces/' + (peer.interfaceId || activeInterfaceId) + '/peers/' + peer.id + '/qrcode.svg'">
+                        @click="qrcode = peerQrUrl(peer.interfaceId || activeInterfaceId, peer.id)">
                         <svg class="w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
                         </svg>
