@@ -67,6 +67,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | Метод | Путь | Auth | Описание |
 |-------|------|------|----------|
 | `GET` | `/api/version` | ❌ публичный | Текущая версия + инфо о последнем релизе с GitHub. Ответ: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `POST` | `/api/version/check` | ❌ публичный | Принудительная проверка релиза на GitHub, минуя кэш 24 ч. Возвращает то же, что и `GET /api/version`. |
 | `GET` | `/api/health` | ❌ публичный | Health-check. Ответ: `{ status: "ok", version, host }` |
 
 `version` равен `"dev"` для локальных сборок без ldflags. Инжектируется при сборке через:
@@ -92,6 +93,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | Поле | Тип | Описание |
 |------|-----|----------|
 | `dns` | string | DNS-сервер для клиентских конфигов |
+| `mtu` | int | MTU для клиентских конфигов. `0` = не задан (WireGuard выбирает автоматически). Диапазон: 576–9000 |
 | `defaultPersistentKeepalive` | int | Keepalive по умолчанию (сек) |
 | `defaultClientAllowedIPs` | string | AllowedIPs для новых клиентских пиров |
 | `gatewayWindowSeconds` | int | Скользящее окно мониторинга шлюзов (сек) |
@@ -112,9 +114,11 @@ curl -H "Authorization: Bearer ws_<токен>" \
 
 **PUT /api/settings — принимаемые поля:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
+`{ dns?, mtu?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
 
 `lang` — язык UI: `"en"` или `"ru"`. Также отражается в `GET /api/lang`.
+
+`mtu` — глобальный MTU для клиентских конфигов. Может быть переопределён на уровне конкретного интерфейса.
 
 ---
 
@@ -141,8 +145,9 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `POST` | `/api/tunnel-interfaces` | Создать. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: создать и запустить клиентский интерфейс одной командой. Body: `{ name?: string, protocol?: string }`. Адрес и порт назначаются автоматически из SubnetPool/PortPool. AWG2 параметры — из шаблона по умолчанию или random. Ответ: `{ interface, started: bool, startError?: string }` |
 | `POST` | `/api/tunnel-interfaces/import-conf` | Импорт клиентского `.conf` файла WireGuard/AmneziaWG как аплинк-интерфейс. `DisableRoutes` всегда `true` — таблица маршрутизации не изменяется. Body: `{ name: string, conf: string }`. Ответ: `{ interface, peer, started: bool, startError?: string, conflictWarning?: string }` |
+| `POST` | `/api/tunnel-interfaces/import-backup` | Импорт бэкапа AWG-Easy. Создаёт новый интерфейс со всеми клиентами из файла. Ключи сервера и клиентов сохраняются as-is — существующие конфиги клиентов остаются валидными. Body: `{ json: string, listenPort: int }`. Ответ: `{ interface, peersCreated: int, peersFailed?: string[], started: bool, startError?: string }`. Конфликт порта или подсети → **400** |
 | `GET` | `/api/tunnel-interfaces/:id` | Получить интерфейс |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, settings? }`. `publicHost` переопределяет глобальный Public IP для конфигов пиров этого интерфейса (для транзит/relay). Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Обновить (hot-reload через syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, mtu?, settings? }`. `publicHost` переопределяет глобальный Public IP для конфигов пиров этого интерфейса (для транзит/relay). `mtu` переопределяет глобальный MTU (`0` = использовать глобальный). Изменение `natDisabled` при запущенном интерфейсе вызывает `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Удалить интерфейс |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Запустить. Возвращает `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Остановить. Возвращает `{ interface }` |
@@ -164,7 +169,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `POST` | `/peers` | Создать пира. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Ответ содержит `totalRx`/`totalTx` (lifetime-счётчики трафика из SQLite) |
 | `POST` | `/peers/import-json` | Создать interconnect-пира из экспортированного JSON |
 | `GET` | `/peers/:peerId` | Получить пира |
-| `PATCH` | `/peers/:peerId` | Обновить поля пира |
+| `PATCH` | `/peers/:peerId` | Обновить поля пира. Принимает: `name?, endpoint?, allowedIPs?, clientAllowedIPs?, persistentKeepalive?, enabled?, expiredAt?, oneTimeLink?, rateDown?, rateUp?`. Поля `rateDown`/`rateUp` — ограничение скорости в **кбит/с** (0 = без ограничений), применяется через `tc HTB + police` на сервере; в UI вводится в **Мбит/с** и конвертируется автоматически |
 | `DELETE` | `/peers/:peerId` | Удалить пира |
 | `GET` | `/peers/:peerId/config` | Скачать WireGuard config файл |
 | `GET` | `/peers/:peerId/qrcode.svg` | QR-код SVG (только client-пиры) |
@@ -173,8 +178,16 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `PUT` | `/peers/:peerId/name` | Переименовать пира. Body: `{ name }` |
 | `PUT` | `/peers/:peerId/address` | Обновить overlay-адрес. Body: `{ address }` → сохраняется как AllowedIPs |
 | `PUT` | `/peers/:peerId/expireDate` | Установить дату истечения. Body: `{ expireDate }` — RFC3339 или YYYY-MM-DD, пустое = сбросить |
-| `POST` | `/peers/:peerId/generateOneTimeLink` | Сгенерировать одноразовый токен для конфига |
+| `POST` | `/peers/:peerId/generateOneTimeLink` | Сгенерировать одноразовый токен для конфига. Ответ: `{ oneTimeLink: "https://..." }`. Токен одноразовый — сбрасывается после первого скачивания. |
 | `GET` | `/peers/:peerId/export-json` | Экспорт interconnect-пира как JSON (только interconnect) |
+
+### Скачивание конфига по одноразовой ссылке (публичный)
+
+| Метод | Путь | Auth | Описание |
+|-------|------|------|----------|
+| `GET` | `/cnf/:token` | ❌ публичный | Скачать WireGuard-конфиг по одноразовому токену (32 hex-символа). Возвращает `.conf` как `text/plain` вложение. Токен аннулируется сразу после скачивания. **404** если токен недействителен или уже использован. |
+
+> Путь `/cnf/*` проксируется Caddy **вне** admin-пути — доступен без знания скрытого URL.
 
 ---
 
@@ -186,9 +199,31 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `GET` | `/api/routing/tables` | Таблицы маршрутизации из `ip rule show`. Возвращает `{ tables: [...] }` |
 | `GET` | `/api/routing/test` | Тест маршрута. Query: `?ip=<dst>[&src=<src>][&mark=<fwmark>]`. С `src`: SimulateTrace (PBR) → `ip route get <dst> mark <fwmark>`. Возвращает `{ result, matchedRule, steps }` |
 | `GET` | `/api/routing/routes` | Статические маршруты (из БД). Возвращает `{ routes: [...] }` |
-| `POST` | `/api/routing/routes` | Создать маршрут. Body: `{ destination, via?, dev?, metric?, table?, comment? }` |
+| `POST` | `/api/routing/routes` | Создать маршрут. Body: см. ниже |
 | `PATCH` | `/api/routing/routes/:id` | Обновить или переключить: `{ enabled: bool }` |
 | `DELETE` | `/api/routing/routes/:id` | Удалить маршрут |
+
+**Структура Route (POST/PATCH body):**
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `destination` | string | CIDR или `"default"` (обязательно) |
+| `gateway` | string | Ручной IP шлюза (next-hop). Только для ручного режима |
+| `dev` | string | Интерфейс (опционально для ручного режима) |
+| `gatewayId` | string | ID шлюза из раздела Gateways — `via`/`dev` берутся из шлюза автоматически |
+| `gatewayGroupId` | string | ID группы шлюзов — **автоматический failover** между тирами при падении шлюза |
+| `metric` | int | Метрика маршрута (опционально) |
+| `table` | string | Таблица маршрутизации (по умолчанию `"main"`) |
+| `description` | string | Описание (опционально) |
+
+> `gateway`/`dev` и `gatewayId`/`gatewayGroupId` взаимоисключающие — задайте одно из трёх.
+> `gatewayId` и `gatewayGroupId` взаимоисключающие.
+
+**Failover с GatewayGroup:**
+Когда маршрут привязан к группе шлюзов (`gatewayGroupId`):
+- Нормальная работа: маршрут идёт через шлюз тира 1 (наивысший приоритет)
+- При падении тира 1 (статус `"down"` от GatewayMonitor): немедленное переключение на тир 2
+- При восстановлении тира 1: возврат к тиру 1 через 30 с (anti-flap)
 
 ---
 
@@ -302,9 +337,110 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `host` | `["1.2.3.4"]` | Одиночные IP |
 | `network` | `["10.0.0.0/8"]` | CIDR-диапазоны |
 | `ipset` | генерируется | Большие наборы префиксов (kernel ipset) |
+| `client-group` | управляется автоматически | Kernel ipset с IP пиров выбранной группы. Обновляется автоматически при создании/изменении/удалении пира. Используется в firewall-правилах для управления трафиком по группам. |
 | `group` | `["<aliasId>"]` | Объединяет host/network-алиасы |
 | `port` | `["tcp:443", "udp:53", "any:80"]` | L4-порты |
 | `port-group` | `["<portAliasId>"]` | Объединяет port-алиасы |
+
+---
+
+## Системный бэкап
+
+### Создать бэкап
+
+```
+POST /api/system/backup
+Content-Type: application/json
+Authorization: Bearer ws_...
+
+{ "password": "optional" }
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `password` | string | Опционально. Если указан — файл шифруется AES-256-GCM. Пустая строка или отсутствие поля — без шифрования. |
+
+**Ответ:** бинарный поток (файл для скачивания).
+
+| Пароль | Имя файла | Content-Type |
+|--------|-----------|--------------|
+| Не указан | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz` | `application/gzip` |
+| Указан | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz.enc` | `application/octet-stream` |
+
+Содержимое архива: `awg.db` + `*.save` (ipset файлы).
+
+**Примеры (curl):**
+
+```bash
+# Без пароля
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  -o cascade-backup.tar.gz
+
+# С паролем (зашифрованный)
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "mypassword"}' \
+  -o cascade-backup.tar.gz.enc
+```
+
+### Восстановить из бэкапа
+
+```
+POST /api/system/restore
+Content-Type: multipart/form-data
+Authorization: Bearer ws_...
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `backup` | file | `.tar.gz` или `.tar.gz.enc` файл бэкапа |
+| `password` | string | Обязателен если файл зашифрован, иначе — `400` |
+
+**Ответ (200):** `{ "message": "Backup restored. Container is restarting…", "restored": N }`
+
+**Ошибки:**
+- `400 "this backup is encrypted — provide the password"` — зашифрованный файл без пароля
+- `400 "wrong password or corrupted backup file"` — неверный пароль (данные не тронуты)
+
+После успешного восстановления процесс завершается через 300 мс — Docker перезапускает контейнер (`restart: always`).
+
+**Примеры (curl):**
+
+```bash
+# Незашифрованный
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz"
+
+# Зашифрованный
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz.enc" \
+  -F "password=mypassword"
+```
+
+### Автоматический бэкап (cron)
+
+```bash
+#!/bin/bash
+# /etc/cron.daily/cascade-backup
+DATE=$(date +%Y%m%d-%H%M%S)
+DEST="/var/backups/cascade"
+mkdir -p "$DEST"
+
+curl -sf -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "your-backup-password"}' \
+  -o "$DEST/cascade-$DATE.tar.gz.enc"
+
+# Удалить бэкапы старше 30 дней
+find "$DEST" -name "*.tar.gz.enc" -mtime +30 -delete
+```
 
 ---
 
@@ -321,7 +457,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `GET` | `/api/remember-me` | `true` |
 | `GET` | `/api/ui-traffic-stats` | `false` |
 | `GET` | `/api/ui-chart-type` | `0` |
-| `GET` | `/api/wg-enable-one-time-links` | `false` |
+| `GET` | `/api/wg-enable-one-time-links` | `true` |
 | `GET` | `/api/ui-sort-clients` | `false` |
 | `GET` | `/api/wg-enable-expire-time` | `false` |
 | `GET` | `/api/ui-avatar-settings` | `{ dicebear: null, gravatar: false }` |

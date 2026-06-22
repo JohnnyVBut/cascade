@@ -67,6 +67,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | Метод | Путь | Auth | Описание |
 |-------|------|------|----------|
 | `GET` | `/api/version` | ❌ публичный | Текущая версия + инфо о последнем релизе с GitHub. Ответ: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `POST` | `/api/version/check` | ❌ публичный | Принудительная проверка релиза на GitHub, минуя кэш 24 ч. Возвращает то же, что и `GET /api/version`. |
 | `GET` | `/api/health` | ❌ публичный | Health-check. Ответ: `{ status: "ok", version, host }` |
 
 `version` равен `"dev"` для локальных сборок без ldflags. Инжектируется при сборке через:
@@ -177,8 +178,16 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `PUT` | `/peers/:peerId/name` | Переименовать пира. Body: `{ name }` |
 | `PUT` | `/peers/:peerId/address` | Обновить overlay-адрес. Body: `{ address }` → сохраняется как AllowedIPs |
 | `PUT` | `/peers/:peerId/expireDate` | Установить дату истечения. Body: `{ expireDate }` — RFC3339 или YYYY-MM-DD, пустое = сбросить |
-| `POST` | `/peers/:peerId/generateOneTimeLink` | Сгенерировать одноразовый токен для конфига |
+| `POST` | `/peers/:peerId/generateOneTimeLink` | Сгенерировать одноразовый токен для конфига. Ответ: `{ oneTimeLink: "https://..." }`. Токен одноразовый — сбрасывается после первого скачивания. |
 | `GET` | `/peers/:peerId/export-json` | Экспорт interconnect-пира как JSON (только interconnect) |
+
+### Скачивание конфига по одноразовой ссылке (публичный)
+
+| Метод | Путь | Auth | Описание |
+|-------|------|------|----------|
+| `GET` | `/cnf/:token` | ❌ публичный | Скачать WireGuard-конфиг по одноразовому токену (32 hex-символа). Возвращает `.conf` как `text/plain` вложение. Токен аннулируется сразу после скачивания. **404** если токен недействителен или уже использован. |
+
+> Путь `/cnf/*` проксируется Caddy **вне** admin-пути — доступен без знания скрытого URL.
 
 ---
 
@@ -328,6 +337,7 @@ curl -H "Authorization: Bearer ws_<токен>" \
 | `host` | `["1.2.3.4"]` | Одиночные IP |
 | `network` | `["10.0.0.0/8"]` | CIDR-диапазоны |
 | `ipset` | генерируется | Большие наборы префиксов (kernel ipset) |
+| `client-group` | управляется автоматически | Kernel ipset с IP пиров выбранной группы. Обновляется автоматически при создании/изменении/удалении пира. Используется в firewall-правилах для управления трафиком по группам. |
 | `group` | `["<aliasId>"]` | Объединяет host/network-алиасы |
 | `port` | `["tcp:443", "udp:53", "any:80"]` | L4-порты |
 | `port-group` | `["<portAliasId>"]` | Объединяет port-алиасы |
@@ -447,7 +457,7 @@ find "$DEST" -name "*.tar.gz.enc" -mtime +30 -delete
 | `GET` | `/api/remember-me` | `true` |
 | `GET` | `/api/ui-traffic-stats` | `false` |
 | `GET` | `/api/ui-chart-type` | `0` |
-| `GET` | `/api/wg-enable-one-time-links` | `false` |
+| `GET` | `/api/wg-enable-one-time-links` | `true` |
 | `GET` | `/api/ui-sort-clients` | `false` |
 | `GET` | `/api/wg-enable-expire-time` | `false` |
 | `GET` | `/api/ui-avatar-settings` | `{ dicebear: null, gravatar: false }` |
