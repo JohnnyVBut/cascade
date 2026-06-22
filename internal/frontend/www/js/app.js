@@ -2979,6 +2979,17 @@ new Vue({
       if (this.dashWidgets.some(w => w.type === 'server-info')) {
         this.loadSystemInfo();
       }
+
+      // Restore CSS zoom for non-monitoring widgets that have a saved fontScale.
+      this.$nextTick(() => {
+        this.dashWidgets.forEach(w => {
+          if (w.type === 'monitoring' || !w.fontScale || w.fontScale === 1.0) return;
+          const gsItem = document.querySelector(`[gs-id="${w.id}"]`);
+          if (!gsItem) return;
+          const card = gsItem.querySelector('.dash-card');
+          if (card) card.style.zoom = w.fontScale;
+        });
+      });
     },
 
     // Attach ResizeObserver to each widget content container.
@@ -3023,7 +3034,19 @@ new Vue({
       const current = w.fontScale || 1.0;
       const next = Math.round(Math.max(0.5, Math.min(2.0, current + delta)) * 10) / 10;
       this.dashWidgets.splice(idx, 1, { ...w, fontScale: next });
-      // fontScale is applied as font-size on dash-card-body (see template); no zoom needed.
+      // Apply CSS zoom immediately for non-monitoring widgets.
+      // monitoring widgets use interactive ApexCharts tooltips — CSS zoom breaks
+      // getBoundingClientRect() coordinate mapping causing tooltip drift.
+      // Other widgets (server-info, peers-summary, gateways, etc.) only contain
+      // sparkline charts with tooltips disabled, so CSS zoom is safe there.
+      if (w.type !== 'monitoring') {
+        this.$nextTick(() => {
+          const gsItem = document.querySelector(`[gs-id="${widgetId}"]`);
+          if (!gsItem) return;
+          const card = gsItem.querySelector('.dash-card');
+          if (card) card.style.zoom = next;
+        });
+      }
       this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
     },
 

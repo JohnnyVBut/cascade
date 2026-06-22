@@ -672,11 +672,13 @@
                         <button @click="metricsOpenConfig(w.id)" title="Configure graphs"
                           style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
                       </template>
-                      <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
-                        style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
-                      <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
-                      <button @click="dashAdjustFontScale(w.id, +0.1)" title="Larger text"
-                        style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">+</button>
+                      <template v-if="w.type !== 'monitoring'">
+                        <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
+                          style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
+                        <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
+                        <button @click="dashAdjustFontScale(w.id, +0.1)" title="Larger text"
+                          style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">+</button>
+                      </template>
                       <button @click="dashRemoveWidget(w.id)" title="Remove widget"
                         style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit; margin-left:2px;">✕</button>
                     </div>
