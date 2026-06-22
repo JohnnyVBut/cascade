@@ -71,6 +71,11 @@ https://:443 {
         reverse_proxy 127.0.0.1:{$CASCADE_PORT}
     }
 
+    # One-time peer config download links — public, no admin path prefix.
+    handle /cnf/* {
+        reverse_proxy 127.0.0.1:{$CASCADE_PORT}
+    }
+
     # Redirect /ADMIN_PATH (no trailing slash) → add trailing slash
     redir /{$ADMIN_PATH} /{$ADMIN_PATH}/ 301
 

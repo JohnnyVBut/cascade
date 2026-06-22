@@ -67,6 +67,7 @@ curl -H "Authorization: Bearer ws_<token>" \
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/version` | ❌ public | Current version + latest release info from GitHub. Response: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `POST` | `/api/version/check` | ❌ public | Force an immediate GitHub release check, bypassing the 24 h cache. Returns the same shape as `GET /api/version`. |
 | `GET` | `/api/health` | ❌ public | Health check. Response: `{ status: "ok", version, host }` |
 
 `version` is `"dev"` for local builds without ldflags. Injected at build time via:
@@ -92,6 +93,7 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | Field | Type | Description |
 |-------|------|-------------|
 | `dns` | string | DNS server for client configs |
+| `mtu` | int | MTU for client configs. `0` = not set (WireGuard picks automatically). Range: 576–9000 |
 | `defaultPersistentKeepalive` | int | Default keepalive (seconds) |
 | `defaultClientAllowedIPs` | string | Default AllowedIPs for new client peers |
 | `gatewayWindowSeconds` | int | Gateway monitoring sliding window (seconds) |
@@ -112,9 +114,11 @@ Returns `GlobalSettings` merged with runtime-only fields:
 
 **PUT /api/settings — accepted fields:**
 
-`{ dns?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
+`{ dns?, mtu?, defaultPersistentKeepalive?, defaultClientAllowedIPs?, gatewayWindowSeconds?, gatewayHealthyThreshold?, gatewayDegradedThreshold?, subnetPool?, portPool?, defaultFwPolicy?, routerName?, publicIPMode?, publicIPManual?, chartType?, lang? }`
 
 `lang` — UI language: `"en"` or `"ru"`. Also reflected in `GET /api/lang`.
+
+`mtu` — global MTU written into client config `[Interface]` sections. Can be overridden per-interface via `PATCH /api/tunnel-interfaces/:id` (`mtu` field).
 
 ---
 
@@ -141,8 +145,9 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `POST` | `/api/tunnel-interfaces` | Create. Body: `{ name, address, listenPort, protocol, disableRoutes?, natDisabled?, settings? }` |
 | `POST` | `/api/tunnel-interfaces/quick-create` | Quick-create: create and start a client interface in one step. Body: `{ name?: string, protocol?: string }`. Address and port are auto-assigned from SubnetPool/PortPool settings. AWG2 params come from the default template or a random profile. Response: `{ interface, started: bool, startError?: string }` |
 | `POST` | `/api/tunnel-interfaces/import-conf` | Import a WireGuard/AmneziaWG client `.conf` file as an uplink (client-mode) interface. `DisableRoutes` is always set to `true` — the kernel routing table is not modified. Body: `{ name: string, conf: string }`. Response: `{ interface, peer, started: bool, startError?: string, conflictWarning?: string }` |
+| `POST` | `/api/tunnel-interfaces/import-backup` | Import an AWG-Easy JSON backup. Creates a new interface with all clients from the file. Server and client keys are preserved as-is — existing client configs remain valid without reissue. Body: `{ json: string, listenPort: int }`. Response: `{ interface, peersCreated: int, peersFailed?: string[], started: bool, startError?: string }`. Port or subnet conflict → **400** |
 | `GET` | `/api/tunnel-interfaces/:id` | Get interface |
-| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, settings? }`. `publicHost` overrides the global Public IP for this interface's peer configs (useful for transit/relay setups). Changing `natDisabled` on a running interface triggers `Restart()` |
+| `PATCH` | `/api/tunnel-interfaces/:id` | Update (hot-reload via syncconf). Body: `{ name?, address?, listenPort?, natDisabled?, publicHost?, mtu?, settings? }`. `publicHost` overrides the global Public IP for this interface's peer configs (useful for transit/relay setups). `mtu` overrides the global MTU for this interface (`0` = use global). Changing `natDisabled` on a running interface triggers `Restart()` |
 | `DELETE` | `/api/tunnel-interfaces/:id` | Delete interface |
 | `POST` | `/api/tunnel-interfaces/:id/start` | Start. Returns `{ interface }` |
 | `POST` | `/api/tunnel-interfaces/:id/stop` | Stop. Returns `{ interface }` |
@@ -161,10 +166,10 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/peers` | List peers. Returns `{ peers: [...] }` |
-| `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Response includes `totalRx`/`totalTx` (lifetime traffic counters from SQLite, persist across restarts) |
+| `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Response includes `totalRx`/`totalTx` (lifetime traffic counters from SQLite, persist across restarts) and `latestHandshakeAt` (last handshake timestamp, persisted across restarts; `null` if peer never connected) |
 | `POST` | `/peers/import-json` | Create interconnect peer from exported JSON |
 | `GET` | `/peers/:peerId` | Get peer |
-| `PATCH` | `/peers/:peerId` | Update peer fields |
+| `PATCH` | `/peers/:peerId` | Update peer fields. Accepts: `name?, endpoint?, allowedIPs?, clientAllowedIPs?, persistentKeepalive?, enabled?, expiredAt?, oneTimeLink?, rateDown?, rateUp?`. Fields `rateDown`/`rateUp` — bandwidth limit in **kbps** (0 = unlimited), enforced via `tc HTB + police` on the server; the UI accepts **Mbit/s** and converts automatically |
 | `DELETE` | `/peers/:peerId` | Delete peer |
 | `GET` | `/peers/:peerId/config` | Download WireGuard config file |
 | `GET` | `/peers/:peerId/qrcode.svg` | QR code SVG (client peers only) |
@@ -173,8 +178,16 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | `PUT` | `/peers/:peerId/name` | Rename peer. Body: `{ name }` |
 | `PUT` | `/peers/:peerId/address` | Update overlay address. Body: `{ address }` → stored as AllowedIPs |
 | `PUT` | `/peers/:peerId/expireDate` | Set expiry. Body: `{ expireDate }` — RFC3339 or YYYY-MM-DD, empty clears |
-| `POST` | `/peers/:peerId/generateOneTimeLink` | Generate one-time config link token |
+| `POST` | `/peers/:peerId/generateOneTimeLink` | Generate one-time config link token. Returns `{ oneTimeLink: "https://..." }`. Token is single-use — cleared after first download. |
 | `GET` | `/peers/:peerId/export-json` | Export interconnect peer as JSON (interconnect only) |
+
+### One-time config download (public)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/cnf/:token` | ❌ public | Download WireGuard config by one-time token (32 hex chars). Returns the `.conf` file as `text/plain` attachment. Token is invalidated immediately after download. Returns **404** if token is invalid or already used. |
+
+> The `/cnf/*` path is proxied by Caddy **outside** the admin path — accessible without knowing the hidden admin URL.
 
 ---
 
@@ -186,9 +199,31 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | `GET` | `/api/routing/tables` | Routing tables from `ip rule show`. Returns `{ tables: [...] }` |
 | `GET` | `/api/routing/test` | Route lookup. Query: `?ip=<dst>[&src=<src>][&mark=<fwmark>]`. With `src`: SimulateTrace (PBR) → `ip route get <dst> mark <fwmark>`. Returns `{ result, matchedRule, steps }` |
 | `GET` | `/api/routing/routes` | Static routes (DB). Returns `{ routes: [...] }` |
-| `POST` | `/api/routing/routes` | Create static route. Body: `{ destination, via?, dev?, metric?, table?, comment? }` |
+| `POST` | `/api/routing/routes` | Create static route. Body: see below |
 | `PATCH` | `/api/routing/routes/:id` | Update or toggle: `{ enabled: bool }` |
 | `DELETE` | `/api/routing/routes/:id` | Delete route |
+
+**Route structure (POST/PATCH body):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `destination` | string | CIDR or `"default"` (required) |
+| `gateway` | string | Manual next-hop IP. Manual mode only |
+| `dev` | string | Interface name (optional in manual mode) |
+| `gatewayId` | string | Gateway ID from Gateways section — `via`/`dev` resolved automatically |
+| `gatewayGroupId` | string | Gateway Group ID — **automatic failover** between tiers when gateway goes down |
+| `metric` | int | Route metric (optional) |
+| `table` | string | Routing table (default `"main"`) |
+| `description` | string | Description (optional) |
+
+> `gateway`/`dev` and `gatewayId`/`gatewayGroupId` are mutually exclusive — set one of the three.
+> `gatewayId` and `gatewayGroupId` are mutually exclusive.
+
+**Failover with GatewayGroup:**
+When a route is bound to a gateway group (`gatewayGroupId`):
+- Normal operation: route goes via tier 1 gateway (highest priority)
+- When tier 1 goes down (status `"down"` from GatewayMonitor): immediate switch to tier 2
+- When tier 1 recovers: switch back to tier 1 after 30 s (anti-flap)
 
 ---
 
@@ -303,8 +338,109 @@ Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× 
 | `network` | `["10.0.0.0/8"]` | CIDR ranges |
 | `ipset` | generated | Large prefix sets (kernel ipset) |
 | `group` | `["<aliasId>"]` | Combines host/network aliases |
+| `client-group` | managed automatically | Kernel ipset populated with IPs of peers belonging to the group. Managed automatically on peer create/update/delete. Used in firewall rules for per-group traffic control. |
 | `port` | `["tcp:443", "udp:53", "any:80"]` | L4 ports |
 | `port-group` | `["<portAliasId>"]` | Combines port aliases |
+
+---
+
+## System Backup
+
+### Create Backup
+
+```
+POST /api/system/backup
+Content-Type: application/json
+Authorization: Bearer ws_...
+
+{ "password": "optional" }
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `password` | string | Optional. If provided — file is encrypted with AES-256-GCM. Empty string or absent — no encryption. |
+
+**Response:** binary stream (file download).
+
+| Password | Filename | Content-Type |
+|----------|----------|--------------|
+| Not set | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz` | `application/gzip` |
+| Set | `cascade-backup-YYYYMMDD-HHMMSS.tar.gz.enc` | `application/octet-stream` |
+
+Archive contents: `awg.db` + `*.save` (ipset files).
+
+**Examples (curl):**
+
+```bash
+# Without password
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  -o cascade-backup.tar.gz
+
+# With password (encrypted)
+curl -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "mypassword"}' \
+  -o cascade-backup.tar.gz.enc
+```
+
+### Restore from Backup
+
+```
+POST /api/system/restore
+Content-Type: multipart/form-data
+Authorization: Bearer ws_...
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `backup` | file | `.tar.gz` or `.tar.gz.enc` backup file |
+| `password` | string | Required if file is encrypted, otherwise — `400` |
+
+**Response (200):** `{ "message": "Backup restored. Container is restarting…", "restored": N }`
+
+**Errors:**
+- `400 "this backup is encrypted — provide the password"` — encrypted file with no password
+- `400 "wrong password or corrupted backup file"` — wrong password (data untouched)
+
+After a successful restore, the process exits after 300 ms — Docker restarts the container (`restart: always`).
+
+**Examples (curl):**
+
+```bash
+# Unencrypted
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz"
+
+# Encrypted
+curl -X POST https://<host>/<admin_path>/api/system/restore \
+  -H "Authorization: Bearer ws_..." \
+  -F "backup=@cascade-backup.tar.gz.enc" \
+  -F "password=mypassword"
+```
+
+### Automated Backup (cron)
+
+```bash
+#!/bin/bash
+# /etc/cron.daily/cascade-backup
+DATE=$(date +%Y%m%d-%H%M%S)
+DEST="/var/backups/cascade"
+mkdir -p "$DEST"
+
+curl -sf -X POST https://<host>/<admin_path>/api/system/backup \
+  -H "Authorization: Bearer ws_..." \
+  -H "Content-Type: application/json" \
+  -d '{"password": "your-backup-password"}' \
+  -o "$DEST/cascade-$DATE.tar.gz.enc"
+
+# Delete backups older than 30 days
+find "$DEST" -name "*.tar.gz.enc" -mtime +30 -delete
+```
 
 ---
 
@@ -321,7 +457,7 @@ Legacy endpoints retained for frontend compatibility. Read-only, return safe def
 | `GET` | `/api/remember-me` | `true` |
 | `GET` | `/api/ui-traffic-stats` | `false` |
 | `GET` | `/api/ui-chart-type` | `0` |
-| `GET` | `/api/wg-enable-one-time-links` | `false` |
+| `GET` | `/api/wg-enable-one-time-links` | `true` |
 | `GET` | `/api/ui-sort-clients` | `false` |
 | `GET` | `/api/wg-enable-expire-time` | `false` |
 | `GET` | `/api/ui-avatar-settings` | `{ dicebear: null, gravatar: false }` |

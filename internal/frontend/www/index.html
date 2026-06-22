@@ -564,14 +564,29 @@
                 </svg>
                 API Guide
               </a>
+              <!-- Check for updates button (shown only when no update available) -->
+              <button v-if="versionInfo && !versionInfo.updateAvailable"
+                @click="checkForUpdates"
+                :disabled="updateChecking"
+                :title="updateChecking ? 'Checking...' : 'Check for updates'"
+                style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:500; border:none; cursor:pointer; flex-shrink:0;"
+                :style="{ background: theme==='dark' ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)', color: theme==='dark' ? '#a3a3a3' : '#6b7280', opacity: updateChecking ? 0.6 : 1 }">
+                <span v-if="updateChecking">...</span>
+                <span v-else>↻</span>
+              </button>
+
               <!-- Update available badge -->
-              <a v-if="versionInfo && versionInfo.updateAvailable"
-                :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
-                target="_blank"
-                :title="'New version available: ' + versionInfo.latestVersion"
-                style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600; text-decoration:none; background:#f59e0b; color:#fff; flex-shrink:0;">
-                ↑ {{ versionInfo.latestVersion }}
-              </a>
+              <span v-if="versionInfo && versionInfo.updateAvailable && !updateBannerDismissed"
+                style="display:inline-flex; align-items:center; gap:3px; flex-shrink:0;">
+                <a :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
+                  target="_blank"
+                  :title="'New version available: ' + versionInfo.latestVersion + '\nRun: cd /root/cascade && ./deploy/update.sh'"
+                  style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600; text-decoration:none; background:#f59e0b; color:#fff;">
+                  ↑ {{ versionInfo.latestVersion }}
+                </a>
+                <button @click="updateBannerDismissed = true" title="Dismiss"
+                  style="display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; border:none; background:rgba(0,0,0,0.15); color:#9ca3af; font-size:10px; cursor:pointer; padding:0; line-height:1;">×</button>
+              </span>
             </div>
           </div>
         </nav>
@@ -590,19 +605,6 @@
           <span style="font-size:0.75rem; color:#92400e; font-weight:600;">Go to Firewall →</span>
         </div>
 
-        <!-- Update banner -->
-        <div v-if="versionInfo && versionInfo.updateAvailable"
-          style="background:#92400e; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
-          <div style="flex:1; color:#fff;">
-            <span style="font-weight:600; font-size:14px;">Update available: {{ versionInfo.latestVersion }}</span>
-            <span style="font-size:13px; margin-left:8px; opacity:0.85;">(current: {{ versionInfo.version }})</span>
-          </div>
-          <a :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
-            target="_blank"
-            style="padding:6px 14px; border-radius:6px; background:#fff; color:#92400e; font-weight:600; font-size:13px; text-decoration:none; flex-shrink:0; border:2px solid #fff;">
-            View release →
-          </a>
-        </div>
 
         <!-- ============================================================== -->
         <!-- Dashboard Page                                                 -->
@@ -670,11 +672,13 @@
                         <button @click="metricsOpenConfig(w.id)" title="Configure graphs"
                           style="opacity:0.6; background:none; border:none; cursor:pointer; padding:0 3px; line-height:1; color:inherit; font-size:0.85rem;">⚙</button>
                       </template>
-                      <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
-                        style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
-                      <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
-                      <button @click="dashAdjustFontScale(w.id, +0.1)" title="Larger text"
-                        style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">+</button>
+                      <template v-if="w.type !== 'monitoring'">
+                        <button @click="dashAdjustFontScale(w.id, -0.1)" title="Smaller text"
+                          style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">−</button>
+                        <span style="opacity:0.4; font-size:0.65rem; min-width:2.2em; text-align:center;">{{ Math.round((w.fontScale||1)*100) }}%</span>
+                        <button @click="dashAdjustFontScale(w.id, +0.1)" title="Larger text"
+                          style="opacity:0.55; background:none; border:none; cursor:pointer; padding:0 2px; line-height:1; color:inherit; font-size:0.8rem;">+</button>
+                      </template>
                       <button @click="dashRemoveWidget(w.id)" title="Remove widget"
                         style="opacity:0.5; background:none; border:none; cursor:pointer; padding:0; line-height:1; color:inherit; margin-left:2px;">✕</button>
                     </div>
@@ -814,14 +818,19 @@
                             </button>
                             <button @click="dashOpenAddPeer(iface)"
                               :title="iface.disableRoutes ? 'N/A for S2S' : 'Quick add client'"
-                              :style="iface.disableRoutes
-                                ? 'padding:3px; background:rgba(107,114,128,0.07); border:none; border-radius:4px; cursor:default; color:#9ca3af; display:flex; align-items:center; line-height:0; opacity:0.35; pointer-events:none;'
-                                : 'padding:3px; background:rgba(99,102,241,0.1); border:none; border-radius:4px; cursor:pointer; color:#6366f1; display:flex; align-items:center; line-height:0;'">
+                              :style="{ padding:'3px', border:'none', borderRadius:'4px', display:'flex', alignItems:'center', lineHeight:'0',
+                                background: iface.disableRoutes ? 'rgba(107,114,128,0.07)' : 'rgba(99,102,241,0.1)',
+                                color: iface.disableRoutes ? '#9ca3af' : '#6366f1',
+                                cursor: iface.disableRoutes ? 'default' : 'pointer',
+                                opacity: iface.disableRoutes ? '0.35' : '1',
+                                pointerEvents: iface.disableRoutes ? 'none' : 'auto' }">
                               <svg style="width:13px;height:13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             </button>
                             <!-- Edit interface -->
                             <button @click="openInterfaceEdit(iface)" title="Edit interface"
-                              style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                              :style="{ padding:'3px', border:'none', borderRadius:'4px', cursor:'pointer', display:'flex', alignItems:'center', lineHeight:'0',
+                                background: theme==='dark' ? '#525252' : 'rgba(107,114,128,0.1)',
+                                color: theme==='dark' ? '#d4d4d4' : 'inherit' }">
                               <svg style="width:13px;height:13px;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                             </button>
                           </div>
@@ -1006,10 +1015,9 @@
                                   </span>
                                 </template>
                                 <!-- handshake time -->
-                                <span v-if="peer.latestHandshakeAt"
-                                  style="font-size:0.6rem; font-weight:400; margin-left:4px; opacity:0.7; display:inline-flex; align-items:center; gap:2px;"
-                                  :title="'Last handshake: ' + new Date(peer.latestHandshakeAt).toLocaleString()">
-                                  🤝{{ dashTimeShort(peer.latestHandshakeAt) }}
+                                <span style="font-size:0.6rem; font-weight:400; margin-left:4px; opacity:0.7; display:inline-flex; align-items:center; gap:2px;"
+                                  :title="peer.latestHandshakeAt ? 'Last handshake: ' + new Date(peer.latestHandshakeAt).toLocaleString() : 'Never connected'">
+                                  🤝{{ peer.latestHandshakeAt ? dashTimeShort(peer.latestHandshakeAt) : 'Never' }}
                                 </span>
                                 <!-- expiry badge -->
                                 <span v-if="peer.expiredAt"
@@ -1050,9 +1058,12 @@
                               <button
                                 @click="!peer.peerType || peer.peerType !== 'interconnect' ? (qrcode = './api/tunnel-interfaces/' + peer.interfaceId + '/peers/' + peer.id + '/qrcode.svg') : null"
                                 :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Show QR'"
-                                :style="peer.peerType === 'interconnect'
-                                  ? 'padding:3px; background:rgba(107,114,128,0.05); border:none; border-radius:4px; cursor:default; color:inherit; display:flex; align-items:center; line-height:0; opacity:0.25; pointer-events:none;'
-                                  : 'padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;'">
+                                :style="{ padding:'3px', border:'none', borderRadius:'4px', display:'flex', alignItems:'center', lineHeight:'0',
+                                  background: peer.peerType === 'interconnect' ? (theme==='dark' ? 'rgba(255,255,255,0.04)' : 'rgba(107,114,128,0.05)') : (theme==='dark' ? '#525252' : 'rgba(107,114,128,0.1)'),
+                                  color: theme==='dark' ? '#d4d4d4' : 'inherit',
+                                  cursor: peer.peerType === 'interconnect' ? 'default' : 'pointer',
+                                  opacity: peer.peerType === 'interconnect' ? '0.25' : '1',
+                                  pointerEvents: peer.peerType === 'interconnect' ? 'none' : 'auto' }">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
                                 </svg>
@@ -1061,17 +1072,36 @@
                               <button
                                 @click="!peer.peerType || peer.peerType !== 'interconnect' ? downloadPeerConfig(peer) : null"
                                 :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Download config'"
-                                :style="peer.peerType === 'interconnect'
-                                  ? 'padding:3px; background:rgba(107,114,128,0.05); border:none; border-radius:4px; cursor:default; color:inherit; display:flex; align-items:center; line-height:0; opacity:0.25; pointer-events:none;'
-                                  : 'padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;'">
+                                :style="{ padding:'3px', border:'none', borderRadius:'4px', display:'flex', alignItems:'center', lineHeight:'0',
+                                  background: peer.peerType === 'interconnect' ? (theme==='dark' ? 'rgba(255,255,255,0.04)' : 'rgba(107,114,128,0.05)') : (theme==='dark' ? '#525252' : 'rgba(107,114,128,0.1)'),
+                                  color: theme==='dark' ? '#d4d4d4' : 'inherit',
+                                  cursor: peer.peerType === 'interconnect' ? 'default' : 'pointer',
+                                  opacity: peer.peerType === 'interconnect' ? '0.25' : '1',
+                                  pointerEvents: peer.peerType === 'interconnect' ? 'none' : 'auto' }">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                              </button>
+                              <!-- One-time link -->
+                              <button v-if="enableOneTimeLinks"
+                                @click="peer.peerType !== 'interconnect' ? showPeerOneTimeLink(peer) : null"
+                                :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Generate one-time link'"
+                                :style="{ padding:'3px', border:'none', borderRadius:'4px', display:'flex', alignItems:'center', lineHeight:'0',
+                                  background: peer.peerType === 'interconnect' ? (theme==='dark' ? 'rgba(255,255,255,0.04)' : 'rgba(107,114,128,0.05)') : (theme==='dark' ? '#525252' : 'rgba(107,114,128,0.1)'),
+                                  color: theme==='dark' ? '#d4d4d4' : 'inherit',
+                                  cursor: peer.peerType === 'interconnect' ? 'default' : 'pointer',
+                                  opacity: peer.peerType === 'interconnect' ? '0.25' : '1',
+                                  pointerEvents: peer.peerType === 'interconnect' ? 'none' : 'auto' }">
+                                <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
                                 </svg>
                               </button>
                               <!-- Edit -->
                               <button @click="openPeerEdit(peer)"
                                 title="Edit"
-                                style="padding:3px; background:rgba(107,114,128,0.1); border:none; border-radius:4px; cursor:pointer; color:inherit; display:flex; align-items:center; line-height:0;">
+                                :style="{ padding:'3px', border:'none', borderRadius:'4px', cursor:'pointer', display:'flex', alignItems:'center', lineHeight:'0',
+                                  background: theme==='dark' ? '#525252' : 'rgba(107,114,128,0.1)',
+                                  color: theme==='dark' ? '#d4d4d4' : 'inherit' }">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
@@ -1079,7 +1109,9 @@
                               <!-- Delete -->
                               <button @click="peerDelete = peer"
                                 title="Delete"
-                                style="padding:3px; background:rgba(239,68,68,0.08); border:none; border-radius:4px; cursor:pointer; color:#ef4444; display:flex; align-items:center; line-height:0;">
+                                :style="{ padding:'3px', border:'none', borderRadius:'4px', cursor:'pointer', display:'flex', alignItems:'center', lineHeight:'0',
+                                  background: theme==='dark' ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.08)',
+                                  color: '#ef4444' }">
                                 <svg style="width:13px;height:13px;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                 </svg>
@@ -1553,8 +1585,8 @@
                 <div class="flex gap-3 md:gap-4 w-full items-center ">
 
                   <!-- Avatar -->
-                  <div class="h-10 w-10 mt-2 self-start rounded-full bg-gray-50 relative">
-                    <svg class="w-6 m-2 text-gray-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
+                  <div class="h-10 w-10 mt-2 self-start rounded-full bg-gray-50 dark:bg-neutral-600 relative">
+                    <svg class="w-6 m-2 text-gray-300 dark:text-neutral-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"
                       fill="currentColor">
                       <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
                         clip-rule="evenodd" />
@@ -2036,8 +2068,8 @@
                     <div class="flex gap-3 md:gap-4 w-full items-center">
 
                       <!-- Avatar -->
-                      <div class="h-10 w-10 mt-2 self-start rounded-full bg-gray-50 relative">
-                        <svg class="w-6 m-2 text-gray-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                      <div class="h-10 w-10 mt-2 self-start rounded-full bg-gray-50 dark:bg-neutral-600 relative">
+                        <svg class="w-6 m-2 text-gray-300 dark:text-neutral-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                           <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
                         </svg>
                         <img v-if="peer.avatar" :src="peer.avatar" class="w-10 rounded-full absolute top-0 left-0" />
@@ -2113,9 +2145,9 @@
                               {{peer.transferRxCurrent | bytes}}/s
                             </span>
                             <!-- Last seen -->
-                            <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap" v-if="peer.latestHandshakeAt"
-                              :title="'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt))">
-                              {{!uiTrafficStats ? " · " : ""}}{{new Date(peer.latestHandshakeAt) | timeago}}
+                            <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap"
+                              :title="peer.latestHandshakeAt ? 'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt)) : 'Never connected'">
+                              {{!uiTrafficStats ? " · " : ""}}{{peer.latestHandshakeAt ? $options.filters.timeago(new Date(peer.latestHandshakeAt)) : 'Never'}}
                             </span>
                             <!-- Runtime endpoint: full IP:port for interconnect, IP only for client -->
                             <span v-if="peer.runtimeEndpoint"
@@ -2192,6 +2224,17 @@
                           :title="!peer.downloadableConfig ? 'No private key' : 'Download config'">
                           <svg class="w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                        </button>
+
+                        <!-- One-time link -->
+                        <button v-if="enableOneTimeLinks"
+                          @click="peer.peerType !== 'interconnect' ? showPeerOneTimeLink(peer) : null"
+                          :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Generate one-time link'"
+                          class="align-middle bg-gray-100 dark:bg-neutral-600 dark:text-neutral-300 p-2 rounded transition"
+                          :class="peer.peerType !== 'interconnect' ? 'hover:bg-red-800 dark:hover:bg-red-800 hover:text-white dark:hover:text-white' : 'is-disabled'">
+                          <svg class="w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                           </svg>
                         </button>
 
@@ -2384,8 +2427,8 @@
                   <div class="flex gap-3 md:gap-4 w-full items-center">
 
                     <!-- Avatar -->
-                    <div class="h-10 w-10 mt-2 self-start rounded-full bg-gray-50 relative">
-                      <svg class="w-6 m-2 text-gray-300" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <div class="h-10 w-10 mt-2 self-start rounded-full bg-gray-50 dark:bg-neutral-600 relative">
+                      <svg class="w-6 m-2 text-gray-300 dark:text-neutral-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
                       </svg>
                       <img v-if="peer.avatar" :src="peer.avatar" class="w-10 rounded-full absolute top-0 left-0" />
@@ -2473,9 +2516,9 @@
                             {{peer.transferRxCurrent | bytes}}/s
                           </span>
                           <!-- Last seen -->
-                          <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap" v-if="peer.latestHandshakeAt"
-                            :title="'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt))">
-                            {{!uiTrafficStats ? " · " : ""}}{{new Date(peer.latestHandshakeAt) | timeago}}
+                          <span class="text-gray-400 dark:text-neutral-500 whitespace-nowrap"
+                            :title="peer.latestHandshakeAt ? 'Last seen: ' + dateTime(new Date(peer.latestHandshakeAt)) : 'Never connected'">
+                            {{!uiTrafficStats ? " · " : ""}}{{peer.latestHandshakeAt ? $options.filters.timeago(new Date(peer.latestHandshakeAt)) : 'Never'}}
                           </span>
                           <!-- Runtime endpoint: full IP:port for interconnect, IP only for client -->
                           <span v-if="peer.runtimeEndpoint"
@@ -2483,10 +2526,6 @@
                             :title="peer.peerType === 'interconnect' ? 'Connected from: ' + peer.runtimeEndpoint : 'Public IP: ' + peerPublicIP(peer.runtimeEndpoint)">
                             · {{peer.peerType === 'interconnect' ? peer.runtimeEndpoint : peerPublicIP(peer.runtimeEndpoint)}}
                           </span>
-                        </div>
-                        <!-- One-time link -->
-                        <div v-if="enableOneTimeLinks && peer.oneTimeLink" class="text-gray-400 text-xs">
-                          <a :href="'./cnf/' + peer.oneTimeLink">{{document.location.protocol}}//{{document.location.host}}/cnf/{{peer.oneTimeLink}}</a>
                         </div>
                         <!-- Expire Date -->
                         <div class="block md:inline-block pb-1 md:pb-0 text-gray-500 dark:text-neutral-400 text-xs">
@@ -2580,8 +2619,10 @@
 
                       <!-- One-time link -->
                       <button v-if="enableOneTimeLinks"
-                        @click="showPeerOneTimeLink(peer)" title="Generate one-time link"
-                        class="align-middle bg-gray-100 dark:bg-neutral-600 dark:text-neutral-300 p-2 rounded transition hover:bg-red-800 dark:hover:bg-red-800 hover:text-white dark:hover:text-white">
+                        @click="peer.peerType !== 'interconnect' ? showPeerOneTimeLink(peer) : null"
+                        :title="peer.peerType === 'interconnect' ? 'N/A for S2S' : 'Generate one-time link'"
+                        class="align-middle bg-gray-100 dark:bg-neutral-600 dark:text-neutral-300 p-2 rounded transition"
+                        :class="peer.peerType !== 'interconnect' ? 'hover:bg-red-800 dark:hover:bg-red-800 hover:text-white dark:hover:text-white' : 'is-disabled'">
                         <svg class="w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                         </svg>

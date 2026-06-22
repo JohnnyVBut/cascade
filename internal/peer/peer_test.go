@@ -1,8 +1,11 @@
 package peer
 
 import (
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/JohnnyVBut/cascade/internal/db"
 )
 
 // ── isValidEndpoint ───────────────────────────────────────────────────────────
@@ -364,5 +367,109 @@ func TestGenerateQRSVG_ProducesSVG(t *testing.T) {
 	}
 	if !strings.HasSuffix(svg, "</svg>") {
 		t.Errorf("expected SVG ending with '</svg>', got: ...%.20s", svg[len(svg)-20:])
+	}
+}
+
+// ── DB-backed helpers ─────────────────────────────────────────────────────────
+
+// initTestDB creates a fresh temp SQLite database for one test and registers
+// a cleanup that closes it and removes the temp directory.
+func initTestDB(t *testing.T) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "cascade-peer-test-*")
+	if err != nil {
+		t.Fatalf("TempDir: %v", err)
+	}
+	if err := db.Init(dir); err != nil {
+		t.Fatalf("db.Init: %v", err)
+	}
+	t.Cleanup(func() {
+		db.Close()
+		os.RemoveAll(dir)
+	})
+}
+
+// insertTestInterface inserts a minimal row into the interfaces table so that
+// peers referencing it satisfy the FK constraint.
+func insertTestInterface(t *testing.T, ifaceID string) {
+	t.Helper()
+	_, err := db.DB().Exec(
+		`INSERT INTO interfaces (id, name, address, listen_port, protocol, enabled, private_key, public_key)
+		 VALUES (?, 'test-iface', '10.8.0.1/24', 51820, 'wireguard-1.0', 1, 'privkey', 'pubkey')`,
+		ifaceID,
+	)
+	if err != nil {
+		t.Fatalf("insertTestInterface: %v", err)
+	}
+}
+
+// createTestPeer inserts a minimal peer into the database and returns it.
+// The public key is a valid 44-character base64 string.
+// It also inserts the parent interface row to satisfy the FK constraint.
+func createTestPeer(t *testing.T, ifaceID string) *Peer {
+	t.Helper()
+	insertTestInterface(t, ifaceID)
+	p, err := CreatePeer(ifaceID, PeerInput{
+		Name:       "test-peer",
+		PublicKey:  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs: "10.8.0.2/32",
+	})
+	if err != nil {
+		t.Fatalf("CreatePeer: %v", err)
+	}
+	return p
+}
+
+// ── SaveHandshake ─────────────────────────────────────────────────────────────
+
+// TestSaveHandshake_PersistsAndLoads verifies that SaveHandshake writes the
+// handshake timestamp to SQLite and that a subsequent GetPeers call returns
+// it via the LatestHandshakeAt pointer field.
+func TestSaveHandshake_PersistsAndLoads(t *testing.T) {
+	initTestDB(t)
+
+	const ifaceID = "iface-001"
+	p := createTestPeer(t, ifaceID)
+
+	const wantHandshake = "2026-06-21T10:00:00Z"
+	if err := SaveHandshake(p.ID, wantHandshake); err != nil {
+		t.Fatalf("SaveHandshake: %v", err)
+	}
+
+	peers, err := GetPeers(ifaceID)
+	if err != nil {
+		t.Fatalf("GetPeers: %v", err)
+	}
+	if len(peers) != 1 {
+		t.Fatalf("expected 1 peer, got %d", len(peers))
+	}
+
+	loaded := peers[0]
+	if loaded.LatestHandshakeAt == nil {
+		t.Fatal("expected LatestHandshakeAt to be non-nil after SaveHandshake")
+	}
+	if *loaded.LatestHandshakeAt != wantHandshake {
+		t.Errorf("LatestHandshakeAt = %q, want %q", *loaded.LatestHandshakeAt, wantHandshake)
+	}
+}
+
+// TestSaveHandshake_EmptyByDefault verifies that a freshly created peer has
+// LatestHandshakeAt == nil when SaveHandshake has never been called for it.
+func TestSaveHandshake_EmptyByDefault(t *testing.T) {
+	initTestDB(t)
+
+	const ifaceID = "iface-002"
+	_ = createTestPeer(t, ifaceID)
+
+	peers, err := GetPeers(ifaceID)
+	if err != nil {
+		t.Fatalf("GetPeers: %v", err)
+	}
+	if len(peers) != 1 {
+		t.Fatalf("expected 1 peer, got %d", len(peers))
+	}
+
+	if peers[0].LatestHandshakeAt != nil {
+		t.Errorf("expected LatestHandshakeAt to be nil by default, got %q", *peers[0].LatestHandshakeAt)
 	}
 }

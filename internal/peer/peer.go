@@ -169,7 +169,8 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, group_id, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
-		       total_rx, total_tx, rate_down, rate_up, previous_group_id
+		       total_rx, total_tx, rate_down, rate_up, previous_group_id,
+		       latest_handshake_at
 		FROM peers
 		WHERE interface_id = ?
 		ORDER BY created_at
@@ -197,7 +198,8 @@ func GetPeer(id string) (*Peer, error) {
 		       endpoint, allowed_ips, address, client_allowed_ips,
 		       peer_type, group_id, persistent_keepalive, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
-		       total_rx, total_tx, rate_down, rate_up, previous_group_id
+		       total_rx, total_tx, rate_down, rate_up, previous_group_id,
+		       latest_handshake_at
 		FROM peers WHERE id = ?
 	`, id)
 	p, err := scanPeerRow(row)
@@ -357,6 +359,16 @@ func DeletePeer(id string) error {
 }
 
 // ── Traffic accumulation ──────────────────────────────────────────────────────
+
+// SaveHandshake persists the latest handshake timestamp for a peer.
+// Called by TunnelInterface.GetStatus() when handshake time changes.
+func SaveHandshake(peerID, handshakeAt string) error {
+	_, err := db.DB().Exec(
+		`UPDATE peers SET latest_handshake_at = ? WHERE id = ?`,
+		handshakeAt, peerID,
+	)
+	return err
+}
 
 // SaveTrafficTotals persists lifetime accumulated RX/TX bytes for a peer.
 // Called by TunnelInterface.FlushTrafficTotals() every 60 s and before wg-quick down.
@@ -700,6 +712,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 	var p Peer
 	var enabled int
 
+	var latestHandshakeAt string
 	err := s.Scan(
 		&p.ID, &p.InterfaceID, &p.Name, &p.PublicKey, &p.PrivateKey, &p.PresharedKey,
 		&p.Endpoint, &p.AllowedIPs, &p.Address, &p.ClientAllowedIPs,
@@ -708,7 +721,11 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 		&p.TotalRx, &p.TotalTx,
 		&p.RateDown, &p.RateUp,
 		&p.PreviousGroupId,
+		&latestHandshakeAt,
 	)
+	if latestHandshakeAt != "" {
+		p.LatestHandshakeAt = &latestHandshakeAt
+	}
 	if err != nil {
 		return nil, err
 	}

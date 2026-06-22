@@ -135,6 +135,9 @@ func main() {
 	// Legacy shims that are safe without auth (lang, release, feature flags).
 	api.RegisterCompat(apiGroup)
 
+	// One-time download links — unauthenticated, token is the credential.
+	api.RegisterOneTimeLink(app)
+
 	// ── Auth gate — all routes below require authentication ───────────────────
 	apiGroup.Use(api.AuthMiddleware)
 

@@ -67,6 +67,8 @@ new Vue({
     authenticated: null,
     authenticating: false,
     versionInfo: null,       // populated by loadVersionInfo() — version + update status
+    updateBannerDismissed: false, // hides update banner until next loadVersionInfo() call
+    updateChecking: false,        // spinner state for "Check for updates" button
     username: 'admin',     // login form username field
     password: null,
     requiresPassword: null,
@@ -1406,11 +1408,37 @@ new Vue({
     // Version / Update check
     // ========================================================================
 
+    async checkForUpdates() {
+      this.updateChecking = true;
+      try {
+        const res = await fetch('./api/version/check', { method: 'POST' });
+        if (res.ok) {
+          const prev = this.versionInfo;
+          this.versionInfo = await res.json();
+          this.updateBannerDismissed = false;
+          if (this.versionInfo.updateAvailable) {
+            this.showToast(`Update available: ${this.versionInfo.latestVersion}`, 'info', 6000);
+          } else {
+            this.showToast("You're up to date", 'success', 4000);
+          }
+        }
+      } catch (_) {
+        this.showToast('Update check failed', 'error');
+      } finally {
+        this.updateChecking = false;
+      }
+    },
+
     async loadVersionInfo() {
       try {
         const res = await fetch('./api/version');
         if (res.ok) {
+          const prev = this.versionInfo;
           this.versionInfo = await res.json();
+          this.updateBannerDismissed = false;
+          if (this.versionInfo.updateAvailable && !(prev && prev.updateAvailable)) {
+            this.showToast(`Update available: ${this.versionInfo.latestVersion}`, 'info', 6000);
+          }
         }
       } catch (_) {
         // silently ignore — non-critical
@@ -2951,6 +2979,17 @@ new Vue({
       if (this.dashWidgets.some(w => w.type === 'server-info')) {
         this.loadSystemInfo();
       }
+
+      // Restore CSS zoom for non-monitoring widgets that have a saved fontScale.
+      this.$nextTick(() => {
+        this.dashWidgets.forEach(w => {
+          if (w.type === 'monitoring' || !w.fontScale || w.fontScale === 1.0) return;
+          const gsItem = document.querySelector(`[gs-id="${w.id}"]`);
+          if (!gsItem) return;
+          const card = gsItem.querySelector('.dash-card');
+          if (card) card.style.zoom = w.fontScale;
+        });
+      });
     },
 
     // Attach ResizeObserver to each widget content container.
@@ -2995,7 +3034,19 @@ new Vue({
       const current = w.fontScale || 1.0;
       const next = Math.round(Math.max(0.5, Math.min(2.0, current + delta)) * 10) / 10;
       this.dashWidgets.splice(idx, 1, { ...w, fontScale: next });
-      // fontScale is applied as font-size on dash-card-body (see template); no zoom needed.
+      // Apply CSS zoom immediately for non-monitoring widgets.
+      // monitoring widgets use interactive ApexCharts tooltips — CSS zoom breaks
+      // getBoundingClientRect() coordinate mapping causing tooltip drift.
+      // Other widgets (server-info, peers-summary, gateways, etc.) only contain
+      // sparkline charts with tooltips disabled, so CSS zoom is safe there.
+      if (w.type !== 'monitoring') {
+        this.$nextTick(() => {
+          const gsItem = document.querySelector(`[gs-id="${widgetId}"]`);
+          if (!gsItem) return;
+          const card = gsItem.querySelector('.dash-card');
+          if (card) card.style.zoom = next;
+        });
+      }
       this.api.putDashboardWidgets(this.dashWidgets).catch(console.error);
     },
 
@@ -3203,7 +3254,9 @@ new Vue({
       if (key === 'mem') return 'RAM %';
       if (key.startsWith('net:')) {
         const [, iface, dir] = key.split(':');
-        return `${iface} ${dir.toUpperCase()} Mbps`;
+        const ti = (this.tunnelInterfaces || []).find(t => t.id === iface);
+        const label = ti && ti.name ? `${ti.name} (${iface})` : iface;
+        return `${label} ${dir.toUpperCase()} Mbps`;
       }
       if (key.startsWith('gateway:')) {
         const id = key.slice(8);
@@ -4716,7 +4769,13 @@ new Vue({
 
     async showPeerOneTimeLink(peer) {
       try {
-        await this.api.generatePeerOneTimeLink({ interfaceId: this._peerIfaceId(peer), peerId: peer.id });
+        const res = await this.api.generatePeerOneTimeLink({ interfaceId: this._peerIfaceId(peer), peerId: peer.id });
+        const token = (res.peer || {}).oneTimeLink;
+        if (token) {
+          const url = `${location.protocol}//${location.host}/cnf/${token}`;
+          await navigator.clipboard.writeText(url);
+          this.showToast('One-time link copied to clipboard', 'success');
+        }
         await this._refreshPeersOrAll();
       } catch (err) {
         this.showToast(err.message || err.toString(), 'error');

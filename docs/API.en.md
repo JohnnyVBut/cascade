@@ -67,6 +67,7 @@ curl -H "Authorization: Bearer ws_<token>" \
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/version` | ❌ public | Current version + latest release info from GitHub. Response: `{ version, gitCommit, latestVersion, releaseURL, updateAvailable: bool, checkedAt, error? }` |
+| `POST` | `/api/version/check` | ❌ public | Force an immediate GitHub release check, bypassing the 24 h cache. Returns the same shape as `GET /api/version`. |
 | `GET` | `/api/health` | ❌ public | Health check. Response: `{ status: "ok", version, host }` |
 
 `version` is `"dev"` for local builds without ldflags. Injected at build time via:
@@ -165,7 +166,7 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/peers` | List peers. Returns `{ peers: [...] }` |
-| `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Response includes `totalRx`/`totalTx` (lifetime traffic counters from SQLite, persist across restarts) |
+| `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Response includes `totalRx`/`totalTx` (lifetime traffic counters from SQLite, persist across restarts) and `latestHandshakeAt` (last handshake timestamp, persisted across restarts; `null` if peer never connected) |
 | `POST` | `/peers/import-json` | Create interconnect peer from exported JSON |
 | `GET` | `/peers/:peerId` | Get peer |
 | `PATCH` | `/peers/:peerId` | Update peer fields. Accepts: `name?, endpoint?, allowedIPs?, clientAllowedIPs?, persistentKeepalive?, enabled?, expiredAt?, oneTimeLink?, rateDown?, rateUp?`. Fields `rateDown`/`rateUp` — bandwidth limit in **kbps** (0 = unlimited), enforced via `tc HTB + police` on the server; the UI accepts **Mbit/s** and converts automatically |
@@ -177,8 +178,16 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | `PUT` | `/peers/:peerId/name` | Rename peer. Body: `{ name }` |
 | `PUT` | `/peers/:peerId/address` | Update overlay address. Body: `{ address }` → stored as AllowedIPs |
 | `PUT` | `/peers/:peerId/expireDate` | Set expiry. Body: `{ expireDate }` — RFC3339 or YYYY-MM-DD, empty clears |
-| `POST` | `/peers/:peerId/generateOneTimeLink` | Generate one-time config link token |
+| `POST` | `/peers/:peerId/generateOneTimeLink` | Generate one-time config link token. Returns `{ oneTimeLink: "https://..." }`. Token is single-use — cleared after first download. |
 | `GET` | `/peers/:peerId/export-json` | Export interconnect peer as JSON (interconnect only) |
+
+### One-time config download (public)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/cnf/:token` | ❌ public | Download WireGuard config by one-time token (32 hex chars). Returns the `.conf` file as `text/plain` attachment. Token is invalidated immediately after download. Returns **404** if token is invalid or already used. |
+
+> The `/cnf/*` path is proxied by Caddy **outside** the admin path — accessible without knowing the hidden admin URL.
 
 ---
 
@@ -329,6 +338,7 @@ Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× 
 | `network` | `["10.0.0.0/8"]` | CIDR ranges |
 | `ipset` | generated | Large prefix sets (kernel ipset) |
 | `group` | `["<aliasId>"]` | Combines host/network aliases |
+| `client-group` | managed automatically | Kernel ipset populated with IPs of peers belonging to the group. Managed automatically on peer create/update/delete. Used in firewall rules for per-group traffic control. |
 | `port` | `["tcp:443", "udp:53", "any:80"]` | L4 ports |
 | `port-group` | `["<portAliasId>"]` | Combines port aliases |
 
@@ -447,7 +457,7 @@ Legacy endpoints retained for frontend compatibility. Read-only, return safe def
 | `GET` | `/api/remember-me` | `true` |
 | `GET` | `/api/ui-traffic-stats` | `false` |
 | `GET` | `/api/ui-chart-type` | `0` |
-| `GET` | `/api/wg-enable-one-time-links` | `false` |
+| `GET` | `/api/wg-enable-one-time-links` | `true` |
 | `GET` | `/api/ui-sort-clients` | `false` |
 | `GET` | `/api/wg-enable-expire-time` | `false` |
 | `GET` | `/api/ui-avatar-settings` | `{ dicebear: null, gravatar: false }` |

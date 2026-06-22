@@ -32,6 +32,49 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
+// RegisterOneTimeLink registers the unauthenticated GET /cnf/:token route.
+// Must be called before the auth middleware.
+func RegisterOneTimeLink(r fiber.Router) {
+	r.Get("/cnf/:token", getPeerConfigByToken)
+}
+
+// getPeerConfigByToken serves a peer config using a one-time token.
+// Finds the peer whose OneTimeLink matches the token, clears the token,
+// and returns the WireGuard config as a downloadable file.
+func getPeerConfigByToken(c *fiber.Ctx) error {
+	token := c.Params("token")
+	if len(token) != 32 {
+		return fiber.NewError(fiber.StatusNotFound, "invalid token")
+	}
+
+	m := mgr()
+	if m == nil {
+		return fiber.NewError(fiber.StatusServiceUnavailable, "not ready")
+	}
+
+	for _, iface := range m.GetAllInterfaces() {
+		for _, p := range iface.GetAllPeers() {
+			if p.OneTimeLink != token {
+				continue
+			}
+			config, err := m.GetPeerRemoteConfig(iface.ID, p.ID)
+			if err != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, "config generation failed")
+			}
+			// Consume the token only after config is successfully generated.
+			empty := ""
+			if _, err := m.UpdatePeer(iface.ID, p.ID, peer.PeerUpdate{OneTimeLink: &empty}); err != nil {
+				log.Printf("api: cnf: clear token for peer %s: %v", p.ID, err)
+			}
+			c.Set("Content-Type", "text/plain; charset=utf-8")
+			c.Set("Content-Disposition", `attachment; filename="wg.conf"`)
+			return c.SendString(config)
+		}
+	}
+
+	return fiber.NewError(fiber.StatusNotFound, "token not found or already used")
+}
+
 // RegisterPeers registers all /api/tunnel-interfaces/:id/peers/* routes.
 func RegisterPeers(api fiber.Router) {
 	g := api.Group("/tunnel-interfaces/:id/peers")

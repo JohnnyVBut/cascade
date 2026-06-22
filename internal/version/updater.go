@@ -56,6 +56,12 @@ func Start() {
 	}()
 }
 
+// Check forces an immediate update check, bypassing the 24h cache.
+// Safe to call concurrently — it runs synchronously and updates the shared status.
+func Check() {
+	check()
+}
+
 // check fetches the latest release from GitHub and updates the cached status.
 func check() {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
