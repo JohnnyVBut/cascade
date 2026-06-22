@@ -1411,8 +1411,12 @@ new Vue({
       try {
         const res = await fetch('./api/version');
         if (res.ok) {
+          const prev = this.versionInfo;
           this.versionInfo = await res.json();
           this.updateBannerDismissed = false;
+          if (this.versionInfo.updateAvailable && !(prev && prev.updateAvailable)) {
+            this.showToast(`Update available: ${this.versionInfo.latestVersion}`, 'info', 6000);
+          }
         }
       } catch (_) {
         // silently ignore — non-critical
