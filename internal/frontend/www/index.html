@@ -564,6 +564,17 @@
                 </svg>
                 API Guide
               </a>
+              <!-- Check for updates button (shown only when no update available) -->
+              <button v-if="versionInfo && !versionInfo.updateAvailable"
+                @click="checkForUpdates"
+                :disabled="updateChecking"
+                :title="updateChecking ? 'Checking...' : 'Check for updates'"
+                style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:500; border:none; cursor:pointer; flex-shrink:0;"
+                :style="{ background: theme==='dark' ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)', color: theme==='dark' ? '#a3a3a3' : '#6b7280', opacity: updateChecking ? 0.6 : 1 }">
+                <span v-if="updateChecking">...</span>
+                <span v-else>↻</span>
+              </button>
+
               <!-- Update available badge -->
               <span v-if="versionInfo && versionInfo.updateAvailable && !updateBannerDismissed"
                 style="display:inline-flex; align-items:center; gap:3px; flex-shrink:0;">

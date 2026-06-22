@@ -68,6 +68,7 @@ new Vue({
     authenticating: false,
     versionInfo: null,       // populated by loadVersionInfo() — version + update status
     updateBannerDismissed: false, // hides update banner until next loadVersionInfo() call
+    updateChecking: false,        // spinner state for "Check for updates" button
     username: 'admin',     // login form username field
     password: null,
     requiresPassword: null,
@@ -1406,6 +1407,27 @@ new Vue({
     // ========================================================================
     // Version / Update check
     // ========================================================================
+
+    async checkForUpdates() {
+      this.updateChecking = true;
+      try {
+        const res = await fetch('./api/version/check', { method: 'POST' });
+        if (res.ok) {
+          const prev = this.versionInfo;
+          this.versionInfo = await res.json();
+          this.updateBannerDismissed = false;
+          if (this.versionInfo.updateAvailable) {
+            this.showToast(`Update available: ${this.versionInfo.latestVersion}`, 'info', 6000);
+          } else {
+            this.showToast("You're up to date", 'success', 4000);
+          }
+        }
+      } catch (_) {
+        this.showToast('Update check failed', 'error');
+      } finally {
+        this.updateChecking = false;
+      }
+    },
 
     async loadVersionInfo() {
       try {
