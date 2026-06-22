@@ -1691,7 +1691,7 @@ new Vue({
         }
 
         if (showQR && mode === 'generate' && peerType === 'client' && peerId) {
-          this.qrcode = `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
+          this.qrcode = this.peerQrUrl(interfaceId, peerId);
         } else {
           this.showToast(peerType === 'client' ? 'Client created!' : 'Peer created!');
         }
@@ -4683,7 +4683,7 @@ new Vue({
         this.loadAliases();
 
         if (showQR && peerId) {
-          this.qrcode = `./api/tunnel-interfaces/${this.activeInterfaceId}/peers/${peerId}/qrcode.svg`;
+          this.qrcode = this.peerQrUrl(this.activeInterfaceId, peerId);
         } else {
           this.showToast('Client created!');
         }
@@ -4703,6 +4703,13 @@ new Vue({
     },
 
     // Extract IP from runtimeEndpoint "IP:port" string (IPv4 and IPv6)
+    peerQrUrl(interfaceId, peerId) {
+      const base = this.activeRemoteId
+        ? `./api/remotes/${this.activeRemoteId}/proxy/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`
+        : `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
+      return base;
+    },
+
     peerPublicIP(endpoint) {
       if (!endpoint) return '';
       if (endpoint.startsWith('[')) {
