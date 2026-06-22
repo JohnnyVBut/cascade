@@ -565,13 +565,17 @@
                 API Guide
               </a>
               <!-- Update available badge -->
-              <a v-if="versionInfo && versionInfo.updateAvailable"
-                :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
-                target="_blank"
-                :title="'New version available: ' + versionInfo.latestVersion"
-                style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600; text-decoration:none; background:#f59e0b; color:#fff; flex-shrink:0;">
-                ↑ {{ versionInfo.latestVersion }}
-              </a>
+              <span v-if="versionInfo && versionInfo.updateAvailable && !updateBannerDismissed"
+                style="display:inline-flex; align-items:center; gap:3px; flex-shrink:0;">
+                <a :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
+                  target="_blank"
+                  :title="'New version available: ' + versionInfo.latestVersion + '\nRun: cd /root/cascade && ./deploy/update.sh'"
+                  style="display:inline-flex; align-items:center; gap:3px; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:600; text-decoration:none; background:#f59e0b; color:#fff;">
+                  ↑ {{ versionInfo.latestVersion }}
+                </a>
+                <button @click="updateBannerDismissed = true" title="Dismiss"
+                  style="display:inline-flex; align-items:center; justify-content:center; width:14px; height:14px; border-radius:50%; border:none; background:rgba(0,0,0,0.15); color:#9ca3af; font-size:10px; cursor:pointer; padding:0; line-height:1;">×</button>
+              </span>
             </div>
           </div>
         </nav>
@@ -590,20 +594,6 @@
           <span style="font-size:0.75rem; color:#92400e; font-weight:600;">Go to Firewall →</span>
         </div>
 
-        <!-- Update banner -->
-        <div v-if="versionInfo && versionInfo.updateAvailable"
-          style="background:#92400e; border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; align-items:center; gap:12px;">
-          <div style="flex:1; color:#fff;">
-            <span style="font-weight:600; font-size:14px;">Update available: {{ versionInfo.latestVersion }}</span>
-            <span style="font-size:13px; margin-left:8px; opacity:0.85;">(current: {{ versionInfo.version }})</span>
-            <div style="font-size:12px; margin-top:4px; opacity:0.75;">Run on server: <code style="background:rgba(0,0,0,0.25); padding:1px 6px; border-radius:4px;">cd /root/cascade &amp;&amp; ./deploy/update.sh</code></div>
-          </div>
-          <a :href="versionInfo.releaseURL || 'https://github.com/JohnnyVBut/cascade/releases'"
-            target="_blank"
-            style="padding:6px 14px; border-radius:6px; background:#fff; color:#92400e; font-weight:600; font-size:13px; text-decoration:none; flex-shrink:0; border:2px solid #fff;">
-            View release →
-          </a>
-        </div>
 
         <!-- ============================================================== -->
         <!-- Dashboard Page                                                 -->

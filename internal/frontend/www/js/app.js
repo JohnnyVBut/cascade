@@ -67,6 +67,7 @@ new Vue({
     authenticated: null,
     authenticating: false,
     versionInfo: null,       // populated by loadVersionInfo() — version + update status
+    updateBannerDismissed: false, // hides update banner until next loadVersionInfo() call
     username: 'admin',     // login form username field
     password: null,
     requiresPassword: null,
@@ -1411,6 +1412,7 @@ new Vue({
         const res = await fetch('./api/version');
         if (res.ok) {
           this.versionInfo = await res.json();
+          this.updateBannerDismissed = false;
         }
       } catch (_) {
         // silently ignore — non-critical
