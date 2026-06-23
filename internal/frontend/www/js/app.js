@@ -2962,6 +2962,7 @@ new Vue({
         cellHeight: 60,
         margin: 8,
         animate: true,
+        float: true,
         resizable: { handles: 'se' },
       }, el);
 
@@ -3539,6 +3540,7 @@ new Vue({
         margin: 8,
         column: 12,
         animate: true,
+        float: true,
         resizable: { handles: 'se' },
       }, el);
       // Sync positions back to diagWidgets on change
