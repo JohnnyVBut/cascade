@@ -303,14 +303,62 @@ docker compose -f docker-compose.bridge-userspace.yml up -d
 
 ---
 
+## Rootless Docker
+
+Инструкция выше рассчитана на rootful Docker. При использовании **rootless Docker** (Docker 24+ с rootlesskit) необходимы два изменения.
+
+### 1. `/dev/net/tun` — проверить права
+
+В rootless окружении device mount работает только если файл имеет права `0666`:
+
+```bash
+ls -la /dev/net/tun
+# crw-rw-rw- (0666) — всё хорошо, пробрасывается автоматически
+# crw-rw---- (0660) — нужно добавить udev правило:
+```
+
+Если права `0660`:
+
+```bash
+echo 'KERNEL=="tun", MODE="0666"' > /etc/udev/rules.d/99-tun.rules
+udevadm control --reload
+udevadm trigger /dev/net/tun
+```
+
+### 2. `sysctls` — не работают в rootless, применить на хосте вручную
+
+Rootless Docker не может менять параметры ядра через `sysctls:` в compose-файле.
+Удалить блок `sysctls:` из `docker-compose.bridge-userspace.yml` и применить параметры на хосте:
+
+```bash
+# Применить сейчас
+sysctl -w net.ipv4.ip_forward=1
+sysctl -w net.ipv4.conf.all.src_valid_mark=1
+
+# Сохранить постоянно (применится после перезагрузки)
+cat >> /etc/sysctl.d/99-cascade.conf << 'EOF'
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.src_valid_mark = 1
+EOF
+```
+
+> `ip_forward` нужен для маршрутизации трафика WireGuard-клиентов.
+> `src_valid_mark` нужен для PBR (Policy-Based Routing) — без него fwmark-маршрутизация не работает.
+
+После этих двух изменений инструкция выше применима к rootless Docker без других модификаций.
+
+---
+
 ## Отличия от стандартной установки
 
-| | Стандарт (host + Caddy) | Эта инструкция |
-|--|--|--|
-| `network_mode` | `host` | `bridge` |
-| Сеть хоста | затрагивается | не затрагивается |
-| AWG | kernel module | userspace (`amneziawg-go`) |
-| `SYS_MODULE` | нужен | **не нужен** |
-| TLS | Caddy + acme.sh | нет (HTTP) |
-| WireGuard порты | прямые (без mapping) | через Docker port mapping |
-| `iptables` scope | хост | только контейнер |
+| | Стандарт (host + Caddy) | Эта инструкция | Rootless |
+|--|--|--|--|
+| `network_mode` | `host` | `bridge` | `bridge` |
+| Сеть хоста | затрагивается | не затрагивается | не затрагивается |
+| AWG | kernel module | userspace (`amneziawg-go`) | userspace |
+| `SYS_MODULE` | нужен | **не нужен** | **не нужен** |
+| TLS | Caddy + acme.sh | нет (HTTP) | нет (HTTP) |
+| WireGuard порты | прямые (без mapping) | через Docker port mapping | через Docker port mapping |
+| `iptables` scope | хост | только контейнер | только контейнер |
+| `sysctls` в compose | работают | работают | **не работают — вручную на хосте** |
+| `/dev/net/tun` | из коробки | из коробки | нужны права `0666` |
