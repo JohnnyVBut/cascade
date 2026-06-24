@@ -365,7 +365,7 @@ EOF
 |--|--|--|--|
 | `network_mode` | `host` | `bridge` | `bridge` |
 | Сеть хоста | затрагивается | не затрагивается | не затрагивается |
-| AWG | kernel module | userspace (`amneziawg-go`) | userspace |
+| AWG | kernel module | userspace (`amneziawg-go`) | userspace (`amneziawg-go`) |
 | `SYS_MODULE` | нужен | **не нужен** | **не нужен** |
 | TLS | Caddy + acme.sh | нет (HTTP) | нет (HTTP) |
 | WireGuard порты | прямые (без mapping) | через Docker port mapping | через Docker port mapping |
