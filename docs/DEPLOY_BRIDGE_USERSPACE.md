@@ -345,7 +345,17 @@ EOF
 > `ip_forward` нужен для маршрутизации трафика WireGuard-клиентов.
 > `src_valid_mark` нужен для PBR (Policy-Based Routing) — без него fwmark-маршрутизация не работает.
 
-После этих двух изменений инструкция выше применима к rootless Docker без других модификаций.
+### 3. `CAP_NET_ADMIN` — работает без изменений
+
+В rootless Docker `CAP_NET_ADMIN` предоставляется в пределах user namespace контейнера. Этого достаточно для:
+
+- создания WireGuard TUN-интерфейса через `/dev/net/tun`
+- управления `ip route`, `ip rule` внутри контейнерного netns
+- `iptables` внутри контейнерного netns
+
+Никаких изменений в compose-файл не требуется — `cap_add: NET_ADMIN` остаётся как есть.
+
+После трёх пунктов выше инструкция применима к rootless Docker без других модификаций.
 
 ---
 
