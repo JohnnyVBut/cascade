@@ -224,6 +224,7 @@ Use the toggle on the peer card. A disabled peer is excluded from the WireGuard 
 The peer card displays:
 
 - **Online** — blinking red dot = peer transferred data within the last ~3 minutes
+- **Last Handshake** — time of the last successful WireGuard handshake. Shows **"Never"** for newly created peers that have not yet connected
 - **Endpoint** — the client's current IP address (updated every second)
 - **RX / TX** — session traffic and total lifetime traffic
 
@@ -635,6 +636,23 @@ At the bottom of the **Firewall → Rules** page is the **Default Policy** card:
 |-------|-------------|
 | **Default Firewall Policy** | `accept` or `drop` — policy for unmatched traffic |
 
+### Expired Peer Policy
+
+Controls what happens to client peers when their expiry date is reached.
+
+| Value | Behaviour |
+|-------|-----------|
+| **Disable** (default) | Peer is disabled (`enabled = false`) — excluded from the WireGuard config, no traffic passes |
+| **Restrict** | Peer remains enabled but is rate-limited and moved to a specified group. Original group and rate-limit settings are restored automatically when the expiry date is extended |
+
+When **Restrict** is selected, two additional fields appear:
+
+| Field | Description |
+|-------|-------------|
+| **Rate Limit Down** | Download cap applied to the peer at expiry (kbps) |
+| **Rate Limit Up** | Upload cap applied to the peer at expiry (kbps) |
+| **Move to Group** | Client group the peer is moved to at expiry |
+
 ---
 
 ## 12. Administration
@@ -663,6 +681,19 @@ Tokens for API access without a session. Used for automation, scripts, and CI/CD
 - Copy the token — it is shown only once
 - Pass it in the header: `Authorization: Bearer <token>`
 
+### Version Notifications
+
+When a new Cascade release is available, a bell icon (🔔) appears in the header. Clicking it opens a changelog dialog showing what is new in the latest version.
+
+To update the server, run on the host:
+
+```bash
+cd /root/cascade
+git pull
+./build.sh
+docker compose down && docker compose up -d
+```
+
 ### Backup and Restore
 
 #### Interface Backup
@@ -687,7 +718,7 @@ A dialog opens with an optional password field:
 | Set | `cascade-backup-YYYYMMDD.tar.gz.enc` — AES-256-GCM encrypted |
 
 Archive contents:
-- `awg.db` — all configuration: interfaces, peers, NAT/Firewall rules, aliases, users, gateways
+- `cascade.db` — all configuration: interfaces, peers, NAT/Firewall rules, aliases, users, gateways
 - `*.save` — kernel ipset alias contents
 
 > ⚠️ **If the password is lost, the backup cannot be decrypted.** AES-256-GCM uses authenticated encryption — brute-forcing the password is not feasible without knowing the original.
@@ -1056,6 +1087,15 @@ Previous results are saved and visible in the **History** table below the test f
 ---
 
 ## 15. Monitoring & Diagnostics 🆕
+
+### Dashboard Layout
+
+The Dashboard supports **free widget placement** — drag any widget card to any position on the grid. Widgets snap to the grid but are not forced into a compact column layout, so you can leave empty space between them.
+
+- **Resize** — drag the bottom-right corner of any widget
+- **Move** — drag the widget header to reposition it
+- **Zoom** — use the **+** / **−** buttons on widget cards (except monitoring charts) to scale the content. Zoom is saved per widget across page reloads
+- **Add Widget** — click **"+ Add Widget"** to insert a new widget from the available types
 
 ### Traffic Metrics Widget
 
