@@ -47,6 +47,7 @@ type CreateInput struct {
 	PortPool      string             // when non-empty and ListenPort==0: select port from pool under lock
 	DisableRoutes bool
 	AWG2          *peer.AWG2Settings // required for amneziawg-2.0
+	DNS           string             // per-interface DNS override; empty = use global
 }
 
 // QuickCreateResult is returned by Manager.QuickCreate.
@@ -238,6 +239,7 @@ func (m *Manager) CreateInterface(inp CreateInput) (*TunnelInterface, error) {
 		Address:       inp.Address,
 		ListenPort:    port,
 		DisableRoutes: inp.DisableRoutes,
+		DNS:           inp.DNS,
 		PrivateKey:    keys.PrivateKey,
 		PublicKey:     keys.PublicKey,
 		AWG2:          inp.AWG2,

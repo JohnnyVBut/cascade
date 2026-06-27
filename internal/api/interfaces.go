@@ -170,6 +170,7 @@ func createInterface(c *fiber.Ctx) error {
 		Address       string              `json:"address"`
 		ListenPort    int                 `json:"listenPort"`
 		DisableRoutes bool                `json:"disableRoutes"`
+		DNS           string              `json:"dns"`
 		AWG2          *peer.AWG2Settings  `json:"settings"`
 	}
 	if err := c.BodyParser(&body); err != nil {
@@ -189,6 +190,7 @@ func createInterface(c *fiber.Ctx) error {
 		Address:       addr,
 		ListenPort:    body.ListenPort,
 		DisableRoutes: body.DisableRoutes,
+		DNS:           strings.TrimSpace(body.DNS),
 		AWG2:          body.AWG2,
 	})
 	if err != nil {
