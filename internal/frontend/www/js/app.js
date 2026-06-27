@@ -5941,7 +5941,7 @@ new Vue({
       this.currentRelease = currentRelease;
       this.latestRelease = latestRelease;
     }).catch((err) => console.error(err));
-
+  },
   watch: {
     // Update browser tab title whenever router name or hostname changes.
     pageTitle: {
