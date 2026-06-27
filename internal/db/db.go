@@ -796,6 +796,12 @@ ALTER TABLE templates ADD COLUMN host TEXT NOT NULL DEFAULT '';
 ALTER TABLE peers ADD COLUMN latest_handshake_at TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 40,
+		sql: `
+ALTER TABLE interfaces ADD COLUMN dns TEXT NOT NULL DEFAULT '';
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

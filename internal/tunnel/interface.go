@@ -66,6 +66,7 @@ type TunnelInterface struct {
 	DisableRoutes bool               `json:"disableRoutes"`  // Table = off (S2S / PBR setups)
 	NatDisabled   bool               `json:"natDisabled"`    // when true, PostUp omits MASQUERADE
 	PublicHost    string             `json:"publicHost"`     // per-interface endpoint override (e.g. transit server IP)
+	DNS           string             `json:"dns"`            // per-interface DNS override; empty = use global setting
 	MTU           int                `json:"mtu"`            // 0 = use global setting; >0 = per-interface override
 	MSS           int                `json:"mss"`            // -1 = clamp-mss-to-pmtu; 0 = disabled; >0 = set-mss value
 	Uplink        bool               `json:"uplink"`         // true when created via Import .conf (connects OUT to remote server)
@@ -100,6 +101,7 @@ type InterfaceUpdate struct {
 	ListenPort    *int
 	DisableRoutes *bool
 	NatDisabled   *bool
+	DNS           *string            // per-interface DNS override; empty string = clear (use global)
 	PublicHost    *string            // per-interface endpoint override; empty string = clear (use global)
 	MTU           *int               // 0 = use global; >0 = per-interface override
 	MSS           *int               // -1=auto (clamp-mss-to-pmtu); 0=off; >0=manual set-mss value
@@ -207,6 +209,9 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.NatDisabled != nil {
 		t.NatDisabled = *upd.NatDisabled
 	}
+	if upd.DNS != nil {
+		t.DNS = strings.TrimSpace(*upd.DNS)
+	}
 	if upd.PublicHost != nil {
 		t.PublicHost = strings.TrimSpace(*upd.PublicHost)
 	}
@@ -296,15 +301,16 @@ func (t *TunnelInterface) save() error {
 	_, err := db.DB().Exec(`
 		INSERT INTO interfaces
 			(id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-			 public_host, mtu, mss, uplink, private_key, public_key,
+			 dns, public_host, mtu, mss, uplink, private_key, public_key,
 			 jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 			 i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, address=excluded.address,
 			listen_port=excluded.listen_port, protocol=excluded.protocol,
 			enabled=excluded.enabled, disable_routes=excluded.disable_routes,
-			nat_disabled=excluded.nat_disabled, public_host=excluded.public_host,
+			nat_disabled=excluded.nat_disabled, dns=excluded.dns,
+			public_host=excluded.public_host,
 			mtu=excluded.mtu, mss=excluded.mss, uplink=excluded.uplink,
 			private_key=excluded.private_key, public_key=excluded.public_key,
 			jc=excluded.jc, jmin=excluded.jmin, jmax=excluded.jmax,
@@ -313,7 +319,7 @@ func (t *TunnelInterface) save() error {
 			i1=excluded.i1, i2=excluded.i2, i3=excluded.i3, i4=excluded.i4, i5=excluded.i5`,
 		t.ID, t.Name, t.Address, t.ListenPort, t.Protocol,
 		boolInt(t.Enabled), boolInt(t.DisableRoutes), boolInt(t.NatDisabled),
-		t.PublicHost, t.MTU, t.MSS, boolInt(t.Uplink), t.PrivateKey, t.PublicKey,
+		t.DNS, t.PublicHost, t.MTU, t.MSS, boolInt(t.Uplink), t.PrivateKey, t.PublicKey,
 		jc, jmin, jmax, s1, s2, s3, s4,
 		h1, h2, h3, h4,
 		i1, i2, i3, i4, i5,
@@ -1443,7 +1449,7 @@ func boolInt(b bool) int {
 func scanInterface(id string) (*TunnelInterface, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, name, address, listen_port, protocol, enabled, disable_routes, nat_disabled,
-		       public_host, mtu, mss, uplink, private_key, public_key,
+		       dns, public_host, mtu, mss, uplink, private_key, public_key,
 		       jc, jmin, jmax, s1, s2, s3, s4, h1, h2, h3, h4,
 		       i1, i2, i3, i4, i5, created_at
 		FROM interfaces WHERE id = ?`, id)
@@ -1460,7 +1466,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 	err := row.Scan(
 		&t.ID, &t.Name, &t.Address, &t.ListenPort, &t.Protocol,
 		&enabled, &disableRoutes, &natDisabled,
-		&t.PublicHost, &t.MTU, &t.MSS, &uplink, &t.PrivateKey, &t.PublicKey,
+		&t.DNS, &t.PublicHost, &t.MTU, &t.MSS, &uplink, &t.PrivateKey, &t.PublicKey,
 		&jc, &jmin, &jmax,
 		&s1, &s2, &s3, &s4,
 		&h1, &h2, &h3, &h4,

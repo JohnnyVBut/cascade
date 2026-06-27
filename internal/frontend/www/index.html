@@ -3130,6 +3130,22 @@
                 </p>
               </div>
 
+              <!-- DNS Override -->
+              <div class="mb-4">
+                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                  DNS Override
+                  <span class="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input v-model="interfaceEdit.dns" type="text"
+                  placeholder="e.g. 1.1.1.1, 8.8.8.8"
+                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  DNS servers written into client <code>.conf</code> files for this interface.
+                  Leave empty to use the global setting
+                  <span v-if="globalSettings.dns"> (currently: <code>{{ globalSettings.dns }}</code>)</span>.
+                </p>
+              </div>
+
               <!-- MTU Override -->
               <div class="mb-4">
                 <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
