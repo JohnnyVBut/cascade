@@ -268,6 +268,7 @@ new Vue({
       address: '',
       listenPort: '',
       disableRoutes: false,
+      dns: '',
       selectedTemplateId: '',   // UI-only: выбранный профиль обфускации (не отправляется в API)
       settings: {
         jc: 6, jmin: 10, jmax: 50,
@@ -1191,6 +1192,7 @@ new Vue({
           address: this.interfaceCreate.address,
           listenPort: this.interfaceCreate.listenPort ? parseInt(this.interfaceCreate.listenPort, 10) : undefined,
           disableRoutes: this.interfaceCreate.disableRoutes || false,
+          dns: this.interfaceCreate.dns || '',
         };
 
         if (this.interfaceCreate.protocol === 'amneziawg-2.0') {
@@ -1396,7 +1398,7 @@ new Vue({
       this.createMode = 'quick';
       this.interfaceCreate = {
         name: '', protocol: 'wireguard-1.0', address: '', listenPort: '',
-        disableRoutes: false, selectedTemplateId: '',
+        disableRoutes: false, dns: '', selectedTemplateId: '',
         settings: {
           jc: 6, jmin: 10, jmax: 50, s1: 64, s2: 67, s3: 64, s4: 4,
           h1: '', h2: '', h3: '', h4: '',
