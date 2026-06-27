@@ -8662,6 +8662,184 @@
       </div>
     </div>
 
+        <!-- ── Wizard: Simple Client VPN ──────────────────────────────────── -->
+        <div v-if="activePage === 'wizard-simple-vpn'" key="page-wizard-simple-vpn"
+             style="max-width:560px; margin:0 auto; padding-bottom:40px;">
+
+          <!-- Step 1: Protocol -->
+          <div v-if="wizardVPN.step === 1">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:6px;">Simple Client VPN</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:24px;">Step 1 of 3 — Choose tunneling protocol</p>
+
+            <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:24px;">
+              <!-- WireGuard card -->
+              <div @click="wizardVPN.protocol = 'wireguard'"
+                   style="cursor:pointer; border-radius:8px; padding:16px 20px; border:2px solid;"
+                   :style="wizardVPN.protocol === 'wireguard'
+                     ? 'border-color:#2563eb; background:rgba(37,99,235,0.06);'
+                     : (theme==='dark' ? 'border-color:#525252; background:#404040;' : 'border-color:#d1d5db; background:#f9fafb;')">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div style="width:18px; height:18px; border-radius:50%; border:2px solid; flex-shrink:0;"
+                       :style="wizardVPN.protocol==='wireguard' ? 'border-color:#2563eb; background:#2563eb;' : 'border-color:#9ca3af;'">
+                  </div>
+                  <div>
+                    <div class="font-medium dark:text-neutral-100">WireGuard 1.0</div>
+                    <div class="text-sm text-gray-400 dark:text-neutral-400" style="margin-top:2px;">Standard WireGuard. Fast and widely supported.</div>
+                  </div>
+                </div>
+              </div>
+              <!-- AmneziaWG card -->
+              <div @click="wizardVPN.protocol = 'amneziawg'"
+                   style="cursor:pointer; border-radius:8px; padding:16px 20px; border:2px solid;"
+                   :style="wizardVPN.protocol === 'amneziawg'
+                     ? 'border-color:#7c3aed; background:rgba(124,58,237,0.06);'
+                     : (theme==='dark' ? 'border-color:#525252; background:#404040;' : 'border-color:#d1d5db; background:#f9fafb;')">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div style="width:18px; height:18px; border-radius:50%; border:2px solid; flex-shrink:0;"
+                       :style="wizardVPN.protocol==='amneziawg' ? 'border-color:#7c3aed; background:#7c3aed;' : 'border-color:#9ca3af;'">
+                  </div>
+                  <div>
+                    <div class="font-medium dark:text-neutral-100">AmneziaWG 2.0 <span style="font-size:0.72rem; padding:2px 6px; border-radius:4px; background:#7c3aed; color:#fff; margin-left:4px;">Stealth</span></div>
+                    <div class="text-sm text-gray-400 dark:text-neutral-400" style="margin-top:2px;">Traffic obfuscation — harder to detect and block.</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <button @click="wizardVPN.step = 2"
+                    class="text-white text-sm rounded-lg font-medium"
+                    style="padding:9px 24px; background:#2563eb; border:none; cursor:pointer;">
+              Next →
+            </button>
+          </div>
+
+          <!-- Step 2: Interface name -->
+          <div v-if="wizardVPN.step === 2">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:6px;">Simple Client VPN</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:24px;">Step 2 of 3 — Interface name (optional)</p>
+
+            <div class="mb-4">
+              <label class="block text-sm font-medium dark:text-neutral-300 mb-1">Interface Name</label>
+              <input v-model="wizardVPN.ifaceName" type="text"
+                     placeholder="Auto-generated (e.g. wg10)"
+                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+              <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Leave blank to auto-assign a name.</p>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+              <button @click="wizardVPN.step = 1"
+                      class="text-sm rounded-lg dark:text-neutral-300"
+                      style="padding:9px 20px; border:1px solid #d1d5db; cursor:pointer;">
+                ← Back
+              </button>
+              <button @click="wizardVPN.step = 3"
+                      class="text-white text-sm rounded-lg font-medium"
+                      style="padding:9px 24px; background:#2563eb; border:none; cursor:pointer;">
+                Next →
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: DNS + peer name + run -->
+          <div v-if="wizardVPN.step === 3">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:6px;">Simple Client VPN</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:24px;">Step 3 of 3 — Client settings</p>
+
+            <div class="mb-4">
+              <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
+                DNS Servers
+                <span class="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input v-model="wizardVPN.dns" type="text"
+                     placeholder="e.g. 1.1.1.1, 8.8.8.8"
+                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+              <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                Written into client <code>.conf</code> files.
+                Leave empty to use the global setting<span v-if="globalSettings.dns"> (<code>{{ globalSettings.dns }}</code>)</span>.
+              </p>
+            </div>
+
+            <div class="mb-4">
+              <label class="block text-sm font-medium dark:text-neutral-300 mb-1">First Device Name</label>
+              <input v-model="wizardVPN.peerName" type="text"
+                     placeholder="My Device"
+                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+            </div>
+
+            <!-- Summary -->
+            <div style="border-radius:8px; padding:14px 16px; margin-bottom:20px; font-size:0.85rem;"
+                 :style="theme==='dark' ? 'background:#404040; color:#d4d4d4;' : 'background:#f3f4f6; color:#374151;'">
+              <div style="font-weight:600; margin-bottom:8px;">Summary</div>
+              <div>Protocol: <strong>{{ wizardVPN.protocol === 'amneziawg' ? 'AmneziaWG 2.0' : 'WireGuard 1.0' }}</strong></div>
+              <div v-if="wizardVPN.ifaceName">Name: <strong>{{ wizardVPN.ifaceName }}</strong></div>
+              <div v-else>Name: <strong>Auto-assigned</strong></div>
+              <div>Device: <strong>{{ wizardVPN.peerName || 'My Device' }}</strong></div>
+              <div v-if="wizardVPN.protocol === 'amneziawg'" style="margin-top:6px; color:#a78bfa; font-size:0.8rem;">
+                ✦ AWG obfuscation profile will be auto-selected based on your server address.
+              </div>
+            </div>
+
+            <!-- Error -->
+            <div v-if="wizardVPN.error" style="color:#ef4444; font-size:0.85rem; margin-bottom:14px; padding:10px 14px; border-radius:6px; background:rgba(239,68,68,0.1);">
+              {{ wizardVPN.error }}
+            </div>
+
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button @click="wizardVPN.step = 2" :disabled="wizardVPN.running"
+                      class="text-sm rounded-lg dark:text-neutral-300"
+                      style="padding:9px 20px; border:1px solid #d1d5db; cursor:pointer;">
+                ← Back
+              </button>
+              <button @click="wizardVPNRun()" :disabled="wizardVPN.running"
+                      class="text-white text-sm rounded-lg font-medium"
+                      style="padding:9px 24px; border:none; cursor:pointer;"
+                      :style="wizardVPN.running ? 'background:#6b7280;' : 'background:#16a34a;'">
+                <span v-if="wizardVPN.running">⏳ Creating...</span>
+                <span v-else>✓ Create VPN</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 4: Success -->
+          <div v-if="wizardVPN.step === 4" style="text-align:center;">
+            <div style="font-size:2.5rem; margin-bottom:8px;">🎉</div>
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:6px;">Your VPN is ready!</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:20px;">
+              Interface <strong>{{ wizardVPN.ifaceId }}</strong>
+              · {{ wizardVPN.ifaceAddr }}
+              · UDP {{ wizardVPN.ifacePort }}
+              <span v-if="wizardVPN.protocol === 'amneziawg'">
+                · <span style="color:#a78bfa;">AWG2</span>
+              </span>
+            </p>
+
+            <!-- QR code -->
+            <div style="display:inline-block; padding:12px; border-radius:12px; background:#fff; margin-bottom:20px;">
+              <img :src="wizardVPN.qrUrl" style="width:220px; height:220px; display:block;">
+            </div>
+
+            <!-- Buttons -->
+            <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+              <button @click="wizardVPNDownload()"
+                      class="text-white text-sm rounded-lg font-medium"
+                      style="padding:10px 28px; background:#2563eb; border:none; cursor:pointer; width:220px;">
+                ⬇ Download Config
+              </button>
+              <button @click="switchPage('interfaces')"
+                      class="text-sm rounded-lg dark:text-neutral-300"
+                      style="padding:10px 28px; border:1px solid #d1d5db; cursor:pointer; width:220px;">
+                Go to Interfaces
+              </button>
+              <button @click="wizardVPNReset()"
+                      class="text-sm text-gray-400 dark:text-neutral-500"
+                      style="padding:8px; border:none; background:none; cursor:pointer;">
+                + Create another VPN
+              </button>
+            </div>
+          </div>
+
+        </div><!-- /activePage === 'wizard-simple-vpn' -->
+
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/gridstack@10/dist/gridstack-all.js"></script>

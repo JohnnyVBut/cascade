@@ -158,6 +158,8 @@ new Vue({
       { id: 'remotes',          label: 'Remotes' },
       { id: 'settings',         label: 'Settings' },
       { id: 'administration',   label: 'Administration' },
+      { id: '_header_wizards',  label: 'Wizards', type: 'header' },
+      { id: 'wizard-simple-vpn', label: 'Simple Client VPN' },
     ],
 
     // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -420,6 +422,22 @@ new Vue({
     speedtestResult: null,
     speedtestError: '',
     speedtestHistory: [],
+
+    // ── Wizard: Simple Client VPN ─────────────────────────────────────────────
+    wizardVPN: {
+      step: 1,                // 1=protocol, 2=name, 3=dns+peer, 4=result
+      protocol: 'wireguard',  // 'wireguard' | 'amneziawg'
+      ifaceName: '',
+      dns: '',
+      peerName: 'My Device',
+      running: false,
+      error: '',
+      ifaceId: '',
+      peerId: '',
+      qrUrl: '',
+      ifaceAddr: '',
+      ifacePort: 0,
+    },
 
     showGatewayCreate: false,
     showGatewayEdit:   false,
@@ -1142,6 +1160,9 @@ new Vue({
       if (pageId === 'firewall-aliases') {
         this.loadAliases();
         this.loadClientGroups();
+      }
+      if (pageId === 'wizard-simple-vpn') {
+        this.wizardVPNInit();
       }
       if (pageId === 'firewall') {
         this.loadFirewallRules();
@@ -5807,6 +5828,121 @@ new Vue({
       this.latestRelease = latestRelease;
     }).catch((err) => console.error(err));
   },
+
+    // ========================================================================
+    // Wizard: Simple Client VPN
+    // ========================================================================
+
+    // Returns 443 if not used by any existing interface, otherwise a random port in 400–999.
+    wizardVPNPickPort() {
+      const usedPorts = new Set((this.tunnelInterfaces || []).map(i => i.listenPort));
+      if (!usedPorts.has(443)) return 443;
+      for (let attempts = 0; attempts < 200; attempts++) {
+        const p = Math.floor(Math.random() * 600) + 400; // 400–999
+        if (!usedPorts.has(p)) return p;
+      }
+      return 443; // fallback if all 600 ports somehow occupied
+    },
+
+    wizardVPNInit() {
+      this.wizardVPN = {
+        step: 1,
+        protocol: 'wireguard',
+        ifaceName: '',
+        dns: this.globalSettings.dns || '',
+        peerName: 'My Device',
+        running: false,
+        error: '',
+        ifaceId: '',
+        peerId: '',
+        qrUrl: '',
+        ifaceAddr: '',
+        ifacePort: 0,
+      };
+    },
+
+    async wizardVPNRun() {
+      this.wizardVPN.running = true;
+      this.wizardVPN.error = '';
+      try {
+        const proto = this.wizardVPN.protocol;
+        let awgParams = null;
+
+        // Generate AWG obfuscation params if needed
+        if (proto === 'amneziawg') {
+          const host = (this.globalSettings.resolvedPublicIP || '').trim();
+          const isIPv4 = /^\d+\.\d+\.\d+\.\d+$/.test(host);
+          const isIPv6 = host.includes(':');
+          const isDomain = host && !isIPv4 && !isIPv6;
+          const profile = isDomain ? 'quic_burst' : 'tls_client_hello';
+          const res = await this.api.call({
+            method: 'post',
+            path: '/templates/generate',
+            body: { profile, intensity: 'medium', host: isDomain ? host : '' },
+          });
+          awgParams = res.params;
+        }
+
+        // Pick a low port (443 preferred, fallback random 400–999)
+        const wizardPort = this.wizardVPNPickPort();
+
+        // Create + start interface via quick-create
+        const qcBody = {
+          protocol: proto === 'amneziawg' ? 'amneziawg-2.0' : 'wireguard-1.0',
+        };
+        const trimmedName = (this.wizardVPN.ifaceName || '').trim();
+        if (trimmedName) qcBody.name = trimmedName;
+
+        const qcData = await this.api.call({ method: 'post', path: '/tunnel-interfaces/quick-create', body: qcBody });
+        const ifaceId = qcData.interface.id;
+        this.wizardVPN.ifaceId = ifaceId;
+        this.wizardVPN.ifaceAddr = qcData.interface.address || '';
+
+        // Apply port, DNS override and/or AWG params via PATCH (always needed for port)
+        const patch = { listenPort: wizardPort };
+        if (this.wizardVPN.dns) patch.dns = this.wizardVPN.dns;
+        if (awgParams) patch.settings = awgParams;
+        await this.api.call({ method: 'patch', path: `/tunnel-interfaces/${ifaceId}`, body: patch });
+        // PATCH with listenPort triggers restart automatically (wg-quick rebind)
+        this.wizardVPN.ifacePort = wizardPort;
+
+        // Create first peer
+        const peerRes = await this.api.call({
+          method: 'post',
+          path: `/tunnel-interfaces/${ifaceId}/peers`,
+          body: {
+            name: (this.wizardVPN.peerName || '').trim() || 'My Device',
+            peerType: 'client',
+            generateKeys: true,
+            autoAllocateIP: true,
+            persistentKeepalive: 25,
+          },
+        });
+        const peerId = peerRes.peer.id;
+        this.wizardVPN.peerId = peerId;
+        this.wizardVPN.qrUrl = this.peerQrUrl(ifaceId, peerId);
+        this.wizardVPN.step = 4;
+
+        await this.loadTunnelInterfaces();
+      } catch (err) {
+        this.wizardVPN.error = err.message || 'Unknown error';
+      } finally {
+        this.wizardVPN.running = false;
+      }
+    },
+
+    wizardVPNReset() {
+      this.wizardVPNInit();
+    },
+
+    wizardVPNDownload() {
+      this.downloadPeerConfig({
+        id: this.wizardVPN.peerId,
+        name: this.wizardVPN.peerName || 'My Device',
+        interfaceId: this.wizardVPN.ifaceId,
+      });
+    },
+
   watch: {
     // Update browser tab title whenever router name or hostname changes.
     pageTitle: {
