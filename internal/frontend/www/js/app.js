@@ -245,6 +245,7 @@ new Vue({
       listenPort: '',
       disableRoutes: false,
       natDisabled: false,
+      dns: '',
       publicHost: '',
       mtu: 0,
       mss: 0,
@@ -1458,6 +1459,7 @@ new Vue({
         listenPort: iface.listenPort || '',
         disableRoutes: !!iface.disableRoutes,
         natDisabled: !!iface.natDisabled,
+        dns: iface.dns || '',
         publicHost: iface.publicHost || '',
         mtu: iface.mtu || 0,
         mss: iface.mss || 0,
@@ -1495,7 +1497,7 @@ new Vue({
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, natDisabled, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, dns, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
@@ -1515,6 +1517,7 @@ new Vue({
         listenPort: listenPort !== '' && listenPort !== null ? Number(listenPort) : undefined,
         disableRoutes,
         natDisabled,
+        dns: dns || '',
         publicHost: publicHost || '',
         mtu: mtu || 0,
         mss: mss || 0,

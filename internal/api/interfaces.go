@@ -112,6 +112,7 @@ func ifaceJSON(t *tunnel.TunnelInterface, withPeers bool) fiber.Map {
 		"enabled":       t.Enabled,
 		"disableRoutes": t.DisableRoutes,
 		"natDisabled":   t.NatDisabled,
+		"dns":           t.DNS,
 		"publicHost":    t.PublicHost,
 		"mtu":           t.MTU,
 		"mss":           t.MSS,
@@ -273,6 +274,10 @@ func updateInterface(c *fiber.Ctx) error {
 	}
 	if v, ok := raw["natDisabled"].(bool); ok {
 		upd.NatDisabled = &v
+	}
+	if v, ok := raw["dns"].(string); ok {
+		s := strings.TrimSpace(v)
+		upd.DNS = &s
 	}
 	if v, ok := raw["publicHost"].(string); ok {
 		s := strings.TrimSpace(v)
