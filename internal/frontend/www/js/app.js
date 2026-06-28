@@ -1341,7 +1341,18 @@ new Vue({
       this.importBackupForm.fileName = file.name;
       const reader = new FileReader();
       reader.onload = (e) => {
-        this.importBackupForm.json = e.target.result || '';
+        const text = e.target.result || '';
+        this.importBackupForm.json = text;
+        // Auto-detect listen port from JSON
+        try {
+          const parsed = JSON.parse(text);
+          const port =
+            (parsed.interface && parsed.interface.listenPort) || // Cascade export
+            (parsed.server && parsed.server.port);               // AWG-Easy
+          if (port && !this.importBackupForm.listenPort) {
+            this.importBackupForm.listenPort = String(port);
+          }
+        } catch (_) {}
       };
       reader.readAsText(file);
     },
