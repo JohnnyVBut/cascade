@@ -1992,15 +1992,6 @@
               </svg>
               New
             </button>
-            <button @click="showImportConf = true"
-              class="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition"
-              style="background:transparent; color:#0891b2; border:1px solid #0891b2;"
-              title="Import WireGuard .conf file — create a client (uplink) interface">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/>
-              </svg>
-              Import .conf
-            </button>
             <button @click="showImportBackup = true; importBackupTab = 'cascade'; importBackupForm = { json: '', listenPort: '', fileName: '' }"
               class="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition"
               style="background:transparent; color:#7c3aed; border:1px solid #7c3aed;"
@@ -2932,72 +2923,6 @@
           </div>
         </div>
 
-        <!-- ==================== Import .conf Modal ==================== -->
-        <div v-if="showImportConf" class="modal-overlay">
-          <div class="modal-panel bg-white dark:bg-neutral-700" style="max-width:560px; margin:0 auto;">
-            <div class="modal-header">
-              <h3 class="text-lg font-semibold dark:text-neutral-100">Import WireGuard .conf</h3>
-            </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
-              <div class="rounded p-3 text-sm" style="background:#e0f2fe; color:#0c4a6e;">
-                <strong>Client (uplink) interface.</strong>
-                Routing table is not modified — use Firewall → Rules for PBR after import.
-              </div>
-              <div v-if="importConfWarning" class="rounded p-3 text-sm"
-                style="background:#fef9c3; color:#713f12;">
-                ⚠ {{ importConfWarning }}
-              </div>
-              <div>
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
-                  Name <span class="text-red-500">*</span>
-                </label>
-                <input v-model="importConfForm.name" type="text" placeholder="e.g. NL Uplink"
-                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
-              </div>
-              <div>
-                <label class="block text-sm font-medium dark:text-neutral-300 mb-1">
-                  Config content <span class="text-red-500">*</span>
-                </label>
-                <!-- Hidden file input -->
-                <input type="file" ref="confFileInput" accept=".conf,.txt"
-                  style="display:none;" @change="onConfFileSelected">
-                <div class="flex gap-2 mb-2">
-                  <button @click="$refs.confFileInput.click()"
-                    class="flex items-center gap-1 px-3 py-1.5 text-sm rounded border transition dark:border-neutral-500 dark:text-neutral-300"
-                    style="border-color:#d1d5db;" type="button">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/>
-                    </svg>
-                    Browse file…
-                  </button>
-                  <span v-if="importConfForm.fileName"
-                    class="flex items-center text-sm text-gray-500 dark:text-neutral-400">
-                    {{ importConfForm.fileName }}
-                  </span>
-                </div>
-                <textarea v-model="importConfForm.conf" rows="12"
-                  placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = 10.8.0.5/24&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = vpn.example.com:51820&#10;AllowedIPs = 0.0.0.0/0"
-                  class="w-full px-3 py-2 border rounded font-mono text-xs dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
-                  style="resize:vertical;"></textarea>
-                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
-                  Browse or paste. AWG 2.0 configs (with Jc/S1/H1 params) are detected automatically.
-                </p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button @click="showImportConf = false"
-                class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded dark:text-neutral-200 transition">
-                Cancel
-              </button>
-              <button @click="doImportConf()"
-                class="px-4 py-2 text-white rounded transition"
-                style="background:#0891b2;">
-                Import &amp; Start
-              </button>
-            </div>
-          </div>
-        </div>
-
         <!-- ==================== Export Interface Modal ==================== -->
         <div v-if="showExportInterface" class="modal-overlay">
           <div class="bg-white dark:bg-neutral-700 flex flex-col modal-panel modal-panel-md">
@@ -3055,9 +2980,18 @@
                   : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
                 AWG-Easy Migration
               </button>
+              <button @click="importBackupTab = 'conf'; importConfForm = { name:'', conf:'', fileName:'' }; importConfWarning = ''"
+                class="px-4 py-2 text-sm font-medium transition"
+                :style="importBackupTab === 'conf'
+                  ? 'border-bottom:2px solid #7c3aed; color:#7c3aed; margin-bottom:-1px;'
+                  : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
+                WG/AWG .conf
+              </button>
             </div>
-            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
-              <!-- File picker (shared) -->
+
+            <!-- ── Cascade Backup / AWG-Easy body ── -->
+            <div v-if="importBackupTab !== 'conf'" class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+              <!-- File picker -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">
                   <span v-if="importBackupTab === 'cascade'">Cascade export file (.json)</span>
@@ -3076,7 +3010,7 @@
                   </span>
                 </div>
               </div>
-              <!-- Listen port (shared) -->
+              <!-- Listen port -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">
                   UDP Listen Port
@@ -3088,7 +3022,7 @@
                   Must not conflict with existing interfaces.
                 </p>
               </div>
-              <!-- Hint text per tab -->
+              <!-- Hint -->
               <div v-if="importBackupTab === 'cascade'"
                 class="text-xs text-gray-500 dark:text-neutral-400 rounded" style="background:#f0fdf4;padding:10px 12px;">
                 Restores an interface previously exported via the <strong>Export</strong> button.
@@ -3101,6 +3035,76 @@
                 AWG2 obfuscation parameters (Jc, H1–H4, …) are imported automatically.
               </div>
             </div>
+
+            <!-- ── WG/AWG .conf body ── -->
+            <div v-if="importBackupTab === 'conf'" class="modal-body" style="display:flex;flex-direction:column;gap:14px;">
+              <!-- Mode toggle -->
+              <div style="display:flex; gap:8px;">
+                <button @click="importConfMode = 'server'"
+                  class="flex-1 px-3 py-2 text-sm rounded border transition"
+                  :style="importConfMode === 'server'
+                    ? 'background:#7c3aed; color:#fff; border-color:#7c3aed;'
+                    : (theme==='dark' ? 'background:#404040; color:#e5e5e5; border-color:#525252;' : 'background:#f9fafb; color:#374151; border-color:#d1d5db;')">
+                  Client Hub
+                </button>
+                <button @click="importConfMode = 'uplink'"
+                  class="flex-1 px-3 py-2 text-sm rounded border transition"
+                  :style="importConfMode === 'uplink'
+                    ? 'background:#7c3aed; color:#fff; border-color:#7c3aed;'
+                    : (theme==='dark' ? 'background:#404040; color:#e5e5e5; border-color:#525252;' : 'background:#f9fafb; color:#374151; border-color:#d1d5db;')">
+                  Uplink (S2S)
+                </button>
+              </div>
+              <div v-if="importConfMode === 'server'" class="text-xs rounded" style="background:#d1fae5; color:#065f46; padding:8px 12px;">
+                Creates a server interface. [Peer] sections are imported as clients.
+              </div>
+              <div v-else class="text-xs rounded" style="background:#e0f2fe; color:#0c4a6e; padding:8px 12px;">
+                Creates an uplink interface connecting out to a remote server. Routing table is not modified.
+              </div>
+              <div v-if="importConfWarning" class="text-xs rounded" style="background:#fef9c3; color:#713f12; padding:8px 12px;">
+                ⚠ {{ importConfWarning }}
+              </div>
+              <!-- Name -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">
+                  Name <span class="text-red-500">*</span>
+                </label>
+                <input v-model="importConfForm.name" type="text"
+                  :placeholder="importConfMode === 'server' ? 'e.g. Main VPN' : 'e.g. NL Uplink'"
+                  class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
+              </div>
+              <!-- File + textarea -->
+              <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">
+                  Config (.conf) <span class="text-red-500">*</span>
+                </label>
+                <input type="file" ref="confFileInput" accept=".conf,.txt"
+                  style="display:none;" @change="onConfFileSelected">
+                <div class="flex gap-2 mb-2">
+                  <button @click="$refs.confFileInput.click()"
+                    class="flex items-center gap-1 px-3 py-1.5 text-sm rounded border transition dark:border-neutral-500 dark:text-neutral-300"
+                    style="border-color:#d1d5db;" type="button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M8 12l4 4 4-4M12 4v12"/>
+                    </svg>
+                    Browse…
+                  </button>
+                  <span v-if="importConfForm.fileName" class="flex items-center text-sm text-gray-500 dark:text-neutral-400">
+                    {{ importConfForm.fileName }}
+                  </span>
+                </div>
+                <textarea v-model="importConfForm.conf" rows="9"
+                  :placeholder="importConfMode === 'server'
+                    ? '[Interface]\nPrivateKey = ...\nAddress = 10.8.0.1/24\nListenPort = 51820\n\n[Peer]\nPublicKey = ...\nAllowedIPs = 10.8.0.2/32'
+                    : '[Interface]\nPrivateKey = ...\nAddress = 10.8.0.5/24\n\n[Peer]\nPublicKey = ...\nEndpoint = vpn.example.com:51820\nAllowedIPs = 0.0.0.0/0'"
+                  class="w-full px-3 py-2 border rounded font-mono text-xs dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200"
+                  style="resize:vertical;"></textarea>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                  AWG 2.0 (Jc/S1/H1 params) detected automatically.
+                </p>
+              </div>
+            </div>
+
             <div class="modal-footer">
               <button @click="showImportBackup = false"
                 class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded dark:text-neutral-200 transition">
@@ -3111,7 +3115,12 @@
                 style="background:#7c3aed;">
                 Restore &amp; Start
               </button>
-              <button v-else @click="doImportBackup()"
+              <button v-else-if="importBackupTab === 'awgeasy'" @click="doImportBackup()"
+                class="px-4 py-2 text-white rounded transition"
+                style="background:#7c3aed;">
+                Import &amp; Start
+              </button>
+              <button v-else @click="doImportConf()"
                 class="px-4 py-2 text-white rounded transition"
                 style="background:#7c3aed;">
                 Import &amp; Start

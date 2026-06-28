@@ -392,6 +392,14 @@ class API {
     });
   }
 
+  async importTunnelConfServer({ name, conf }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/import-conf-server',
+      body: { name, conf },
+    });
+  }
+
   async importTunnelConf({ name, conf }) {
     return this.call({
       method: 'post',

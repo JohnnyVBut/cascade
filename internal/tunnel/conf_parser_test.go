@@ -87,6 +87,8 @@ AllowedIPs = 0.0.0.0/0
 }
 
 func TestParseWGConf_MissingPeerPublicKey(t *testing.T) {
+	// A [Peer] without PublicKey is silently skipped (peer with empty key is not added to Peers).
+	// Validation that a peer exists is the responsibility of the caller (e.g. ImportConf).
 	conf := `[Interface]
 PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 Address = 10.8.0.5/24
@@ -95,13 +97,19 @@ Address = 10.8.0.5/24
 Endpoint = vpn.example.com:51820
 AllowedIPs = 0.0.0.0/0
 `
-	_, err := ParseWGConf(conf)
-	if err == nil || !strings.Contains(err.Error(), "PublicKey") {
-		t.Errorf("expected PublicKey error, got %v", err)
+	c, err := ParseWGConf(conf)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(c.Peers) != 0 {
+		t.Errorf("expected no peers (no PublicKey), got %d", len(c.Peers))
+	}
+	if c.PeerPublicKey != "" {
+		t.Errorf("expected empty PeerPublicKey, got %q", c.PeerPublicKey)
 	}
 }
 
-func TestParseWGConf_TwoPeerSections_OnlyFirstUsed(t *testing.T) {
+func TestParseWGConf_TwoPeerSections(t *testing.T) {
 	conf := `[Interface]
 PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
 Address = 10.8.0.5/24
@@ -120,14 +128,19 @@ AllowedIPs = 192.168.0.0/16
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	// First peer flat fields should point to the first [Peer].
 	if c.PeerPublicKey != "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=" {
-		t.Errorf("second [Peer] overwrote first: PeerPublicKey = %q", c.PeerPublicKey)
+		t.Errorf("PeerPublicKey = %q", c.PeerPublicKey)
 	}
 	if c.PeerEndpoint != "first.example.com:51820" {
-		t.Errorf("second [Peer] overwrote first: PeerEndpoint = %q", c.PeerEndpoint)
+		t.Errorf("PeerEndpoint = %q", c.PeerEndpoint)
 	}
-	if c.PeerAllowedIPs != "10.0.0.0/8" {
-		t.Errorf("second [Peer] overwrote first: PeerAllowedIPs = %q", c.PeerAllowedIPs)
+	// Both peers should be in the Peers slice.
+	if len(c.Peers) != 2 {
+		t.Fatalf("expected 2 peers, got %d", len(c.Peers))
+	}
+	if c.Peers[1].PublicKey != "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=" {
+		t.Errorf("second peer PublicKey = %q", c.Peers[1].PublicKey)
 	}
 }
 

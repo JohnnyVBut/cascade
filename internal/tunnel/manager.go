@@ -17,6 +17,7 @@ import (
 	"log"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -344,6 +345,9 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 	if err != nil {
 		return nil, fmt.Errorf("parse conf: %w", err)
 	}
+	if parsed.PeerPublicKey == "" {
+		return nil, fmt.Errorf("missing PublicKey in [Peer] section (required for uplink mode)")
+	}
 
 	// Validate private key before using it in shell commands (prevent injection).
 	// Same check AddPeer performs — see newline injection note in interface.go.
@@ -438,6 +442,109 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 		Started:         startErr == nil,
 		StartError:      startErr,
 		ConflictWarning: conflictWarning,
+	}, nil
+}
+
+// ImportConfAsServerResult is returned by Manager.ImportConfAsServer.
+type ImportConfAsServerResult struct {
+	Interface    *TunnelInterface
+	PeersCreated int
+	PeersFailed  []string
+	Started      bool
+	StartError   error
+}
+
+// ImportConfAsServer parses a WireGuard / AmneziaWG server .conf file and creates
+// a normal client-hub interface (DisableRoutes=false, Uplink=false).
+// Each [Peer] section in the conf becomes a client peer on the new interface.
+// The interface is started immediately; peer-creation errors are collected but
+// do not roll back the interface.
+func (m *Manager) ImportConfAsServer(name, confContent string) (*ImportConfAsServerResult, error) {
+	parsed, err := ParseWGConf(confContent)
+	if err != nil {
+		return nil, fmt.Errorf("parse conf: %w", err)
+	}
+	if err := validate.WGKey(parsed.PrivateKey); err != nil {
+		return nil, fmt.Errorf("invalid PrivateKey: %w", err)
+	}
+
+	listenPort := parsed.ListenPort // may be 0 — manager will auto-assign
+
+	iface, err := m.CreateInterface(CreateInput{
+		Name:          name,
+		Protocol:      parsed.Protocol,
+		Address:       parsed.Address,
+		ListenPort:    listenPort,
+		DisableRoutes: false,
+		AWG2:          parsed.AWG2,
+		DNS:           parsed.DNS,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create interface: %w", err)
+	}
+
+	// Override auto-generated key pair with keys from the .conf file.
+	syncBin := "wg"
+	if parsed.Protocol == "amneziawg-2.0" {
+		syncBin = "awg"
+	}
+	keys, err := peer.DerivePublicKey(syncBin, parsed.PrivateKey)
+	if err != nil {
+		_ = m.DeleteInterface(iface.ID)
+		return nil, fmt.Errorf("derive public key: %w", err)
+	}
+	iface.PrivateKey = parsed.PrivateKey
+	iface.PublicKey = keys
+	if parsed.MTU > 0 {
+		iface.MTU = parsed.MTU
+	}
+	if err := iface.save(); err != nil {
+		_ = m.DeleteInterface(iface.ID)
+		return nil, fmt.Errorf("save interface keys: %w", err)
+	}
+	if err := iface.RegenerateConfig(); err != nil {
+		_ = m.DeleteInterface(iface.ID)
+		return nil, fmt.Errorf("regenerate config: %w", err)
+	}
+
+	// Import [Peer] sections as client peers.
+	var peersCreated int
+	var peersFailed []string
+	for i, pp := range parsed.Peers {
+		if err := validate.WGKey(pp.PublicKey); err != nil {
+			peersFailed = append(peersFailed, fmt.Sprintf("peer-%d (invalid key)", i+1))
+			continue
+		}
+		addr := pp.AllowedIPs
+		if addr == "" {
+			peersFailed = append(peersFailed, fmt.Sprintf("peer-%d (no AllowedIPs)", i+1))
+			continue
+		}
+		// Use the first AllowedIPs entry as the peer address.
+		addr = strings.TrimSpace(strings.SplitN(addr, ",", 2)[0])
+		name := fmt.Sprintf("peer-%d", i+1)
+		_, addErr := iface.AddPeer(peer.PeerInput{
+			Name:         name,
+			PublicKey:    pp.PublicKey,
+			PresharedKey: pp.PresharedKey,
+			AllowedIPs:   addr,
+			Address:      addr,
+			PeerType:     "client",
+		})
+		if addErr != nil {
+			peersFailed = append(peersFailed, fmt.Sprintf("%s: %v", name, addErr))
+		} else {
+			peersCreated++
+		}
+	}
+
+	startErr := iface.Start()
+	return &ImportConfAsServerResult{
+		Interface:    iface,
+		PeersCreated: peersCreated,
+		PeersFailed:  peersFailed,
+		Started:      startErr == nil,
+		StartError:   startErr,
 	}, nil
 }
 
