@@ -5668,6 +5668,7 @@ new Vue({
         qrUrl: '',
         ifaceAddr: '',
         ifacePort: 0,
+        startWarning: '',
       };
     },
 
@@ -5734,6 +5735,10 @@ new Vue({
         this.wizardVPN.step = 4;
 
         await this.loadTunnelInterfaces();
+        const created = this.tunnelInterfaces.find(i => i.id === ifaceId);
+        if (created && !created.enabled) {
+          this.wizardVPN.startWarning = `Interface ${ifaceId} was created but failed to start — UDP port ${wizardPort} may be in use. Go to Interfaces to start it manually or change the port.`;
+        }
       } catch (err) {
         this.wizardVPN.error = err.message || 'Unknown error';
       } finally {

@@ -8302,6 +8302,13 @@
               </span>
             </p>
 
+            <!-- Start warning -->
+            <div v-if="wizardVPN.startWarning"
+                 style="text-align:left; margin-bottom:16px; padding:10px 14px; border-radius:6px; background:rgba(234,179,8,0.12); border:1px solid rgba(234,179,8,0.4); color:#92400e; font-size:0.83rem;"
+                 :style="theme==='dark' ? 'color:#fde68a;' : 'color:#92400e;'">
+              ⚠ {{ wizardVPN.startWarning }}
+            </div>
+
             <!-- QR code -->
             <div style="display:inline-block; padding:12px; border-radius:12px; background:#fff; margin-bottom:20px;">
               <img :src="wizardVPN.qrUrl" style="width:220px; height:220px; display:block;">
