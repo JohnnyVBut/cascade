@@ -2965,26 +2965,26 @@
               <button @click="showImportBackup = false" class="text-gray-400 hover:text-gray-600 dark:text-neutral-400">✕</button>
             </div>
             <!-- Tab bar -->
-            <div class="flex" style="border-bottom:1px solid #e5e7eb; padding:0 20px;">
+            <div class="flex" :style="'border-bottom:1px solid ' + (theme==='dark' ? '#525252' : '#e5e7eb') + '; padding:0 20px;'">
               <button @click="importBackupTab = 'cascade'; importBackupForm = { json:'', listenPort:'', fileName:'' }"
                 class="px-4 py-2 text-sm font-medium transition"
                 :style="importBackupTab === 'cascade'
                   ? 'border-bottom:2px solid #7c3aed; color:#7c3aed; margin-bottom:-1px;'
-                  : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
+                  : 'border-bottom:2px solid transparent; margin-bottom:-1px; color:' + (theme==='dark' ? '#a3a3a3' : '#6b7280') + ';'">
                 Cascade Backup
               </button>
               <button @click="importBackupTab = 'awgeasy'; importBackupForm = { json:'', listenPort:'', fileName:'' }"
                 class="px-4 py-2 text-sm font-medium transition"
                 :style="importBackupTab === 'awgeasy'
                   ? 'border-bottom:2px solid #7c3aed; color:#7c3aed; margin-bottom:-1px;'
-                  : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
+                  : 'border-bottom:2px solid transparent; margin-bottom:-1px; color:' + (theme==='dark' ? '#a3a3a3' : '#6b7280') + ';'">
                 AWG-Easy Migration
               </button>
               <button @click="importBackupTab = 'conf'; importConfForm = { name:'', conf:'', fileName:'' }; importConfWarning = ''"
                 class="px-4 py-2 text-sm font-medium transition"
                 :style="importBackupTab === 'conf'
                   ? 'border-bottom:2px solid #7c3aed; color:#7c3aed; margin-bottom:-1px;'
-                  : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
+                  : 'border-bottom:2px solid transparent; margin-bottom:-1px; color:' + (theme==='dark' ? '#a3a3a3' : '#6b7280') + ';'">
                 WG/AWG .conf
               </button>
             </div>
