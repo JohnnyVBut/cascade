@@ -744,7 +744,7 @@
                         </div>
                         <div style="flex:1; min-width:80px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
                           :style="{ background: theme === 'dark' ? '#525252' : '#f9fafb' }">
-                          <div class="text-2xl font-bold" style="color:#22c55e;">{{ allPeers.filter(p => p.endpoint).length }}</div>
+                          <div class="text-2xl font-bold" style="color:#22c55e;">{{ allPeers.filter(p => p.runtimeEndpoint).length }}</div>
                           <div class="text-xs text-gray-500 dark:text-neutral-400 mt-1">Connected</div>
                         </div>
                         <div style="flex:1; min-width:80px; text-align:center; padding:8px; background:#f9fafb; border-radius:8px;"
