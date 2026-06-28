@@ -5642,15 +5642,16 @@ new Vue({
     // Wizard: Simple Client VPN
     // ========================================================================
 
-    // Returns 443 if not used by any existing interface, otherwise a random port in 400–999.
+    // Returns a random low port (400–999) not used by any existing interface.
+    // 443 is excluded — Caddy binds UDP 443 for QUIC/HTTP3 in the standard deploy.
     wizardVPNPickPort() {
       const usedPorts = new Set((this.tunnelInterfaces || []).map(i => i.listenPort));
-      if (!usedPorts.has(443)) return 443;
+      usedPorts.add(443); // always skip — Caddy QUIC
       for (let attempts = 0; attempts < 200; attempts++) {
         const p = Math.floor(Math.random() * 600) + 400; // 400–999
         if (!usedPorts.has(p)) return p;
       }
-      return 443; // fallback if all 600 ports somehow occupied
+      return 8443; // last-resort fallback
     },
 
     wizardVPNInit() {
