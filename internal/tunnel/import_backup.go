@@ -107,19 +107,41 @@ type awgEasyClient struct {
 
 // ── Input / Result types ──────────────────────────────────────────────────────
 
-// ImportBackupInput is the payload for Manager.ImportBackup.
+// ImportBackupInput is the payload for Manager.ImportBackup (AWG-Easy format).
 type ImportBackupInput struct {
 	RawJSON    string // raw content of the AWG-Easy backup JSON file
 	ListenPort int    // UDP port to assign to the new interface
 }
 
-// ImportBackupResult is returned by Manager.ImportBackup.
+// ImportInterfaceInput is the payload for Manager.ImportInterface (Cascade export format).
+type ImportInterfaceInput struct {
+	RawJSON    string // raw content of a Cascade export JSON (GET /:id/export)
+	ListenPort int    // UDP port to assign to the restored interface
+}
+
+// ImportBackupResult is returned by Manager.ImportBackup and Manager.ImportInterface.
 type ImportBackupResult struct {
 	Interface    *TunnelInterface
 	PeersCreated int
 	PeersFailed  []string // names of clients that could not be imported
 	Started      bool
 	StartError   error
+}
+
+// ImportInterface restores a Cascade interface export (produced by GET /:id/export).
+// It creates a new interface with the original keys and optionally recreates peers.
+func (m *Manager) ImportInterface(inp ImportInterfaceInput) (*ImportBackupResult, error) {
+	if inp.ListenPort <= 0 || inp.ListenPort > 65535 {
+		return nil, fmt.Errorf("invalid listen port %d", inp.ListenPort)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(inp.RawJSON), &raw); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if _, ok := raw["interface"]; !ok {
+		return nil, fmt.Errorf("not a Cascade export: missing \"interface\" key")
+	}
+	return m.importCascadeBackup(ImportBackupInput{RawJSON: inp.RawJSON, ListenPort: inp.ListenPort}, raw)
 }
 
 // ── ImportBackup ──────────────────────────────────────────────────────────────
@@ -135,18 +157,6 @@ type ImportBackupResult struct {
 // preserved for later QR / config download.  Disabled clients in the backup
 // are created as disabled in Cascade.
 func (m *Manager) ImportBackup(inp ImportBackupInput) (*ImportBackupResult, error) {
-	if inp.ListenPort <= 0 || inp.ListenPort > 65535 {
-		return nil, fmt.Errorf("invalid listen port %d", inp.ListenPort)
-	}
-
-	// ── Auto-detect format ────────────────────────────────────────────────────
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(inp.RawJSON), &raw); err != nil {
-		return nil, fmt.Errorf("invalid JSON: %w", err)
-	}
-	if _, isCascade := raw["interface"]; isCascade {
-		return m.importCascadeBackup(inp, raw)
-	}
 	return m.importAWGEasyBackup(inp)
 }
 
@@ -273,7 +283,8 @@ func (m *Manager) importCascadeBackup(inp ImportBackupInput, raw map[string]json
 	}, nil
 }
 
-// importAWGEasyBackup handles the AWG-Easy backup format:
+// importAWGEasyBackup parses an AWG-Easy JSON backup and creates a new interface with
+// all its clients. Keys (server + client) are used as-is — no regeneration.
 // { "server": { privateKey, publicKey, address, jc, ... }, "clients": { uuid: {...} } }
 func (m *Manager) importAWGEasyBackup(inp ImportBackupInput) (*ImportBackupResult, error) {
 	// ── Parse JSON ────────────────────────────────────────────────────────────

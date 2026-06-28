@@ -238,7 +238,11 @@ new Vue({
     importConfForm: { name: '', conf: '', fileName: '' },
     importConfWarning: '',
     showImportBackup: false,
+    importBackupTab: 'cascade', // 'cascade' | 'awgeasy'
     importBackupForm: { json: '', listenPort: '', fileName: '' },
+    showExportInterface: false,
+    exportInterfaceId: null,
+    exportInterfaceIncludePeers: true,
     showInterfaceEdit: false,
     interfaceEdit: {
       id: null,
@@ -1378,6 +1382,57 @@ new Vue({
         }
       } catch (err) {
         console.error('Import backup failed:', err);
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
+    openExportInterface(iface) {
+      this.exportInterfaceId = iface.id;
+      this.exportInterfaceIncludePeers = true;
+      this.showExportInterface = true;
+    },
+
+    async doExportInterface() {
+      if (!this.exportInterfaceId) return;
+      try {
+        const blob = await this.api.exportTunnelInterface({
+          interfaceId: this.exportInterfaceId,
+          includePeers: this.exportInterfaceIncludePeers,
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${this.exportInterfaceId}-export.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showExportInterface = false;
+      } catch (err) {
+        this.showToast(`Export failed: ${err.message}`, 'error');
+      }
+    },
+
+    async doImportInterface() {
+      const json = (this.importBackupForm.json || '').trim();
+      const port = parseInt(this.importBackupForm.listenPort, 10);
+      if (!json)        { this.showToast('Please select a backup file', 'error'); return; }
+      if (!port || port < 1 || port > 65535) {
+        this.showToast('Please enter a valid UDP port (1–65535)', 'error'); return;
+      }
+      try {
+        const res = await this.api.importTunnelInterface({ json, listenPort: port });
+        this.showImportBackup = false;
+        this.importBackupForm = { json: '', listenPort: '', fileName: '' };
+        await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
+        const iface = res.interface || {};
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const msg = res.started
+          ? `✅ Interface restored: ${iface.id} · ${iface.address}${proto} · ${res.peersCreated} peers`
+          : `⚠️ Interface restored but failed to start: ${res.startError || ''}`;
+        this.showToast(msg, res.started ? 'success' : 'error');
+        if (res.started) this.activeInterfaceId = iface.id;
+      } catch (err) {
         this.showToast(`Failed: ${err.message}`, 'error');
       }
     },
