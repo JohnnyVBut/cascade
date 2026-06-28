@@ -5638,21 +5638,6 @@ new Vue({
         this.showToast(err.message || 'Failed to disable 2FA', 'error');
       }
     },
-  },
-  filters: {
-    bytes,
-    timeago: (value) => {
-      return timeago.format(value, i18n.locale);
-    },
-    expiredDateFormat: (value) => {
-      if (value === null) return i18n.t('Permanent');
-      const dateTime = new Date(value);
-      const options = { year: 'numeric', month: 'long', day: 'numeric' };
-      return dateTime.toLocaleDateString(i18n.locale, options);
-    },
-    expiredDateEditFormat: (value) => {
-      if (value === null) return 'yyyy-MM-dd';
-    },
     // ========================================================================
     // Wizard: Simple Client VPN
     // ========================================================================
@@ -5767,6 +5752,21 @@ new Vue({
       });
     },
 
+  },
+  filters: {
+    bytes,
+    timeago: (value) => {
+      return timeago.format(value, i18n.locale);
+    },
+    expiredDateFormat: (value) => {
+      if (value === null) return i18n.t('Permanent');
+      const dateTime = new Date(value);
+      const options = { year: 'numeric', month: 'long', day: 'numeric' };
+      return dateTime.toLocaleDateString(i18n.locale, options);
+    },
+    expiredDateEditFormat: (value) => {
+      if (value === null) return 'yyyy-MM-dd';
+    },
   },
   mounted() {
     // Remove splash screen — Vue is mounted, content is ready
