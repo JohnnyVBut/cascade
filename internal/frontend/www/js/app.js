@@ -5734,6 +5734,9 @@ new Vue({
         this.wizardVPN.qrUrl = this.peerQrUrl(ifaceId, peerId);
         this.wizardVPN.step = 4;
 
+        // Wait for the async restart goroutine (PATCH with listenPort triggers
+        // restart in a goroutine — the API returns before wg-quick finishes).
+        await new Promise(r => setTimeout(r, 2500));
         await this.loadTunnelInterfaces();
         const created = this.tunnelInterfaces.find(i => i.id === ifaceId);
         if (created && !created.enabled) {
