@@ -72,6 +72,9 @@ func RegisterInterfaces(api fiber.Router) {
 	g.Get("/:id/export-params", exportInterfaceParams)
 	g.Get("/:id/export-obfuscation", exportObfuscation)
 
+	g.Get("/:id/export", exportInterface)
+	g.Post("/import-interface", importInterface)
+
 	g.Get("/:id/backup", backupInterface)
 	g.Put("/:id/restore", restoreInterface)
 }
@@ -498,10 +501,8 @@ func backupInterface(c *fiber.Ctx) error {
 
 	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.json"`, id))
 	c.Set("Content-Type", "application/json")
-	ifaceMap := ifaceJSON(t, false)
-	ifaceMap["privateKey"] = t.PrivateKey // required for full restore via Import Backup
 	return c.JSON(fiber.Map{
-		"interface": ifaceMap,
+		"interface": ifaceJSON(t, false),
 		"peers":     peers,
 	})
 }
@@ -551,6 +552,83 @@ func restoreInterface(c *fiber.Ctx) error {
 
 	t = mgr().GetInterface(id)
 	return c.JSON(fiber.Map{"interface": ifaceJSON(t, true)})
+}
+
+// GET /api/tunnel-interfaces/:id/export
+// Full interface export: config (including privateKey) + optionally peers.
+// Query param: ?peers=1 to include peers (default: included).
+// The resulting JSON can be imported via POST /import-interface.
+func exportInterface(c *fiber.Ctx) error {
+	id := c.Params("id")
+	t := mgr().GetInterface(id)
+	if t == nil {
+		return fiber.NewError(fiber.StatusNotFound, "interface not found")
+	}
+
+	ifaceMap := ifaceJSON(t, false)
+	ifaceMap["privateKey"] = t.PrivateKey
+
+	includePeers := c.Query("peers", "1") != "0"
+	var peers interface{}
+	if includePeers {
+		pp := t.GetAllPeers()
+		if pp == nil {
+			pp = []*peer.Peer{}
+		}
+		peers = pp
+	}
+
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-export.json"`, id))
+	c.Set("Content-Type", "application/json")
+	return c.JSON(fiber.Map{
+		"interface": ifaceMap,
+		"peers":     peers,
+	})
+}
+
+// POST /api/tunnel-interfaces/import-interface
+// Creates a new interface from a Cascade export JSON (produced by GET /export).
+// Body: { json: "<raw JSON string>", listenPort: N }
+func importInterface(c *fiber.Ctx) error {
+	var body struct {
+		JSON       string `json:"json"`
+		ListenPort int    `json:"listenPort"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if strings.TrimSpace(body.JSON) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "json is required")
+	}
+	if body.ListenPort <= 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "listenPort is required")
+	}
+
+	result, err := mgr().ImportInterface(tunnel.ImportInterfaceInput{
+		RawJSON:    body.JSON,
+		ListenPort: body.ListenPort,
+	})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after import-interface %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	resp := fiber.Map{
+		"interface":    ifaceJSON(result.Interface, false),
+		"peersCreated": result.PeersCreated,
+		"peersFailed":  result.PeersFailed,
+		"started":      result.Started,
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
+	}
+	return c.JSON(resp)
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

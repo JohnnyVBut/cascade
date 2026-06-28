@@ -408,6 +408,23 @@ class API {
     });
   }
 
+  async exportTunnelInterface({ interfaceId, includePeers }) {
+    const peers = includePeers ? '1' : '0';
+    const res = await fetch(`./api/tunnel-interfaces/${interfaceId}/export?peers=${peers}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.blob();
+  }
+
+  async importTunnelInterface({ json, listenPort }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/import-interface',
+      body: { json, listenPort },
+    });
+  }
+
   async updateTunnelInterface({ interfaceId, ...updates }) {
     return this.call({
       method: 'patch',

@@ -2001,14 +2001,14 @@
               </svg>
               Import .conf
             </button>
-            <button @click="showImportBackup = true"
+            <button @click="showImportBackup = true; importBackupTab = 'cascade'; importBackupForm = { json: '', listenPort: '', fileName: '' }"
               class="flex items-center gap-1 px-3 py-1.5 rounded text-sm font-medium transition"
               style="background:transparent; color:#7c3aed; border:1px solid #7c3aed;"
-              title="Import Cascade or AWG-Easy backup JSON — server and client keys are preserved">
+              title="Import interface — restore a Cascade backup or migrate from AWG-Easy">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3 7h18M3 12h18M3 17h18"/>
               </svg>
-              Import Backup
+              Import
             </button>
           </div>
 
@@ -2340,6 +2340,13 @@
                     style="border: 1px solid currentColor;"
                     title="Edit interface settings (name, address, port, obfuscation profile)">
                     Edit
+                  </button>
+                  <!-- Export Interface -->
+                  <button @click="openExportInterface(currentInterface)"
+                    class="px-3 py-1 text-sm rounded transition"
+                    style="border:1px solid #059669; color:#059669;"
+                    title="Export interface config + peers as a Cascade backup file">
+                    Export
                   </button>
                   <button @click="deleteTunnelInterface(currentInterface)"
                     class="px-3 py-1 text-sm text-red-600 dark:text-red-400 rounded transition"
@@ -2991,18 +2998,70 @@
           </div>
         </div>
 
-        <!-- ==================== Import Backup Modal ==================== -->
+        <!-- ==================== Export Interface Modal ==================== -->
+        <div v-if="showExportInterface" class="modal-overlay">
+          <div class="bg-white dark:bg-neutral-700 flex flex-col modal-panel modal-panel-md">
+            <div class="modal-header">
+              <h3 class="text-lg font-semibold dark:text-neutral-100">Export Interface</h3>
+              <button @click="showExportInterface = false" class="text-gray-400 hover:text-gray-600 dark:text-neutral-400">✕</button>
+            </div>
+            <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
+              <div class="text-sm text-gray-700 dark:text-neutral-300">
+                Exports the interface config (including the private key) as a JSON file
+                that can be restored via <strong>Import → Cascade Backup</strong>.
+              </div>
+              <label class="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-neutral-300">
+                <input type="checkbox" v-model="exportInterfaceIncludePeers" class="w-4 h-4">
+                Include peers (client configs)
+              </label>
+              <div class="text-xs text-gray-400 dark:text-neutral-500 rounded" style="background:#fef9c3;padding:10px 12px; color:#92400e;">
+                ⚠️ This file contains the server private key. Keep it secure.
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button @click="showExportInterface = false"
+                class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded dark:text-neutral-200 transition">
+                Cancel
+              </button>
+              <button @click="doExportInterface()"
+                class="px-4 py-2 text-white rounded transition"
+                style="background:#059669;">
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== Import Modal (two tabs) ==================== -->
         <div v-if="showImportBackup" class="modal-overlay">
           <div class="bg-white dark:bg-neutral-700 flex flex-col modal-panel modal-panel-md">
             <div class="modal-header">
-              <h3 class="text-lg font-semibold dark:text-neutral-100">Import Backup</h3>
+              <h3 class="text-lg font-semibold dark:text-neutral-100">Import Interface</h3>
               <button @click="showImportBackup = false" class="text-gray-400 hover:text-gray-600 dark:text-neutral-400">✕</button>
             </div>
+            <!-- Tab bar -->
+            <div class="flex" style="border-bottom:1px solid #e5e7eb; padding:0 20px;">
+              <button @click="importBackupTab = 'cascade'; importBackupForm = { json:'', listenPort:'', fileName:'' }"
+                class="px-4 py-2 text-sm font-medium transition"
+                :style="importBackupTab === 'cascade'
+                  ? 'border-bottom:2px solid #7c3aed; color:#7c3aed; margin-bottom:-1px;'
+                  : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
+                Cascade Backup
+              </button>
+              <button @click="importBackupTab = 'awgeasy'; importBackupForm = { json:'', listenPort:'', fileName:'' }"
+                class="px-4 py-2 text-sm font-medium transition"
+                :style="importBackupTab === 'awgeasy'
+                  ? 'border-bottom:2px solid #7c3aed; color:#7c3aed; margin-bottom:-1px;'
+                  : 'color:#6b7280; border-bottom:2px solid transparent; margin-bottom:-1px;'">
+                AWG-Easy Migration
+              </button>
+            </div>
             <div class="modal-body" style="display:flex;flex-direction:column;gap:16px;">
-              <!-- File picker -->
+              <!-- File picker (shared) -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">
-                  Backup file (.json)
+                  <span v-if="importBackupTab === 'cascade'">Cascade export file (.json)</span>
+                  <span v-else>AWG-Easy backup file (.json)</span>
                 </label>
                 <div class="flex items-center gap-2">
                   <label class="px-3 py-1.5 rounded text-sm font-medium cursor-pointer transition"
@@ -3017,7 +3076,7 @@
                   </span>
                 </div>
               </div>
-              <!-- Listen port -->
+              <!-- Listen port (shared) -->
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-neutral-300 mb-1">
                   UDP Listen Port
@@ -3029,9 +3088,16 @@
                   Must not conflict with existing interfaces.
                 </p>
               </div>
-              <div class="text-xs text-gray-500 dark:text-neutral-400 rounded" style="background:#f9fafb;padding:10px 12px;">
-                Accepts Cascade backups (.json from the Backup button) and AWG-Easy backups.
-                Server and client keys are preserved as-is — existing client configs remain valid.
+              <!-- Hint text per tab -->
+              <div v-if="importBackupTab === 'cascade'"
+                class="text-xs text-gray-500 dark:text-neutral-400 rounded" style="background:#f0fdf4;padding:10px 12px;">
+                Restores an interface previously exported via the <strong>Export</strong> button.
+                Server and peer keys are preserved — existing client configs remain valid.
+              </div>
+              <div v-else
+                class="text-xs text-gray-500 dark:text-neutral-400 rounded" style="background:#f9fafb;padding:10px 12px;">
+                Migrates from AWG-Easy (wg-easy) without reissuing client configs.
+                Server and client keys are preserved as-is.
                 AWG2 obfuscation parameters (Jc, H1–H4, …) are imported automatically.
               </div>
             </div>
@@ -3040,7 +3106,12 @@
                 class="px-4 py-2 border border-gray-300 dark:border-neutral-500 rounded dark:text-neutral-200 transition">
                 Cancel
               </button>
-              <button @click="doImportBackup()"
+              <button v-if="importBackupTab === 'cascade'" @click="doImportInterface()"
+                class="px-4 py-2 text-white rounded transition"
+                style="background:#7c3aed;">
+                Restore &amp; Start
+              </button>
+              <button v-else @click="doImportBackup()"
                 class="px-4 py-2 text-white rounded transition"
                 style="background:#7c3aed;">
                 Import &amp; Start
