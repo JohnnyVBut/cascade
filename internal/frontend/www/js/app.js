@@ -234,8 +234,8 @@ new Vue({
     allPeers: [],            // dashboard: flat list of peers from all interfaces
     showInterfaceCreate: false,
     createMode: 'quick',        // 'quick' | 'manual' — controls which form is shown in the create modal
-    showImportConf: false,
     importConfForm: { name: '', conf: '', fileName: '' },
+    importConfMode: 'server', // 'server' (client hub) | 'uplink' (S2S)
     importConfWarning: '',
     showImportBackup: false,
     importBackupTab: 'cascade', // 'cascade' | 'awgeasy'
@@ -1308,8 +1308,11 @@ new Vue({
 
       this.importConfWarning = '';
       try {
-        const res = await this.api.importTunnelConf({ name, conf });
-        this.showImportConf = false;
+        const isServer = this.importConfMode === 'server';
+        const res = isServer
+          ? await this.api.importTunnelConfServer({ name, conf })
+          : await this.api.importTunnelConf({ name, conf });
+        this.showImportBackup = false;
         this.importConfForm = { name: '', conf: '', fileName: '' };
         await this.loadTunnelInterfaces();
         this.loadNatInterfaces();
@@ -1321,13 +1324,17 @@ new Vue({
           this.showToast(`⚠️ ${res.conflictWarning}`, 'error');
         }
         if (res.started) {
-          this.showToast(`✅ ${iface.id} imported & started · ${iface.address}${proto}`);
+          const extra = isServer ? ` · ${res.peersCreated} peers` : '';
+          this.showToast(`✅ ${iface.id} imported & started · ${iface.address}${proto}${extra}`);
           this.activeInterfaceId = iface.id;
         } else {
           this.showToast(
             `⚠️ ${iface.id} imported but failed to start\n${res.startError || 'Unknown error'}`,
             'error'
           );
+        }
+        if (isServer && (res.peersFailed || []).length > 0) {
+          this.showToast(`⚠️ Failed to import peers: ${res.peersFailed.join(', ')}`, 'error');
         }
       } catch (err) {
         console.error('Import conf failed:', err);

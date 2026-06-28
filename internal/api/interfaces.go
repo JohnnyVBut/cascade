@@ -59,6 +59,7 @@ func RegisterInterfaces(api fiber.Router) {
 	// to avoid Fiber routing the literal path segment as a parameter value.
 	g.Post("/quick-create", quickCreateInterface)
 	g.Post("/import-conf", importConfInterface)
+	g.Post("/import-conf-server", importConfServerInterface)
 	g.Post("/import-backup", importBackupInterface)
 
 	g.Get("/:id", getInterface)
@@ -355,6 +356,55 @@ func importConfInterface(c *fiber.Ctx) error {
 	}
 	if result.ConflictWarning != "" {
 		resp["conflictWarning"] = result.ConflictWarning
+	}
+	return c.Status(fiber.StatusCreated).JSON(resp)
+}
+
+// POST /api/tunnel-interfaces/import-conf-server
+// Body: { name: string, conf: string }
+// Parses a WireGuard / AmneziaWG server .conf and creates a client-hub interface.
+// DisableRoutes=false; each [Peer] section is imported as a client peer.
+// Response: { interface, peersCreated, peersFailed, started, startError? }
+func importConfServerInterface(c *fiber.Ctx) error {
+	var body struct {
+		Name string `json:"name"`
+		Conf string `json:"conf"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "name is required")
+	}
+	if strings.TrimSpace(body.Conf) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "conf is required")
+	}
+
+	result, err := mgr().ImportConfAsServer(name, body.Conf)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after import-conf-server %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	peersFailed := result.PeersFailed
+	if peersFailed == nil {
+		peersFailed = []string{}
+	}
+	resp := fiber.Map{
+		"interface":    ifaceJSON(result.Interface, false),
+		"peersCreated": result.PeersCreated,
+		"peersFailed":  peersFailed,
+		"started":      result.Started,
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
 	}
 	return c.Status(fiber.StatusCreated).JSON(resp)
 }
