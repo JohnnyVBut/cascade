@@ -498,8 +498,10 @@ func backupInterface(c *fiber.Ctx) error {
 
 	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.json"`, id))
 	c.Set("Content-Type", "application/json")
+	ifaceMap := ifaceJSON(t, false)
+	ifaceMap["privateKey"] = t.PrivateKey // required for full restore via Import Backup
 	return c.JSON(fiber.Map{
-		"interface": ifaceJSON(t, false),
+		"interface": ifaceMap,
 		"peers":     peers,
 	})
 }
