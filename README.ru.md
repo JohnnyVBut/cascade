@@ -337,7 +337,7 @@ curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/pee
 
 | Способ | Адрес |
 |--------|-------|
-| TON | `YOUR_TON_ADDRESS_HERE` |
+| TRC20  | `TDm1VvwoLaRdjpp7149QNacBzQtXnGresW` |
 
 ---
 

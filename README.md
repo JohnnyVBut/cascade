@@ -336,7 +336,7 @@ If Cascade is useful to you, consider supporting its development:
 
 | Method | Address |
 |--------|---------|
-| TON | `YOUR_TON_ADDRESS_HERE` |
+| TRC20  | `TDm1VvwoLaRdjpp7149QNacBzQtXnGresW` |
 
 ---
 
