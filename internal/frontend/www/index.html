@@ -8513,7 +8513,7 @@
                  :style="{ background: theme==='dark' ? '#404040' : '#f9fafb', border: '1px dashed ' + (theme==='dark' ? '#525252' : '#d1d5db') }">
               <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:12px;">No client interfaces yet.</p>
               <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                <button @click="navigate('wizard-simple-vpn')"
+                <button @click="activePage = 'wizard-simple-vpn'"
                         style="padding:7px 16px; border-radius:6px; border:none; cursor:pointer; font-size:0.85rem; background:#7c3aed; color:#fff; font-weight:600;">
                   Launch Simple VPN Wizard
                 </button>
@@ -8830,32 +8830,32 @@
                 <div style="display:flex; flex-direction:column; gap:6px; font-size:0.83rem;">
                   <div v-if="wizardUplink.createdIfaceId" style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="dark:text-neutral-300">Interface: {{ wizardUplink.ifaceName }}</span>
-                    <button @click="navigate('interfaces'); activeInterfaceId = wizardUplink.createdIfaceId"
+                    <button @click="activePage = 'interfaces'; activeInterfaceId = wizardUplink.createdIfaceId"
                             style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#16a34a; color:#fff;">Open</button>
                   </div>
                   <div v-if="wizardUplink.createdSrcAliasId" style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="dark:text-neutral-300">Alias: {{ wizardUplink.srcAliasName }}</span>
-                    <button @click="navigate('firewall-aliases')"
+                    <button @click="activePage = 'firewall-aliases'"
                             style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
                   </div>
                   <div v-if="wizardUplink.createdDstAliasId" style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="dark:text-neutral-300">Alias: {{ wizardUplink.dstAliasName }}</span>
-                    <button @click="navigate('firewall-aliases')"
+                    <button @click="activePage = 'firewall-aliases'"
                             style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
                   </div>
                   <div v-if="wizardUplink.createdGatewayId" style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="dark:text-neutral-300">Gateway: {{ wizardUplink.gatewayName }}</span>
-                    <button @click="navigate('gateways')"
+                    <button @click="activePage = 'gateways'"
                             style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
                   </div>
                   <div v-if="wizardUplink.createdFwRuleId" style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="dark:text-neutral-300">Firewall rule: {{ wizardUplink.fwRuleName }}</span>
-                    <button @click="navigate('firewall')"
+                    <button @click="activePage = 'firewall'"
                             style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
                   </div>
                   <div v-if="wizardUplink.createdNatRuleId" style="display:flex; justify-content:space-between; align-items:center;">
                     <span class="dark:text-neutral-300">NAT rule: {{ wizardUplink.natRuleName }}</span>
-                    <button @click="navigate('nat')"
+                    <button @click="activePage = 'nat'"
                             style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
                   </div>
                 </div>
@@ -8866,7 +8866,7 @@
                         :style="{ background: theme==='dark' ? '#404040' : '#f3f4f6', color: theme==='dark' ? '#e5e5e5' : '#374151' }">
                   Set up another
                 </button>
-                <button @click="navigate('interfaces')"
+                <button @click="activePage = 'interfaces'"
                         style="padding:9px 24px; border-radius:7px; border:none; cursor:pointer; font-size:0.9rem; font-weight:600; background:#2563eb; color:#fff;">
                   Go to Interfaces
                 </button>
