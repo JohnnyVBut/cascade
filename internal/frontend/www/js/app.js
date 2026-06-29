@@ -6002,8 +6002,12 @@ new Vue({
         if (w.inlineIfaceAddr.trim()) body.address = w.inlineIfaceAddr.trim();
         if (w.inlineIfacePort) body.listenPort = parseInt(w.inlineIfacePort, 10);
         const res = await this.api.createTunnelInterface(body);
+        const newId = (res.interface || res).id;
+        if (newId) {
+          await this.api.startTunnelInterface({ interfaceId: newId }).catch(() => {});
+        }
         await this.loadTunnelInterfaces();
-        w.selectedIfaceIds.push(res.interface.id);
+        if (newId) w.selectedIfaceIds.push(newId);
         w.showInlineCreate = false;
         w.inlineIfaceName = '';
         w.inlineIfaceAddr = '';
