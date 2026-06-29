@@ -338,12 +338,17 @@ func parseConfPreview(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	// Derive a monitor IP from the first peer's AllowedIPs (/32 host or first prefix host).
+	// Best-guess server overlay IP: take client address, replace last octet with 1.
+	// Common VPN convention (e.g. client 10.8.7.45 → server 10.8.7.1). User can override in wizard.
 	monitorIP := ""
-	if len(parsed.Peers) > 0 {
-		firstCIDR := strings.TrimSpace(strings.Split(parsed.Peers[0].AllowedIPs, ",")[0])
-		if host, _, err2 := parseFirstHost(firstCIDR); err2 == nil {
-			monitorIP = host
+	if parsed.Address != "" {
+		clientCIDR := strings.TrimSpace(strings.Split(parsed.Address, ",")[0])
+		if host, _, err2 := parseFirstHost(clientCIDR); err2 == nil {
+			parts := strings.Split(host, ".")
+			if len(parts) == 4 {
+				parts[3] = "1"
+				monitorIP = strings.Join(parts, ".")
+			}
 		}
 	}
 	return c.JSON(fiber.Map{
