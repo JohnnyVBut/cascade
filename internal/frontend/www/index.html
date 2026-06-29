@@ -516,14 +516,12 @@
               </div>
               <!-- Wizard items — hidden unless expanded -->
               <button v-else-if="page.id && page.id.startsWith('wizard-')"
-                v-show="wizardsExpanded"
                 @click="switchPage(page.id)"
                 @mouseenter="hoverPage = page.id"
                 @mouseleave="hoverPage = null"
                 :class="activePage === page.id ? 'bg-gray-200 dark:bg-neutral-600 text-gray-900 dark:text-white font-semibold' : 'text-gray-600 dark:text-neutral-400'"
-                :style="hoverPage === page.id && activePage !== page.id ? 'background-color: rgba(0,0,0,0.05);' : ''"
-                class="w-full text-left text-sm cursor-pointer rounded transition"
-                style="padding: 10px 12px; margin-bottom: 2px; display: block;">
+                :style="Object.assign({ display: wizardsExpanded ? 'block' : 'none', marginBottom: '2px', padding: '10px 12px' }, hoverPage === page.id && activePage !== page.id ? { backgroundColor: 'rgba(0,0,0,0.05)' } : {})"
+                class="w-full text-left text-sm cursor-pointer rounded transition">
                 {{ page.label }}
               </button>
               <!-- Regular menu item -->
