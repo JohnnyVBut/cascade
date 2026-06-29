@@ -58,6 +58,7 @@ func RegisterInterfaces(api fiber.Router) {
 	// quick-create, import-conf and import-backup MUST be registered before /:id
 	// to avoid Fiber routing the literal path segment as a parameter value.
 	g.Post("/quick-create", quickCreateInterface)
+	g.Post("/parse-conf", parseConfPreview)
 	g.Post("/import-conf", importConfInterface)
 	g.Post("/import-conf-server", importConfServerInterface)
 	g.Post("/import-backup", importBackupInterface)
@@ -318,6 +319,61 @@ func updateInterface(c *fiber.Ctx) error {
 // Parses a WireGuard / AmneziaWG client .conf and creates an interface + upstream peer.
 // DisableRoutes is always set to true — the server routing table is not modified.
 // Response: { interface, peer, started, startError?, conflictWarning? }
+// POST /api/tunnel-interfaces/parse-conf
+// Body: { conf: string }
+// Parses a WireGuard / AmneziaWG .conf and returns preview data without
+// creating any database records. PrivateKey is never included in the response.
+// Response: { address, protocol, listenPort, dns, mtu, peerEndpoint, peerAllowedIPs, peerMonitorIP }
+func parseConfPreview(c *fiber.Ctx) error {
+	var body struct {
+		Conf string `json:"conf"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if strings.TrimSpace(body.Conf) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "conf is required")
+	}
+	parsed, err := tunnel.ParseWGConf(body.Conf)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	// Derive a monitor IP from the first peer's AllowedIPs (/32 host or first prefix host).
+	monitorIP := ""
+	if len(parsed.Peers) > 0 {
+		firstCIDR := strings.TrimSpace(strings.Split(parsed.Peers[0].AllowedIPs, ",")[0])
+		if host, _, err2 := parseFirstHost(firstCIDR); err2 == nil {
+			monitorIP = host
+		}
+	}
+	return c.JSON(fiber.Map{
+		"address":        parsed.Address,
+		"protocol":       parsed.Protocol,
+		"listenPort":     parsed.ListenPort,
+		"dns":            parsed.DNS,
+		"mtu":            parsed.MTU,
+		"peerEndpoint":   parsed.PeerEndpoint,
+		"peerAllowedIPs": parsed.PeerAllowedIPs,
+		"peerMonitorIP":  monitorIP,
+	})
+}
+
+// parseFirstHost extracts the host IP from a CIDR string (e.g. "10.0.0.1/32" → "10.0.0.1").
+func parseFirstHost(cidr string) (string, int, error) {
+	if cidr == "" {
+		return "", 0, fmt.Errorf("empty cidr")
+	}
+	parts := strings.SplitN(cidr, "/", 2)
+	if len(parts) != 2 {
+		return parts[0], 0, nil
+	}
+	prefix, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return parts[0], 0, nil
+	}
+	return parts[0], prefix, nil
+}
+
 func importConfInterface(c *fiber.Ctx) error {
 	var body struct {
 		Name string `json:"name"`

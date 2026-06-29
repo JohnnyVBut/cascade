@@ -160,6 +160,7 @@ new Vue({
       { id: 'administration',   label: 'Administration' },
       { id: '_header_wizards',  label: 'Wizards', type: 'header' },
       { id: 'wizard-simple-vpn', label: 'Simple Client VPN' },
+      { id: 'wizard-uplink-vpn', label: 'Cascade via WireGuard Uplink' },
     ],
 
     // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -441,6 +442,50 @@ new Vue({
       qrUrl: '',
       ifaceAddr: '',
       ifacePort: 0,
+    },
+
+    wizardUplink: {
+      step: 1,          // 1=import conf, 2=source, 3=destination, 4=options, 5=apply
+      // step 1
+      confText: '',
+      confFileName: '',
+      preview: null,    // parsed preview from /parse-conf
+      ifaceName: '',
+      // step 2
+      selectedIfaceIds: [],
+      createSrcAlias: true,
+      srcAliasName: '',
+      // inline create interface mini-form
+      showInlineCreate: false,
+      inlineIfaceName: '',
+      inlineIfaceAddr: '',
+      inlineIfacePort: '',
+      inlineIfaceCreating: false,
+      // step 3
+      dstType: 'all',   // 'all' | 'geo' | 'as'
+      dstCountries: [],
+      dstASN: '',
+      dstNegate: false,
+      dstAliasName: '',
+      // step 4
+      mssClamp: true,
+      fallback: 'drop', // 'drop' | 'allow'
+      gatewayName: '',
+      fwRuleName: '',
+      natRuleName: '',
+      gatewayMonitorIP: '',
+      // step 5 — apply state
+      applying: false,
+      steps: [],        // [{ label, status:'pending'|'running'|'ok'|'warn'|'error', detail }]
+      // created object IDs for final screen
+      createdIfaceId: '',
+      createdSrcAliasId: '',
+      createdDstAliasId: '',
+      createdGatewayId: '',
+      createdFwRuleId: '',
+      createdNatRuleId: '',
+      done: false,
+      fatalError: '',
     },
 
     showGatewayCreate: false,
@@ -1167,6 +1212,9 @@ new Vue({
       }
       if (pageId === 'wizard-simple-vpn') {
         this.wizardVPNInit();
+      }
+      if (pageId === 'wizard-uplink-vpn') {
+        this.wizardUplinkInit();
       }
       if (pageId === 'firewall') {
         this.loadFirewallRules();
@@ -5832,6 +5880,331 @@ new Vue({
         name: this.wizardVPN.peerName || 'My Device',
         interfaceId: this.wizardVPN.ifaceId,
       });
+    },
+
+    // ── Wizard: Cascade via WireGuard Uplink ─────────────────────────────────
+
+    wizardUplinkInit() {
+      const w = this.wizardUplink;
+      w.step = 1;
+      w.confText = '';
+      w.confFileName = '';
+      w.preview = null;
+      w.ifaceName = '';
+      w.selectedIfaceIds = [];
+      w.createSrcAlias = true;
+      w.srcAliasName = '';
+      w.showInlineCreate = false;
+      w.inlineIfaceName = '';
+      w.inlineIfaceAddr = '';
+      w.inlineIfacePort = '';
+      w.inlineIfaceCreating = false;
+      w.dstType = 'all';
+      w.dstCountries = [];
+      w.dstASN = '';
+      w.dstNegate = false;
+      w.dstAliasName = '';
+      w.mssClamp = true;
+      w.fallback = 'drop';
+      w.gatewayName = '';
+      w.fwRuleName = '';
+      w.natRuleName = '';
+      w.gatewayMonitorIP = '';
+      w.applying = false;
+      w.steps = [];
+      w.createdIfaceId = '';
+      w.createdSrcAliasId = '';
+      w.createdDstAliasId = '';
+      w.createdGatewayId = '';
+      w.createdFwRuleId = '';
+      w.createdNatRuleId = '';
+      w.done = false;
+      w.fatalError = '';
+    },
+
+    wizardUplinkOnFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.wizardUplink.confFileName = file.name.replace(/\.conf$/i, '');
+      if (!this.wizardUplink.ifaceName) {
+        this.wizardUplink.ifaceName = this.wizardUplink.confFileName;
+      }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        this.wizardUplink.confText = e.target.result;
+        this.wizardUplinkPreview();
+      };
+      reader.readAsText(file);
+    },
+
+    async wizardUplinkPreview() {
+      const w = this.wizardUplink;
+      w.preview = null;
+      if (!w.confText.trim()) return;
+      try {
+        const res = await this.api.parseTunnelConf({ conf: w.confText });
+        w.preview = res;
+        const base = (w.ifaceName || w.confFileName || 'uplink').trim();
+        if (!w.srcAliasName) w.srcAliasName = 'src-' + base;
+        if (!w.dstAliasName) w.dstAliasName = 'dst-' + base;
+        if (!w.gatewayName) w.gatewayName = 'gw-' + base;
+        if (!w.fwRuleName) w.fwRuleName = 'pbr-' + base;
+        if (!w.natRuleName) w.natRuleName = 'nat-' + base;
+        if (!w.gatewayMonitorIP) w.gatewayMonitorIP = res.peerMonitorIP || '';
+      } catch (e) {
+        // invalid conf — show nothing
+      }
+    },
+
+    wizardUplinkOnNameChange() {
+      const w = this.wizardUplink;
+      const base = (w.ifaceName || 'uplink').trim();
+      w.srcAliasName = 'src-' + base;
+      w.dstAliasName = 'dst-' + base;
+      w.gatewayName  = 'gw-'  + base;
+      w.fwRuleName   = 'pbr-' + base;
+      w.natRuleName  = 'nat-' + base;
+    },
+
+    wizardUplinkClientIfaces() {
+      return this.tunnelInterfaces.filter(i => !i.disableRoutes);
+    },
+
+    wizardUplinkIfaceSubnet(iface) {
+      if (!iface.address) return '';
+      const parts = iface.address.split('/');
+      if (parts.length !== 2) return iface.address;
+      const ip = parts[0].split('.');
+      const prefix = parseInt(parts[1], 10);
+      ip[3] = '0';
+      return ip.join('.') + '/' + (prefix <= 24 ? prefix : 24);
+    },
+
+    wizardUplinkToggleIface(id) {
+      const idx = this.wizardUplink.selectedIfaceIds.indexOf(id);
+      if (idx === -1) this.wizardUplink.selectedIfaceIds.push(id);
+      else this.wizardUplink.selectedIfaceIds.splice(idx, 1);
+    },
+
+    wizardUplinkSelectedSubnets() {
+      return this.wizardUplink.selectedIfaceIds.map(id => {
+        const iface = this.tunnelInterfaces.find(i => i.id === id);
+        return iface ? this.wizardUplinkIfaceSubnet(iface) : '';
+      }).filter(Boolean);
+    },
+
+    async wizardUplinkInlineCreate() {
+      const w = this.wizardUplink;
+      w.inlineIfaceCreating = true;
+      try {
+        const res = await this.api.quickCreateTunnelInterface({
+          name: w.inlineIfaceName.trim() || undefined,
+          address: w.inlineIfaceAddr.trim() || undefined,
+          listenPort: w.inlineIfacePort ? parseInt(w.inlineIfacePort, 10) : undefined,
+        });
+        await this.loadTunnelInterfaces();
+        w.selectedIfaceIds.push(res.interface.id);
+        w.showInlineCreate = false;
+        w.inlineIfaceName = '';
+        w.inlineIfaceAddr = '';
+        w.inlineIfacePort = '';
+      } catch (e) {
+        this.showToast(e.message || 'Failed to create interface', 'error');
+      } finally {
+        w.inlineIfaceCreating = false;
+      }
+    },
+
+    // ── Apply ─────────────────────────────────────────────────────────────────
+
+    wizardUplinkStepAdd(label) {
+      this.wizardUplink.steps.push({ label, status: 'pending', detail: '' });
+      return this.wizardUplink.steps.length - 1;
+    },
+
+    wizardUplinkStepSet(idx, status, detail) {
+      this.$set(this.wizardUplink.steps, idx, {
+        ...this.wizardUplink.steps[idx],
+        status,
+        detail: detail || '',
+      });
+    },
+
+    async wizardUplinkApply() {
+      const w = this.wizardUplink;
+      w.applying = true;
+      w.steps = [];
+      w.done = false;
+      w.fatalError = '';
+      const base = (w.ifaceName || 'uplink').trim();
+
+      // Step 1: Create uplink interface
+      const s0 = this.wizardUplinkStepAdd('Creating uplink interface');
+      this.wizardUplinkStepSet(s0, 'running');
+      let ifaceId = '';
+      try {
+        const res = await this.api.importTunnelConf({ name: w.ifaceName.trim(), conf: w.confText });
+        ifaceId = res.interface.id;
+        w.createdIfaceId = ifaceId;
+        await this.loadTunnelInterfaces();
+        this.wizardUplinkStepSet(s0, 'ok', ifaceId + (res.started ? '' : ' (not started)'));
+      } catch (e) {
+        this.wizardUplinkStepSet(s0, 'error', e.message);
+        w.fatalError = e.message;
+        w.applying = false;
+        return;
+      }
+
+      // Step 2: Ping check
+      const s1 = this.wizardUplinkStepAdd('Checking reachability');
+      this.wizardUplinkStepSet(s1, 'running');
+      try {
+        const host = w.preview && w.preview.peerEndpoint
+          ? w.preview.peerEndpoint.split(':')[0] : '';
+        if (host) {
+          const pr = await this.api.ping({ host, count: 3 });
+          if (pr.reachable) {
+            this.wizardUplinkStepSet(s1, 'ok', host + ' — ' + pr.latencyMs + 'ms');
+          } else {
+            this.wizardUplinkStepSet(s1, 'warn', host + ' not reachable — continuing');
+          }
+        } else {
+          this.wizardUplinkStepSet(s1, 'warn', 'No endpoint — skipped');
+        }
+      } catch (e) {
+        this.wizardUplinkStepSet(s1, 'warn', 'Ping failed — continuing');
+      }
+
+      // Step 3: Source alias
+      if (w.createSrcAlias && w.selectedIfaceIds.length > 0) {
+        const s2 = this.wizardUplinkStepAdd('Creating source alias');
+        this.wizardUplinkStepSet(s2, 'running');
+        try {
+          const subnets = this.wizardUplinkSelectedSubnets();
+          const res = await this.api.createAlias({
+            name: w.srcAliasName || ('src-' + base),
+            type: 'network',
+            entries: subnets.join('\n'),
+          });
+          w.createdSrcAliasId = res.alias ? res.alias.id : '';
+          this.wizardUplinkStepSet(s2, 'ok', subnets.join(', '));
+        } catch (e) {
+          this.wizardUplinkStepSet(s2, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 4: Destination alias (GEO / AS)
+      if (w.dstType !== 'all') {
+        const s3 = this.wizardUplinkStepAdd('Creating destination alias');
+        this.wizardUplinkStepSet(s3, 'running');
+        try {
+          const res = await this.api.createAlias({
+            name: w.dstAliasName || ('dst-' + base),
+            type: 'ipset',
+            entries: '',
+          });
+          const aliasId = res.alias ? res.alias.id : '';
+          w.createdDstAliasId = aliasId;
+          const genBody = w.dstType === 'geo'
+            ? { country: w.dstCountries.join(','), asn: '', asnList: '' }
+            : { country: '', asn: w.dstASN.trim(), asnList: '' };
+          const genRes = await this.api.generateAlias({ aliasId, ...genBody });
+          const jobId = genRes.jobId;
+          let finished = false;
+          while (!finished) {
+            await new Promise(r => setTimeout(r, 1000));
+            const st = await this.api.getAliasJobStatus({ aliasId, jobId });
+            this.wizardUplinkStepSet(s3, 'running', (st.progress || 0) + '% loaded…');
+            if (st.status === 'done') { finished = true; }
+            if (st.status === 'error') throw new Error(st.error || 'Generation failed');
+          }
+          this.wizardUplinkStepSet(s3, 'ok', w.dstAliasName + ' created');
+        } catch (e) {
+          this.wizardUplinkStepSet(s3, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 5: MSS clamping
+      if (w.mssClamp && ifaceId) {
+        const s4 = this.wizardUplinkStepAdd('Enabling MSS clamping');
+        this.wizardUplinkStepSet(s4, 'running');
+        try {
+          await this.api.updateTunnelInterface({ id: ifaceId, mss: -1 });
+          this.wizardUplinkStepSet(s4, 'ok', 'Auto PMTU');
+        } catch (e) {
+          this.wizardUplinkStepSet(s4, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 6: Gateway
+      const s5 = this.wizardUplinkStepAdd('Creating gateway');
+      this.wizardUplinkStepSet(s5, 'running');
+      let gatewayId = '';
+      try {
+        const res = await this.api.createGateway({
+          name: w.gatewayName || ('gw-' + base),
+          interface: ifaceId,
+          gatewayIP: w.gatewayMonitorIP,
+          monitorAddress: w.gatewayMonitorIP,
+          monitor: true,
+          monitorInterval: 5,
+          latencyThreshold: 500,
+          monitorRule: 'icmp_only',
+        });
+        gatewayId = res.gateway ? res.gateway.id : '';
+        w.createdGatewayId = gatewayId;
+        this.wizardUplinkStepSet(s5, 'ok', w.gatewayName);
+      } catch (e) {
+        this.wizardUplinkStepSet(s5, 'warn', e.message + ' — continuing');
+      }
+
+      // Step 7: Firewall PBR rule
+      const s6 = this.wizardUplinkStepAdd('Creating firewall PBR rule');
+      this.wizardUplinkStepSet(s6, 'running');
+      try {
+        const srcPart = w.createdSrcAliasId
+          ? { type: 'alias', aliasId: w.createdSrcAliasId }
+          : { type: 'any' };
+        const dstPart = w.dstType === 'all'
+          ? { type: 'any' }
+          : w.createdDstAliasId
+            ? { type: 'alias', aliasId: w.createdDstAliasId, invert: w.dstNegate }
+            : { type: 'any' };
+        const res = await this.api.createFirewallRule({
+          name: w.fwRuleName || ('pbr-' + base),
+          interface: 'any',
+          protocol: 'any',
+          source: srcPart,
+          destination: dstPart,
+          action: 'accept',
+          gatewayId: gatewayId || undefined,
+          fallbackToDefault: w.fallback === 'allow',
+        });
+        w.createdFwRuleId = res.rule ? res.rule.id : '';
+        this.wizardUplinkStepSet(s6, 'ok', w.fwRuleName);
+      } catch (e) {
+        this.wizardUplinkStepSet(s6, 'warn', e.message + ' — continuing');
+      }
+
+      // Step 8: NAT MASQUERADE
+      const s7 = this.wizardUplinkStepAdd('Creating NAT MASQUERADE rule');
+      this.wizardUplinkStepSet(s7, 'running');
+      try {
+        const natBody = {
+          name: w.natRuleName || ('nat-' + base),
+          outInterface: ifaceId,
+          type: 'masquerade',
+        };
+        if (w.createdSrcAliasId) natBody.sourceAliasId = w.createdSrcAliasId;
+        const res = await this.api.createNatRule(natBody);
+        w.createdNatRuleId = res.rule ? res.rule.id : '';
+        this.wizardUplinkStepSet(s7, 'ok', w.natRuleName);
+      } catch (e) {
+        this.wizardUplinkStepSet(s7, 'warn', e.message);
+      }
+
+      w.applying = false;
+      w.done = true;
     },
 
   },

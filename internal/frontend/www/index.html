@@ -8417,6 +8417,459 @@
 
         </div><!-- /activePage === 'wizard-simple-vpn' -->
 
+        <!-- ── Wizard: Cascade via WireGuard Uplink ────────────────────────── -->
+        <div v-if="activePage === 'wizard-uplink-vpn'" key="page-wizard-uplink-vpn"
+             style="max-width:600px; margin:0 auto; padding-bottom:40px;">
+
+          <!-- Step indicator -->
+          <div style="display:flex; gap:6px; margin-bottom:28px; align-items:center;">
+            <template v-for="(lbl, i) in ['Import .conf','Source','Destination','Options','Apply']">
+              <div :key="i" style="display:flex; align-items:center; gap:6px;">
+                <div style="width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700; flex-shrink:0;"
+                     :style="wizardUplink.step === i+1
+                       ? 'background:#2563eb; color:#fff;'
+                       : wizardUplink.step > i+1
+                         ? 'background:#16a34a; color:#fff;'
+                         : (theme==='dark' ? 'background:#404040; color:#9ca3af;' : 'background:#f3f4f6; color:#6b7280;')">
+                  {{ wizardUplink.step > i+1 ? '✓' : (i+1) }}
+                </div>
+                <span style="font-size:0.72rem; white-space:nowrap;"
+                      :style="wizardUplink.step === i+1 ? 'color:#2563eb; font-weight:600;' : (theme==='dark' ? 'color:#9ca3af;' : 'color:#6b7280;')">{{ lbl }}</span>
+                <div v-if="i < 4" style="flex:1; height:1px; min-width:10px;"
+                     :style="{ background: theme==='dark' ? '#404040' : '#e5e7eb' }"></div>
+              </div>
+            </template>
+          </div>
+
+          <!-- ── Step 1: Import .conf ─────────────────────────────────────── -->
+          <div v-if="wizardUplink.step === 1">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:4px;">Cascade via WireGuard Uplink</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:24px;">
+              Routes client traffic through an external WireGuard server. Upload the <code>.conf</code> file you received from the upstream provider.
+            </p>
+
+            <!-- File upload -->
+            <div style="margin-bottom:16px;">
+              <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">Upload .conf file</label>
+              <input type="file" accept=".conf" @change="wizardUplinkOnFileSelect"
+                     style="display:block; font-size:0.85rem; width:100%;" />
+            </div>
+
+            <!-- Textarea -->
+            <div style="margin-bottom:16px;">
+              <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">Or paste config text</label>
+              <textarea v-model="wizardUplink.confText" @input="wizardUplinkPreview" rows="7"
+                        placeholder="[Interface]&#10;PrivateKey = ...&#10;Address = ...&#10;&#10;[Peer]&#10;PublicKey = ...&#10;Endpoint = ..."
+                        style="width:100%; font-family:monospace; font-size:0.8rem; border-radius:6px; padding:8px 10px; resize:vertical;"
+                        :style="{ background: theme==='dark' ? '#2a2a2a' : '#f9fafb', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }"></textarea>
+            </div>
+
+            <!-- Preview -->
+            <div v-if="wizardUplink.preview" style="border-radius:8px; padding:12px 16px; margin-bottom:16px;"
+                 :style="{ background: theme==='dark' ? '#1e3a2f' : '#f0fdf4', border: '1px solid ' + (theme==='dark' ? '#166534' : '#bbf7d0') }">
+              <div class="text-sm font-medium" style="color:#16a34a; margin-bottom:8px;">✓ Config parsed successfully</div>
+              <div style="display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:0.82rem;">
+                <span :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Protocol</span>
+                <span class="dark:text-neutral-200">{{ wizardUplink.preview.protocol }}</span>
+                <span :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Address</span>
+                <span class="dark:text-neutral-200">{{ wizardUplink.preview.address }}</span>
+                <span v-if="wizardUplink.preview.peerEndpoint" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Endpoint</span>
+                <span v-if="wizardUplink.preview.peerEndpoint" class="dark:text-neutral-200">{{ wizardUplink.preview.peerEndpoint }}</span>
+                <span v-if="wizardUplink.preview.peerMonitorIP" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Monitor IP</span>
+                <span v-if="wizardUplink.preview.peerMonitorIP" class="dark:text-neutral-200">{{ wizardUplink.preview.peerMonitorIP }}</span>
+              </div>
+            </div>
+
+            <!-- Interface name -->
+            <div style="margin-bottom:24px;">
+              <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">Interface name</label>
+              <input v-model="wizardUplink.ifaceName" @input="wizardUplinkOnNameChange" type="text" placeholder="my-uplink"
+                     style="width:100%; border-radius:6px; padding:7px 10px; font-size:0.9rem;"
+                     :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+            </div>
+
+            <div style="display:flex; justify-content:flex-end;">
+              <button @click="wizardUplink.step = 2"
+                      :disabled="!wizardUplink.confText.trim() || !wizardUplink.ifaceName.trim()"
+                      style="padding:9px 24px; border-radius:7px; border:none; font-weight:600; cursor:pointer; font-size:0.9rem;"
+                      :style="(!wizardUplink.confText.trim() || !wizardUplink.ifaceName.trim())
+                        ? 'background:#9ca3af; color:#fff; cursor:not-allowed;'
+                        : 'background:#2563eb; color:#fff;'">
+                Next →
+              </button>
+            </div>
+          </div><!-- /step 1 -->
+
+          <!-- ── Step 2: Source ────────────────────────────────────────────── -->
+          <div v-if="wizardUplink.step === 2">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:4px;">Source Interfaces</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:20px;">
+              Select which client interfaces will have their traffic routed through this uplink.
+            </p>
+
+            <!-- No interfaces -->
+            <div v-if="wizardUplinkClientIfaces().length === 0 && !wizardUplink.showInlineCreate"
+                 style="border-radius:8px; padding:20px; text-align:center; margin-bottom:16px;"
+                 :style="{ background: theme==='dark' ? '#404040' : '#f9fafb', border: '1px dashed ' + (theme==='dark' ? '#525252' : '#d1d5db') }">
+              <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:12px;">No client interfaces yet.</p>
+              <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <button @click="navigate('wizard-simple-vpn')"
+                        style="padding:7px 16px; border-radius:6px; border:none; cursor:pointer; font-size:0.85rem; background:#7c3aed; color:#fff; font-weight:600;">
+                  Launch Simple VPN Wizard
+                </button>
+                <button @click="wizardUplink.showInlineCreate = true"
+                        style="padding:7px 16px; border-radius:6px; cursor:pointer; font-size:0.85rem; font-weight:600;"
+                        :style="{ background: theme==='dark' ? '#525252' : '#f3f4f6', color: theme==='dark' ? '#e5e5e5' : '#374151', border: theme==='dark' ? '1px solid #666' : '1px solid #d1d5db' }">
+                  Create interface here
+                </button>
+              </div>
+            </div>
+
+            <!-- Interface list -->
+            <div v-for="iface in wizardUplinkClientIfaces()" :key="iface.id"
+                 @click="wizardUplinkToggleIface(iface.id)"
+                 style="display:flex; align-items:center; gap:12px; border-radius:8px; padding:12px 16px; margin-bottom:8px; cursor:pointer;"
+                 :style="wizardUplink.selectedIfaceIds.includes(iface.id)
+                   ? 'border:2px solid #2563eb; background:rgba(37,99,235,0.06);'
+                   : (theme==='dark' ? 'border:2px solid #525252; background:#404040;' : 'border:2px solid #e5e7eb; background:#f9fafb;')">
+              <div style="width:18px; height:18px; border-radius:4px; border:2px solid; flex-shrink:0; display:flex; align-items:center; justify-content:center;"
+                   :style="wizardUplink.selectedIfaceIds.includes(iface.id) ? 'border-color:#2563eb; background:#2563eb;' : 'border-color:#9ca3af;'">
+                <span v-if="wizardUplink.selectedIfaceIds.includes(iface.id)" style="color:#fff; font-size:0.75rem;">✓</span>
+              </div>
+              <div style="flex:1;">
+                <div class="font-medium dark:text-neutral-100" style="font-size:0.9rem;">{{ iface.name || iface.id }}</div>
+                <div style="font-size:0.78rem;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">
+                  {{ iface.id }} &nbsp;·&nbsp; {{ wizardUplinkIfaceSubnet(iface) }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Add interface button -->
+            <div v-if="wizardUplinkClientIfaces().length > 0 && !wizardUplink.showInlineCreate" style="margin-bottom:16px;">
+              <button @click="wizardUplink.showInlineCreate = true"
+                      style="padding:6px 14px; border-radius:6px; font-size:0.82rem; cursor:pointer; font-weight:600;"
+                      :style="{ background: 'transparent', border: '1px dashed ' + (theme==='dark' ? '#525252' : '#d1d5db'), color: theme==='dark' ? '#9ca3af' : '#6b7280' }">
+                + Add interface
+              </button>
+            </div>
+
+            <!-- Inline create form -->
+            <div v-if="wizardUplink.showInlineCreate" style="border-radius:8px; padding:14px 16px; margin-bottom:16px;"
+                 :style="{ background: theme==='dark' ? '#2a2a2a' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#525252' : '#d1d5db') }">
+              <div class="text-sm font-medium dark:text-neutral-300" style="margin-bottom:10px;">New interface</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                <input v-model="wizardUplink.inlineIfaceName" type="text" placeholder="Name (optional)"
+                       style="border-radius:6px; padding:6px 10px; font-size:0.85rem; flex:1; min-width:120px;"
+                       :style="{ background: theme==='dark' ? '#1a1a1a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                <input v-model="wizardUplink.inlineIfaceAddr" type="text" placeholder="Address (e.g. 10.8.0.1/24)"
+                       style="border-radius:6px; padding:6px 10px; font-size:0.85rem; flex:2; min-width:160px;"
+                       :style="{ background: theme==='dark' ? '#1a1a1a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                <input v-model="wizardUplink.inlineIfacePort" type="number" placeholder="Port (auto)"
+                       style="border-radius:6px; padding:6px 10px; font-size:0.85rem; width:100px;"
+                       :style="{ background: theme==='dark' ? '#1a1a1a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button @click="wizardUplinkInlineCreate" :disabled="wizardUplink.inlineIfaceCreating"
+                        style="padding:6px 16px; border-radius:6px; border:none; cursor:pointer; font-size:0.85rem; font-weight:600; background:#2563eb; color:#fff;">
+                  {{ wizardUplink.inlineIfaceCreating ? 'Creating…' : 'Create' }}
+                </button>
+                <button @click="wizardUplink.showInlineCreate = false"
+                        style="padding:6px 14px; border-radius:6px; border:none; cursor:pointer; font-size:0.85rem;"
+                        :style="{ background: theme==='dark' ? '#525252' : '#e5e7eb', color: theme==='dark' ? '#e5e5e5' : '#374151' }">
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            <!-- Source alias option -->
+            <div style="border-radius:8px; padding:12px 16px; margin-bottom:24px;"
+                 :style="{ background: theme==='dark' ? '#404040' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#525252' : '#e5e7eb') }">
+              <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:8px;">
+                <input type="checkbox" v-model="wizardUplink.createSrcAlias" style="width:16px; height:16px;" />
+                <span class="text-sm font-medium dark:text-neutral-300">Create source alias with selected subnets</span>
+              </label>
+              <div v-if="wizardUplink.createSrcAlias" style="display:flex; align-items:center; gap:8px;">
+                <input v-model="wizardUplink.srcAliasName" type="text" placeholder="src-my-uplink"
+                       style="border-radius:6px; padding:6px 10px; font-size:0.85rem; flex:1;"
+                       :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+              </div>
+              <div v-if="wizardUplink.createSrcAlias && wizardUplink.selectedIfaceIds.length > 0"
+                   class="text-xs" style="margin-top:6px;"
+                   :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">
+                Will contain: {{ wizardUplinkSelectedSubnets().join(', ') }}
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between;">
+              <button @click="wizardUplink.step = 1"
+                      style="padding:9px 20px; border-radius:7px; border:none; cursor:pointer; font-size:0.9rem;"
+                      :style="{ background: theme==='dark' ? '#404040' : '#f3f4f6', color: theme==='dark' ? '#e5e5e5' : '#374151' }">
+                ← Back
+              </button>
+              <button @click="wizardUplink.step = 3"
+                      :disabled="wizardUplink.selectedIfaceIds.length === 0"
+                      style="padding:9px 24px; border-radius:7px; border:none; font-weight:600; cursor:pointer; font-size:0.9rem;"
+                      :style="wizardUplink.selectedIfaceIds.length === 0
+                        ? 'background:#9ca3af; color:#fff; cursor:not-allowed;'
+                        : 'background:#2563eb; color:#fff;'">
+                Next →
+              </button>
+            </div>
+          </div><!-- /step 2 -->
+
+          <!-- ── Step 3: Destination ───────────────────────────────────────── -->
+          <div v-if="wizardUplink.step === 3">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:4px;">Destination Traffic</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:20px;">
+              Choose which destination traffic will be routed through the uplink.
+            </p>
+
+            <!-- Type selector -->
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
+              <div v-for="(opt, key) in { all: 'All traffic (0.0.0.0/0)', geo: 'GEO — by country', as: 'BGP AS — by ASN' }"
+                   :key="key"
+                   @click="wizardUplink.dstType = key"
+                   style="display:flex; align-items:center; gap:12px; border-radius:8px; padding:12px 16px; cursor:pointer; border:2px solid;"
+                   :style="wizardUplink.dstType === key
+                     ? 'border-color:#2563eb; background:rgba(37,99,235,0.06);'
+                     : (theme==='dark' ? 'border-color:#525252; background:#404040;' : 'border-color:#e5e7eb; background:#f9fafb;')">
+                <div style="width:16px; height:16px; border-radius:50%; border:2px solid; flex-shrink:0;"
+                     :style="wizardUplink.dstType === key ? 'border-color:#2563eb; background:#2563eb;' : 'border-color:#9ca3af;'"></div>
+                <span class="text-sm font-medium dark:text-neutral-200">{{ opt }}</span>
+              </div>
+            </div>
+
+            <!-- GEO: country select -->
+            <div v-if="wizardUplink.dstType === 'geo'" style="margin-bottom:16px;">
+              <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">Countries (comma-separated ISO codes)</label>
+              <input v-model="wizardUplink.dstCountriesRaw" type="text" placeholder="RU, BY, KZ"
+                     @input="wizardUplink.dstCountries = wizardUplink.dstCountriesRaw.split(',').map(s => s.trim().toUpperCase()).filter(Boolean)"
+                     style="width:100%; border-radius:6px; padding:7px 10px; font-size:0.9rem;"
+                     :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+            </div>
+
+            <!-- AS: ASN input -->
+            <div v-if="wizardUplink.dstType === 'as'" style="margin-bottom:16px;">
+              <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">ASN</label>
+              <input v-model="wizardUplink.dstASN" type="text" placeholder="AS12345"
+                     style="width:100%; border-radius:6px; padding:7px 10px; font-size:0.9rem;"
+                     :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+            </div>
+
+            <!-- Warning for GEO/AS -->
+            <div v-if="wizardUplink.dstType !== 'all'" style="border-radius:6px; padding:10px 14px; margin-bottom:16px; font-size:0.83rem;"
+                 :style="{ background: theme==='dark' ? '#422006' : '#fffbeb', border: '1px solid ' + (theme==='dark' ? '#854d0e' : '#fcd34d'), color: theme==='dark' ? '#fbbf24' : '#92400e' }">
+              ⚠ ipset generation fetches data from RIPE NCC / ipdeny and may take 1–3 minutes.
+            </div>
+
+            <!-- Alias name for GEO/AS -->
+            <div v-if="wizardUplink.dstType !== 'all'" style="margin-bottom:16px;">
+              <label class="text-sm font-medium dark:text-neutral-300" style="display:block; margin-bottom:6px;">Destination alias name</label>
+              <input v-model="wizardUplink.dstAliasName" type="text" placeholder="dst-my-uplink"
+                     style="width:100%; border-radius:6px; padding:7px 10px; font-size:0.9rem;"
+                     :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+            </div>
+
+            <!-- Negate -->
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; margin-bottom:24px;">
+              <input type="checkbox" v-model="wizardUplink.dstNegate" style="width:16px; height:16px;" />
+              <span class="text-sm dark:text-neutral-300">Negate — route all traffic <strong>except</strong> selected destination</span>
+            </label>
+
+            <div style="display:flex; justify-content:space-between;">
+              <button @click="wizardUplink.step = 2"
+                      style="padding:9px 20px; border-radius:7px; border:none; cursor:pointer; font-size:0.9rem;"
+                      :style="{ background: theme==='dark' ? '#404040' : '#f3f4f6', color: theme==='dark' ? '#e5e5e5' : '#374151' }">
+                ← Back
+              </button>
+              <button @click="wizardUplink.step = 4"
+                      style="padding:9px 24px; border-radius:7px; border:none; font-weight:600; cursor:pointer; font-size:0.9rem; background:#2563eb; color:#fff;">
+                Next →
+              </button>
+            </div>
+          </div><!-- /step 3 -->
+
+          <!-- ── Step 4: Options ───────────────────────────────────────────── -->
+          <div v-if="wizardUplink.step === 4">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:4px;">Options</h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:20px;">Review auto-generated names and configure additional options.</p>
+
+            <!-- MSS Clamping -->
+            <div style="border-radius:8px; padding:14px 16px; margin-bottom:12px;"
+                 :style="{ background: theme==='dark' ? '#404040' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#525252' : '#e5e7eb') }">
+              <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+                <input type="checkbox" v-model="wizardUplink.mssClamp" style="width:16px; height:16px; margin-top:2px;" />
+                <div>
+                  <div class="text-sm font-medium dark:text-neutral-300">MSS Clamping (Auto PMTU)</div>
+                  <div class="text-xs" style="margin-top:2px;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">
+                    Recommended for tunnel-in-tunnel to prevent TCP fragmentation issues.
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <!-- Fallback policy -->
+            <div style="border-radius:8px; padding:14px 16px; margin-bottom:16px;"
+                 :style="{ background: theme==='dark' ? '#404040' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#525252' : '#e5e7eb') }">
+              <div class="text-sm font-medium dark:text-neutral-300" style="margin-bottom:10px;">Fallback when uplink is down</div>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer; margin-bottom:8px;">
+                <input type="radio" v-model="wizardUplink.fallback" value="drop" style="width:14px; height:14px;" />
+                <span class="text-sm dark:text-neutral-300">Block traffic (secure — no leaks)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+                <input type="radio" v-model="wizardUplink.fallback" value="allow" style="width:14px; height:14px;" />
+                <span class="text-sm dark:text-neutral-300">Route via default gateway (convenient)</span>
+              </label>
+            </div>
+
+            <!-- Auto-generated names -->
+            <div style="border-radius:8px; padding:14px 16px; margin-bottom:24px;"
+                 :style="{ background: theme==='dark' ? '#404040' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#525252' : '#e5e7eb') }">
+              <div class="text-sm font-medium dark:text-neutral-300" style="margin-bottom:10px;">Object names (editable)</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span class="text-xs" style="width:110px; flex-shrink:0;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Gateway</span>
+                  <input v-model="wizardUplink.gatewayName" type="text" style="flex:1; border-radius:5px; padding:5px 8px; font-size:0.83rem;"
+                         :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span class="text-xs" style="width:110px; flex-shrink:0;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Monitor IP</span>
+                  <input v-model="wizardUplink.gatewayMonitorIP" type="text" placeholder="e.g. 10.0.0.1" style="flex:1; border-radius:5px; padding:5px 8px; font-size:0.83rem;"
+                         :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span class="text-xs" style="width:110px; flex-shrink:0;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Firewall rule</span>
+                  <input v-model="wizardUplink.fwRuleName" type="text" style="flex:1; border-radius:5px; padding:5px 8px; font-size:0.83rem;"
+                         :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                </div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span class="text-xs" style="width:110px; flex-shrink:0;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">NAT rule</span>
+                  <input v-model="wizardUplink.natRuleName" type="text" style="flex:1; border-radius:5px; padding:5px 8px; font-size:0.83rem;"
+                         :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                </div>
+                <div v-if="wizardUplink.createSrcAlias" style="display:flex; align-items:center; gap:10px;">
+                  <span class="text-xs" style="width:110px; flex-shrink:0;" :style="{ color: theme==='dark' ? '#9ca3af' : '#6b7280' }">Source alias</span>
+                  <input v-model="wizardUplink.srcAliasName" type="text" style="flex:1; border-radius:5px; padding:5px 8px; font-size:0.83rem;"
+                         :style="{ background: theme==='dark' ? '#2a2a2a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between;">
+              <button @click="wizardUplink.step = 3"
+                      style="padding:9px 20px; border-radius:7px; border:none; cursor:pointer; font-size:0.9rem;"
+                      :style="{ background: theme==='dark' ? '#404040' : '#f3f4f6', color: theme==='dark' ? '#e5e5e5' : '#374151' }">
+                ← Back
+              </button>
+              <button @click="wizardUplink.step = 5; wizardUplinkApply()"
+                      style="padding:9px 24px; border-radius:7px; border:none; font-weight:600; cursor:pointer; font-size:0.9rem; background:#16a34a; color:#fff;">
+                Apply →
+              </button>
+            </div>
+          </div><!-- /step 4 -->
+
+          <!-- ── Step 5: Apply / Progress ──────────────────────────────────── -->
+          <div v-if="wizardUplink.step === 5">
+            <h2 class="text-xl font-medium dark:text-neutral-100" style="margin-bottom:4px;">
+              {{ wizardUplink.done ? (wizardUplink.fatalError ? 'Setup Failed' : '✅ Uplink Configured') : 'Applying…' }}
+            </h2>
+            <p class="text-sm text-gray-400 dark:text-neutral-400" style="margin-bottom:24px;">
+              {{ wizardUplink.done ? '' : 'Creating objects — please wait.' }}
+            </p>
+
+            <!-- Steps list -->
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:24px;">
+              <div v-for="(s, i) in wizardUplink.steps" :key="i"
+                   style="display:flex; align-items:flex-start; gap:12px; border-radius:8px; padding:10px 14px;"
+                   :style="{ background: theme==='dark' ? '#2a2a2a' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#404040' : '#e5e7eb') }">
+                <!-- Status icon -->
+                <div style="width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.8rem; flex-shrink:0; margin-top:1px;"
+                     :style="s.status==='ok' ? 'background:#16a34a; color:#fff;'
+                           : s.status==='warn' ? 'background:#d97706; color:#fff;'
+                           : s.status==='error' ? 'background:#dc2626; color:#fff;'
+                           : s.status==='running' ? 'background:#2563eb; color:#fff;'
+                           : (theme==='dark' ? 'background:#404040; color:#9ca3af;' : 'background:#e5e7eb; color:#9ca3af;')">
+                  <span v-if="s.status==='ok'">✓</span>
+                  <span v-else-if="s.status==='warn'">!</span>
+                  <span v-else-if="s.status==='error'">✗</span>
+                  <span v-else-if="s.status==='running'" style="display:inline-block; animation:spin 1s linear infinite;">⟳</span>
+                  <span v-else>·</span>
+                </div>
+                <div style="flex:1;">
+                  <div class="text-sm dark:text-neutral-200">{{ s.label }}</div>
+                  <div v-if="s.detail" class="text-xs" style="margin-top:2px;"
+                       :style="{ color: s.status==='error' ? '#f87171' : s.status==='warn' ? '#fbbf24' : (theme==='dark' ? '#9ca3af' : '#6b7280') }">
+                    {{ s.detail }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Fatal error -->
+            <div v-if="wizardUplink.fatalError" style="border-radius:8px; padding:12px 16px; margin-bottom:16px; font-size:0.85rem; background:rgba(220,38,38,0.1); border:1px solid #dc2626; color:#f87171;">
+              Fatal: {{ wizardUplink.fatalError }}
+              <div style="margin-top:10px;">
+                <button @click="wizardUplink.step = 1; wizardUplinkInit()"
+                        style="padding:6px 14px; border-radius:6px; border:none; cursor:pointer; font-size:0.83rem; background:#dc2626; color:#fff; font-weight:600;">
+                  Start over
+                </button>
+              </div>
+            </div>
+
+            <!-- Success: created objects -->
+            <div v-if="wizardUplink.done && !wizardUplink.fatalError">
+              <div style="border-radius:8px; padding:14px 16px; margin-bottom:20px;"
+                   :style="{ background: theme==='dark' ? '#1e3a2f' : '#f0fdf4', border: '1px solid ' + (theme==='dark' ? '#166534' : '#bbf7d0') }">
+                <div class="text-sm font-medium" style="color:#16a34a; margin-bottom:10px;">Created objects</div>
+                <div style="display:flex; flex-direction:column; gap:6px; font-size:0.83rem;">
+                  <div v-if="wizardUplink.createdIfaceId" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span class="dark:text-neutral-300">Interface: {{ wizardUplink.ifaceName }}</span>
+                    <button @click="navigate('interfaces'); activeInterfaceId = wizardUplink.createdIfaceId"
+                            style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#16a34a; color:#fff;">Open</button>
+                  </div>
+                  <div v-if="wizardUplink.createdSrcAliasId" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span class="dark:text-neutral-300">Alias: {{ wizardUplink.srcAliasName }}</span>
+                    <button @click="navigate('firewall-aliases')"
+                            style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
+                  </div>
+                  <div v-if="wizardUplink.createdDstAliasId" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span class="dark:text-neutral-300">Alias: {{ wizardUplink.dstAliasName }}</span>
+                    <button @click="navigate('firewall-aliases')"
+                            style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
+                  </div>
+                  <div v-if="wizardUplink.createdGatewayId" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span class="dark:text-neutral-300">Gateway: {{ wizardUplink.gatewayName }}</span>
+                    <button @click="navigate('gateways')"
+                            style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
+                  </div>
+                  <div v-if="wizardUplink.createdFwRuleId" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span class="dark:text-neutral-300">Firewall rule: {{ wizardUplink.fwRuleName }}</span>
+                    <button @click="navigate('firewall')"
+                            style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
+                  </div>
+                  <div v-if="wizardUplink.createdNatRuleId" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span class="dark:text-neutral-300">NAT rule: {{ wizardUplink.natRuleName }}</span>
+                    <button @click="navigate('nat')"
+                            style="padding:3px 10px; border-radius:5px; border:none; cursor:pointer; font-size:0.78rem; background:#2563eb; color:#fff;">Open</button>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button @click="wizardUplinkInit()"
+                        style="padding:9px 20px; border-radius:7px; border:none; cursor:pointer; font-size:0.9rem;"
+                        :style="{ background: theme==='dark' ? '#404040' : '#f3f4f6', color: theme==='dark' ? '#e5e5e5' : '#374151' }">
+                  Set up another
+                </button>
+                <button @click="navigate('interfaces')"
+                        style="padding:9px 24px; border-radius:7px; border:none; cursor:pointer; font-size:0.9rem; font-weight:600; background:#2563eb; color:#fff;">
+                  Go to Interfaces
+                </button>
+              </div>
+            </div>
+          </div><!-- /step 5 -->
+
+        </div><!-- /activePage === 'wizard-uplink-vpn' -->
+
         </main><!-- /Content Area -->
       </div><!-- /authenticated === true && !showFirstRunSetup (flex h-screen) -->
 
