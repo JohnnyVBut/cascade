@@ -6112,12 +6112,12 @@ new Vue({
           const genBody = w.dstType === 'geo'
             ? { country: w.dstCountries.join(','), asn: '', asnList: '' }
             : { country: '', asn: w.dstASN.trim(), asnList: '' };
-          const genRes = await this.api.generateAlias({ aliasId, ...genBody });
+          const genRes = await this.api.generateAlias({ id: aliasId, ...genBody });
           const jobId = genRes.jobId;
           let finished = false;
           while (!finished) {
             await new Promise(r => setTimeout(r, 1000));
-            const st = await this.api.getAliasJobStatus({ aliasId, jobId });
+            const st = await this.api.getAliasJobStatus({ id: aliasId, jobId });
             this.wizardUplinkStepSet(s3, 'running', (st.progress || 0) + '% loaded…');
             if (st.status === 'done') { finished = true; }
             if (st.status === 'error') throw new Error(st.error || 'Generation failed');
@@ -6185,6 +6185,7 @@ new Vue({
           fallbackToDefault: w.fallback === 'allow',
         });
         w.createdFwRuleId = (res.rule || res).id || '';
+        await this.api.applyFirewallRules();
         this.wizardUplinkStepSet(s6, 'ok', w.fwRuleName);
       } catch (e) {
         this.wizardUplinkStepSet(s6, 'warn', e.message + ' — continuing');
