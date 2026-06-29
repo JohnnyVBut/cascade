@@ -189,6 +189,14 @@ func createInterface(c *fiber.Ctx) error {
 		}
 	}
 
+	awg2 := body.AWG2
+	if body.Protocol == "amneziawg-2.0" && awg2 == nil {
+		var awg2Err error
+		awg2, awg2Err = mgr().BuildAWG2Params()
+		if awg2Err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "build AWG2 params: "+awg2Err.Error())
+		}
+	}
 	t, err := mgr().CreateInterface(tunnel.CreateInput{
 		Name:          strings.TrimSpace(body.Name),
 		Protocol:      body.Protocol,
@@ -196,7 +204,7 @@ func createInterface(c *fiber.Ctx) error {
 		ListenPort:    body.ListenPort,
 		DisableRoutes: body.DisableRoutes,
 		DNS:           strings.TrimSpace(body.DNS),
-		AWG2:          body.AWG2,
+		AWG2:          awg2,
 	})
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
