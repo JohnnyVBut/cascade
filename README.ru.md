@@ -331,6 +331,16 @@ curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/pee
 | Reverse proxy | Caddy 2 (HTTP/3 + QUIC) |
 | VPN | AmneziaWG 2.0 / WireGuard 1.0 |
 
+## ☕ Поддержать проект
+
+Если Cascade оказался полезным — поддержите разработку:
+
+| Способ | Адрес |
+|--------|-------|
+| TON | `YOUR_TON_ADDRESS_HERE` |
+
+---
+
 ## 🙏 Благодарности
 
 - Основано на [wg-easy](https://github.com/wg-easy/wg-easy)

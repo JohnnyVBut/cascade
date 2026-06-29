@@ -320,8 +320,9 @@ The data directory is mounted into the container via `docker-compose.yml`.
 ```bash
 cd ~/cascade
 git pull origin master
-docker compose pull
-docker compose up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.yml up -d
 ```
 
 The image is pre-built by CI — `docker compose pull` fetches the latest version
@@ -394,8 +395,9 @@ iptables-nft -t nat -F POSTROUTING
 ### Step 5 — Pull latest image and start
 
 ```bash
-docker compose pull
-docker compose up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.yml up -d
 ```
 
 On first start with an empty `data/` directory, Cascade creates a fresh database.
