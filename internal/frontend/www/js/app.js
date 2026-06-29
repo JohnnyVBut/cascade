@@ -428,6 +428,8 @@ new Vue({
     speedtestError: '',
     speedtestHistory: [],
 
+    wizardsExpanded: false,
+
     // ── Wizard: Simple Client VPN ─────────────────────────────────────────────
     wizardVPN: {
       step: 1,                // 1=protocol, 2=name, 3=dns+peer, 4=result
@@ -1160,6 +1162,7 @@ new Vue({
         this._dashResizeObs = null;
       }
       this.activePage = pageId;
+      if (pageId.startsWith('wizard-')) this.wizardsExpanded = true;
       // Reset scroll and any GridStack inline styles AFTER Vue updates the DOM.
       this.$nextTick(() => {
         // Reset all inline styles GridStack may have set on the scroll container,
