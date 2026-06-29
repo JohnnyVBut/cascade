@@ -6088,9 +6088,9 @@ new Vue({
           const res = await this.api.createAlias({
             name: w.srcAliasName || ('src-' + base),
             type: 'network',
-            entries: subnets.join('\n'),
+            entries: subnets,
           });
-          w.createdSrcAliasId = res.alias ? res.alias.id : '';
+          w.createdSrcAliasId = (res.alias || res).id || '';
           this.wizardUplinkStepSet(s2, 'ok', subnets.join(', '));
         } catch (e) {
           this.wizardUplinkStepSet(s2, 'warn', e.message + ' — continuing');
@@ -6107,7 +6107,7 @@ new Vue({
             type: 'ipset',
             entries: '',
           });
-          const aliasId = res.alias ? res.alias.id : '';
+          const aliasId = (res.alias || res).id || '';
           w.createdDstAliasId = aliasId;
           const genBody = w.dstType === 'geo'
             ? { country: w.dstCountries.join(','), asn: '', asnList: '' }
@@ -6133,7 +6133,7 @@ new Vue({
         const s4 = this.wizardUplinkStepAdd('Enabling MSS clamping');
         this.wizardUplinkStepSet(s4, 'running');
         try {
-          await this.api.updateTunnelInterface({ id: ifaceId, mss: -1 });
+          await this.api.updateTunnelInterface({ interfaceId: ifaceId, mss: -1 });
           this.wizardUplinkStepSet(s4, 'ok', 'Auto PMTU');
         } catch (e) {
           this.wizardUplinkStepSet(s4, 'warn', e.message + ' — continuing');
@@ -6197,7 +6197,7 @@ new Vue({
         const natBody = {
           name: w.natRuleName || ('nat-' + base),
           outInterface: ifaceId,
-          type: 'masquerade',
+          type: 'MASQUERADE',
         };
         if (w.createdSrcAliasId) natBody.sourceAliasId = w.createdSrcAliasId;
         const res = await this.api.createNatRule(natBody);
