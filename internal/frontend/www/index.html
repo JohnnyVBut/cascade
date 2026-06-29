@@ -8558,6 +8558,12 @@
                  :style="{ background: theme==='dark' ? '#2a2a2a' : '#f9fafb', border: '1px solid ' + (theme==='dark' ? '#525252' : '#d1d5db') }">
               <div class="text-sm font-medium dark:text-neutral-300" style="margin-bottom:10px;">New interface</div>
               <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                <select v-model="wizardUplink.inlineIfaceProto"
+                        style="border-radius:6px; padding:6px 10px; font-size:0.85rem; width:110px;"
+                        :style="{ background: theme==='dark' ? '#1a1a1a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }">
+                  <option value="wireguard">WG 1.0</option>
+                  <option value="amneziawg-2.0">AWG 2.0</option>
+                </select>
                 <input v-model="wizardUplink.inlineIfaceName" type="text" placeholder="Name (optional)"
                        style="border-radius:6px; padding:6px 10px; font-size:0.85rem; flex:1; min-width:120px;"
                        :style="{ background: theme==='dark' ? '#1a1a1a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }" />

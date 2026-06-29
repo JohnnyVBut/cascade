@@ -460,6 +460,7 @@ new Vue({
       inlineIfaceName: '',
       inlineIfaceAddr: '',
       inlineIfacePort: '',
+      inlineIfaceProto: 'wireguard',
       inlineIfaceCreating: false,
       // step 3
       dstType: 'all',   // 'all' | 'geo' | 'as'
@@ -5997,7 +5998,7 @@ new Vue({
       const w = this.wizardUplink;
       w.inlineIfaceCreating = true;
       try {
-        const body = {};
+        const body = { protocol: w.inlineIfaceProto };
         if (w.inlineIfaceName.trim()) body.name = w.inlineIfaceName.trim();
         if (w.inlineIfaceAddr.trim()) body.address = w.inlineIfaceAddr.trim();
         if (w.inlineIfacePort) body.listenPort = parseInt(w.inlineIfacePort, 10);
