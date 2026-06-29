@@ -6060,7 +6060,22 @@ new Vue({
         return;
       }
 
-      // Step 2: Ping check
+      // Step 2: Propagate MTU to client interfaces (if uplink conf specifies MTU)
+      const uplinkMTU = w.preview && w.preview.mtu ? parseInt(w.preview.mtu, 10) : 0;
+      if (uplinkMTU > 0 && w.selectedIfaceIds.length > 0) {
+        const s1b = this.wizardUplinkStepAdd('Setting client interface MTU');
+        this.wizardUplinkStepSet(s1b, 'running');
+        try {
+          await Promise.all(w.selectedIfaceIds.map(id =>
+            this.api.updateTunnelInterface({ interfaceId: id, mtu: uplinkMTU })
+          ));
+          this.wizardUplinkStepSet(s1b, 'ok', uplinkMTU + ' bytes');
+        } catch (e) {
+          this.wizardUplinkStepSet(s1b, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 3: Ping check
       const s1 = this.wizardUplinkStepAdd('Checking reachability');
       this.wizardUplinkStepSet(s1, 'running');
       try {
