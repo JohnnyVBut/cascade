@@ -711,8 +711,9 @@ PBR позволяет направлять трафик через конкре
 ```bash
 cd /root/cascade
 git pull
-./build.sh
-docker compose down && docker compose up -d
+docker compose -f docker-compose.yml pull
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.yml up -d
 ```
 
 ### Бэкап и восстановление
