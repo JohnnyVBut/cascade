@@ -6105,7 +6105,7 @@ new Vue({
           const res = await this.api.createAlias({
             name: w.dstAliasName || ('dst-' + base),
             type: 'ipset',
-            entries: '',
+            entries: [],
           });
           const aliasId = (res.alias || res).id || '';
           w.createdDstAliasId = aliasId;
@@ -6155,7 +6155,7 @@ new Vue({
           latencyThreshold: 500,
           monitorRule: 'icmp_only',
         });
-        gatewayId = res.gateway ? res.gateway.id : '';
+        gatewayId = (res.gateway || res).id || '';
         w.createdGatewayId = gatewayId;
         this.wizardUplinkStepSet(s5, 'ok', w.gatewayName);
       } catch (e) {
@@ -6184,7 +6184,7 @@ new Vue({
           gatewayId: gatewayId || undefined,
           fallbackToDefault: w.fallback === 'allow',
         });
-        w.createdFwRuleId = res.rule ? res.rule.id : '';
+        w.createdFwRuleId = (res.rule || res).id || '';
         this.wizardUplinkStepSet(s6, 'ok', w.fwRuleName);
       } catch (e) {
         this.wizardUplinkStepSet(s6, 'warn', e.message + ' — continuing');
@@ -6201,7 +6201,7 @@ new Vue({
         };
         if (w.createdSrcAliasId) natBody.sourceAliasId = w.createdSrcAliasId;
         const res = await this.api.createNatRule(natBody);
-        w.createdNatRuleId = res.rule ? res.rule.id : '';
+        w.createdNatRuleId = (res.rule || res).id || '';
         this.wizardUplinkStepSet(s7, 'ok', w.natRuleName);
       } catch (e) {
         this.wizardUplinkStepSet(s7, 'warn', e.message);
