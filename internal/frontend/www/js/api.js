@@ -392,6 +392,14 @@ class API {
     });
   }
 
+  async importTunnelConfServer({ name, conf }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/import-conf-server',
+      body: { name, conf },
+    });
+  }
+
   async importTunnelConf({ name, conf }) {
     return this.call({
       method: 'post',
@@ -404,6 +412,23 @@ class API {
     return this.call({
       method: 'post',
       path: '/tunnel-interfaces/import-backup',
+      body: { json, listenPort },
+    });
+  }
+
+  async exportTunnelInterface({ interfaceId, includePeers }) {
+    const peers = includePeers ? '1' : '0';
+    const res = await fetch(`./api/tunnel-interfaces/${interfaceId}/export?peers=${peers}`, {
+      headers: { Authorization: `Bearer ${this.token}` },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.blob();
+  }
+
+  async importTunnelInterface({ json, listenPort }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/import-interface',
       body: { json, listenPort },
     });
   }

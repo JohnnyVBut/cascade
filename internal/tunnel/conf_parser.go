@@ -1,8 +1,11 @@
 package tunnel
 
-// conf_parser.go — parses a WireGuard / AmneziaWG client .conf file.
+// conf_parser.go — parses a WireGuard / AmneziaWG .conf file.
 //
-// Supports standard WireGuard format:
+// Supports both client configs (one [Peer] = upstream server) and server
+// configs (multiple [Peer] sections = connected clients).
+//
+// Example client config:
 //
 //	[Interface]
 //	PrivateKey = <base64>
@@ -11,10 +14,20 @@ package tunnel
 //
 //	[Peer]
 //	PublicKey           = <base64>
-//	PresharedKey        = <base64>
 //	Endpoint            = vpn.example.com:51820
 //	AllowedIPs          = 0.0.0.0/0, ::/0
 //	PersistentKeepalive = 25
+//
+// Example server config:
+//
+//	[Interface]
+//	PrivateKey = <base64>
+//	Address    = 10.8.0.1/24
+//	ListenPort = 51820
+//
+//	[Peer]
+//	PublicKey  = <client1 pubkey>
+//	AllowedIPs = 10.8.0.2/32
 //
 // AmneziaWG extensions (Jc, Jmin, Jmax, S1-S4, H1-H4, I1-I5) are parsed
 // from the [Interface] section and used to set Protocol = amneziawg-2.0.
@@ -27,16 +40,30 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
-// ParsedConf holds the result of parsing a WireGuard client .conf file.
+// ParsedPeer holds data from a single [Peer] section.
+type ParsedPeer struct {
+	PublicKey    string
+	PresharedKey string
+	Endpoint     string
+	AllowedIPs   string
+	Keepalive    int
+}
+
+// ParsedConf holds the result of parsing a WireGuard .conf file.
 type ParsedConf struct {
 	// From [Interface]
 	PrivateKey string
 	Address    string // raw value, e.g. "10.8.0.5/24"
+	ListenPort int    // 0 = not specified
+	DNS        string // first DNS entry
 	MTU        int    // 0 = not specified
 	Protocol   string // "wireguard-1.0" or "amneziawg-2.0"
 	AWG2       *peer.AWG2Settings
 
-	// From [Peer] (first peer section only)
+	// All [Peer] sections.
+	Peers []ParsedPeer
+
+	// Convenience aliases for the first [Peer] — used by ImportConf (uplink mode).
 	PeerPublicKey    string
 	PeerPresharedKey string
 	PeerEndpoint     string
@@ -44,43 +71,46 @@ type ParsedConf struct {
 	PeerKeepalive    int
 }
 
-// ParseWGConf parses a WireGuard / AmneziaWG client config file.
-// Returns an error if required fields (PrivateKey, [Peer] PublicKey) are missing.
+// ParseWGConf parses a WireGuard / AmneziaWG config file.
+// Returns an error if PrivateKey or Address are missing.
+// Does NOT require a [Peer] section — callers validate that based on mode.
 func ParseWGConf(content string) (*ParsedConf, error) {
 	c := &ParsedConf{Protocol: "wireguard-1.0"}
 	awg := &peer.AWG2Settings{}
 	hasAWG := false
 
 	var section string
-	peerDone := false // we only parse the first [Peer] section
+	var cur *ParsedPeer // current [Peer] being parsed
+
+	flush := func() {
+		if cur != nil && cur.PublicKey != "" {
+			c.Peers = append(c.Peers, *cur)
+		}
+		cur = nil
+	}
 
 	for _, rawLine := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(rawLine)
 
-		// Skip empty lines and comments.
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
 		}
 
-		// Section header.
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			next := strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
-			// If we're entering a second [Peer] section, mark the first as done.
-			if next == "peer" && c.PeerPublicKey != "" {
-				peerDone = true
+			if next == "peer" {
+				flush()
+				cur = &ParsedPeer{}
 			}
 			section = next
 			continue
 		}
 
-		// Key = Value.
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
 		key := strings.TrimSpace(parts[0])
-		// Strip inline comments (e.g. "0.0.0.0/0 # all traffic" → "0.0.0.0/0").
-		// wg-quick reference implementation does the same.
 		rawVal := parts[1]
 		if idx := strings.Index(rawVal, "#"); idx >= 0 {
 			rawVal = rawVal[:idx]
@@ -93,12 +123,22 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 			case "privatekey":
 				c.PrivateKey = val
 			case "address":
-				c.Address = val
+				if c.Address == "" {
+					c.Address = val
+				}
+			case "listenport":
+				if n, err := strconv.Atoi(val); err == nil && n > 0 {
+					c.ListenPort = n
+				}
+			case "dns":
+				if c.DNS == "" {
+					// Take only the first entry (comma-separated).
+					c.DNS = strings.TrimSpace(strings.SplitN(val, ",", 2)[0])
+				}
 			case "mtu":
 				if n, err := strconv.Atoi(val); err == nil && n > 0 {
 					c.MTU = n
 				}
-			// AWG2 params — presence of any one of these marks protocol as amneziawg-2.0.
 			case "jc":
 				if n, err := strconv.Atoi(val); err == nil {
 					awg.Jc = n
@@ -152,45 +192,50 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 			}
 
 		case "peer":
-			if peerDone {
-				continue // ignore additional [Peer] sections
+			if cur == nil {
+				continue
 			}
 			switch strings.ToLower(key) {
 			case "publickey":
-				c.PeerPublicKey = val
+				cur.PublicKey = val
 			case "presharedkey":
-				c.PeerPresharedKey = val
+				cur.PresharedKey = val
 			case "endpoint":
-				c.PeerEndpoint = val
+				cur.Endpoint = val
 			case "allowedips":
-				// Accumulate multiple AllowedIPs lines (some generators emit one per line).
-				if c.PeerAllowedIPs == "" {
-					c.PeerAllowedIPs = val
+				if cur.AllowedIPs == "" {
+					cur.AllowedIPs = val
 				} else {
-					c.PeerAllowedIPs += ", " + val
+					cur.AllowedIPs += ", " + val
 				}
 			case "persistentkeepalive":
 				if n, err := strconv.Atoi(val); err == nil {
-					c.PeerKeepalive = n
+					cur.Keepalive = n
 				}
 			}
 		}
 	}
+	flush()
 
-	// Validate required fields.
 	if c.PrivateKey == "" {
 		return nil, fmt.Errorf("missing PrivateKey in [Interface] section")
 	}
 	if c.Address == "" {
 		return nil, fmt.Errorf("missing Address in [Interface] section")
 	}
-	if c.PeerPublicKey == "" {
-		return nil, fmt.Errorf("missing PublicKey in [Peer] section")
-	}
 
 	if hasAWG {
 		c.Protocol = "amneziawg-2.0"
 		c.AWG2 = awg
+	}
+
+	// Populate flat first-peer fields for backward compatibility.
+	if len(c.Peers) > 0 {
+		c.PeerPublicKey = c.Peers[0].PublicKey
+		c.PeerPresharedKey = c.Peers[0].PresharedKey
+		c.PeerEndpoint = c.Peers[0].Endpoint
+		c.PeerAllowedIPs = c.Peers[0].AllowedIPs
+		c.PeerKeepalive = c.Peers[0].Keepalive
 	}
 
 	return c, nil

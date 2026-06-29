@@ -59,6 +59,7 @@ func RegisterInterfaces(api fiber.Router) {
 	// to avoid Fiber routing the literal path segment as a parameter value.
 	g.Post("/quick-create", quickCreateInterface)
 	g.Post("/import-conf", importConfInterface)
+	g.Post("/import-conf-server", importConfServerInterface)
 	g.Post("/import-backup", importBackupInterface)
 
 	g.Get("/:id", getInterface)
@@ -71,6 +72,9 @@ func RegisterInterfaces(api fiber.Router) {
 
 	g.Get("/:id/export-params", exportInterfaceParams)
 	g.Get("/:id/export-obfuscation", exportObfuscation)
+
+	g.Get("/:id/export", exportInterface)
+	g.Post("/import-interface", importInterface)
 
 	g.Get("/:id/backup", backupInterface)
 	g.Put("/:id/restore", restoreInterface)
@@ -112,6 +116,7 @@ func ifaceJSON(t *tunnel.TunnelInterface, withPeers bool) fiber.Map {
 		"enabled":       t.Enabled,
 		"disableRoutes": t.DisableRoutes,
 		"natDisabled":   t.NatDisabled,
+		"dns":           t.DNS,
 		"publicHost":    t.PublicHost,
 		"mtu":           t.MTU,
 		"mss":           t.MSS,
@@ -169,6 +174,7 @@ func createInterface(c *fiber.Ctx) error {
 		Address       string              `json:"address"`
 		ListenPort    int                 `json:"listenPort"`
 		DisableRoutes bool                `json:"disableRoutes"`
+		DNS           string              `json:"dns"`
 		AWG2          *peer.AWG2Settings  `json:"settings"`
 	}
 	if err := c.BodyParser(&body); err != nil {
@@ -188,6 +194,7 @@ func createInterface(c *fiber.Ctx) error {
 		Address:       addr,
 		ListenPort:    body.ListenPort,
 		DisableRoutes: body.DisableRoutes,
+		DNS:           strings.TrimSpace(body.DNS),
 		AWG2:          body.AWG2,
 	})
 	if err != nil {
@@ -274,6 +281,10 @@ func updateInterface(c *fiber.Ctx) error {
 	if v, ok := raw["natDisabled"].(bool); ok {
 		upd.NatDisabled = &v
 	}
+	if v, ok := raw["dns"].(string); ok {
+		s := strings.TrimSpace(v)
+		upd.DNS = &s
+	}
 	if v, ok := raw["publicHost"].(string); ok {
 		s := strings.TrimSpace(v)
 		upd.PublicHost = &s
@@ -345,6 +356,55 @@ func importConfInterface(c *fiber.Ctx) error {
 	}
 	if result.ConflictWarning != "" {
 		resp["conflictWarning"] = result.ConflictWarning
+	}
+	return c.Status(fiber.StatusCreated).JSON(resp)
+}
+
+// POST /api/tunnel-interfaces/import-conf-server
+// Body: { name: string, conf: string }
+// Parses a WireGuard / AmneziaWG server .conf and creates a client-hub interface.
+// DisableRoutes=false; each [Peer] section is imported as a client peer.
+// Response: { interface, peersCreated, peersFailed, started, startError? }
+func importConfServerInterface(c *fiber.Ctx) error {
+	var body struct {
+		Name string `json:"name"`
+		Conf string `json:"conf"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "name is required")
+	}
+	if strings.TrimSpace(body.Conf) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "conf is required")
+	}
+
+	result, err := mgr().ImportConfAsServer(name, body.Conf)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after import-conf-server %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	peersFailed := result.PeersFailed
+	if peersFailed == nil {
+		peersFailed = []string{}
+	}
+	resp := fiber.Map{
+		"interface":    ifaceJSON(result.Interface, false),
+		"peersCreated": result.PeersCreated,
+		"peersFailed":  peersFailed,
+		"started":      result.Started,
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
 	}
 	return c.Status(fiber.StatusCreated).JSON(resp)
 }
@@ -542,6 +602,83 @@ func restoreInterface(c *fiber.Ctx) error {
 
 	t = mgr().GetInterface(id)
 	return c.JSON(fiber.Map{"interface": ifaceJSON(t, true)})
+}
+
+// GET /api/tunnel-interfaces/:id/export
+// Full interface export: config (including privateKey) + optionally peers.
+// Query param: ?peers=1 to include peers (default: included).
+// The resulting JSON can be imported via POST /import-interface.
+func exportInterface(c *fiber.Ctx) error {
+	id := c.Params("id")
+	t := mgr().GetInterface(id)
+	if t == nil {
+		return fiber.NewError(fiber.StatusNotFound, "interface not found")
+	}
+
+	ifaceMap := ifaceJSON(t, false)
+	ifaceMap["privateKey"] = t.PrivateKey
+
+	includePeers := c.Query("peers", "1") != "0"
+	var peers interface{}
+	if includePeers {
+		pp := t.GetAllPeers()
+		if pp == nil {
+			pp = []*peer.Peer{}
+		}
+		peers = pp
+	}
+
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-export.json"`, id))
+	c.Set("Content-Type", "application/json")
+	return c.JSON(fiber.Map{
+		"interface": ifaceMap,
+		"peers":     peers,
+	})
+}
+
+// POST /api/tunnel-interfaces/import-interface
+// Creates a new interface from a Cascade export JSON (produced by GET /export).
+// Body: { json: "<raw JSON string>", listenPort: N }
+func importInterface(c *fiber.Ctx) error {
+	var body struct {
+		JSON       string `json:"json"`
+		ListenPort int    `json:"listenPort"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if strings.TrimSpace(body.JSON) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "json is required")
+	}
+	if body.ListenPort <= 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "listenPort is required")
+	}
+
+	result, err := mgr().ImportInterface(tunnel.ImportInterfaceInput{
+		RawJSON:    body.JSON,
+		ListenPort: body.ListenPort,
+	})
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if result.Started {
+		if err := firewall.Get().RebuildChains(); err != nil {
+			log.Printf("firewall rebuildChains after import-interface %s: %v",
+				result.Interface.ID, err)
+		}
+	}
+
+	resp := fiber.Map{
+		"interface":    ifaceJSON(result.Interface, false),
+		"peersCreated": result.PeersCreated,
+		"peersFailed":  result.PeersFailed,
+		"started":      result.Started,
+	}
+	if result.StartError != nil {
+		resp["startError"] = result.StartError.Error()
+	}
+	return c.JSON(resp)
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────

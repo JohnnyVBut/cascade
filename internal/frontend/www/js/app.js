@@ -158,6 +158,8 @@ new Vue({
       { id: 'remotes',          label: 'Remotes' },
       { id: 'settings',         label: 'Settings' },
       { id: 'administration',   label: 'Administration' },
+      { id: '_header_wizards',  label: 'Wizards', type: 'header' },
+      { id: 'wizard-simple-vpn', label: 'Simple Client VPN' },
     ],
 
     // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -232,11 +234,15 @@ new Vue({
     allPeers: [],            // dashboard: flat list of peers from all interfaces
     showInterfaceCreate: false,
     createMode: 'quick',        // 'quick' | 'manual' — controls which form is shown in the create modal
-    showImportConf: false,
     importConfForm: { name: '', conf: '', fileName: '' },
+    importConfMode: 'server', // 'server' (client hub) | 'uplink' (S2S)
     importConfWarning: '',
     showImportBackup: false,
+    importBackupTab: 'cascade', // 'cascade' | 'awgeasy'
     importBackupForm: { json: '', listenPort: '', fileName: '' },
+    showExportInterface: false,
+    exportInterfaceId: null,
+    exportInterfaceIncludePeers: true,
     showInterfaceEdit: false,
     interfaceEdit: {
       id: null,
@@ -245,6 +251,7 @@ new Vue({
       listenPort: '',
       disableRoutes: false,
       natDisabled: false,
+      dns: '',
       publicHost: '',
       mtu: 0,
       mss: 0,
@@ -267,6 +274,7 @@ new Vue({
       address: '',
       listenPort: '',
       disableRoutes: false,
+      dns: '',
       selectedTemplateId: '',   // UI-only: выбранный профиль обфускации (не отправляется в API)
       settings: {
         jc: 6, jmin: 10, jmax: 50,
@@ -418,6 +426,22 @@ new Vue({
     speedtestResult: null,
     speedtestError: '',
     speedtestHistory: [],
+
+    // ── Wizard: Simple Client VPN ─────────────────────────────────────────────
+    wizardVPN: {
+      step: 1,                // 1=protocol, 2=name, 3=dns+peer, 4=result
+      protocol: 'wireguard',  // 'wireguard' | 'amneziawg'
+      ifaceName: '',
+      dns: '',
+      peerName: 'My Device',
+      running: false,
+      error: '',
+      ifaceId: '',
+      peerId: '',
+      qrUrl: '',
+      ifaceAddr: '',
+      ifacePort: 0,
+    },
 
     showGatewayCreate: false,
     showGatewayEdit:   false,
@@ -1141,6 +1165,9 @@ new Vue({
         this.loadAliases();
         this.loadClientGroups();
       }
+      if (pageId === 'wizard-simple-vpn') {
+        this.wizardVPNInit();
+      }
       if (pageId === 'firewall') {
         this.loadFirewallRules();
         this.loadFirewallInterfaces();
@@ -1190,6 +1217,7 @@ new Vue({
           address: this.interfaceCreate.address,
           listenPort: this.interfaceCreate.listenPort ? parseInt(this.interfaceCreate.listenPort, 10) : undefined,
           disableRoutes: this.interfaceCreate.disableRoutes || false,
+          dns: this.interfaceCreate.dns || '',
         };
 
         if (this.interfaceCreate.protocol === 'amneziawg-2.0') {
@@ -1280,8 +1308,11 @@ new Vue({
 
       this.importConfWarning = '';
       try {
-        const res = await this.api.importTunnelConf({ name, conf });
-        this.showImportConf = false;
+        const isServer = this.importConfMode === 'server';
+        const res = isServer
+          ? await this.api.importTunnelConfServer({ name, conf })
+          : await this.api.importTunnelConf({ name, conf });
+        this.showImportBackup = false;
         this.importConfForm = { name: '', conf: '', fileName: '' };
         await this.loadTunnelInterfaces();
         this.loadNatInterfaces();
@@ -1293,13 +1324,17 @@ new Vue({
           this.showToast(`⚠️ ${res.conflictWarning}`, 'error');
         }
         if (res.started) {
-          this.showToast(`✅ ${iface.id} imported & started · ${iface.address}${proto}`);
+          const extra = isServer ? ` · ${res.peersCreated} peers` : '';
+          this.showToast(`✅ ${iface.id} imported & started · ${iface.address}${proto}${extra}`);
           this.activeInterfaceId = iface.id;
         } else {
           this.showToast(
             `⚠️ ${iface.id} imported but failed to start\n${res.startError || 'Unknown error'}`,
             'error'
           );
+        }
+        if (isServer && (res.peersFailed || []).length > 0) {
+          this.showToast(`⚠️ Failed to import peers: ${res.peersFailed.join(', ')}`, 'error');
         }
       } catch (err) {
         console.error('Import conf failed:', err);
@@ -1313,7 +1348,18 @@ new Vue({
       this.importBackupForm.fileName = file.name;
       const reader = new FileReader();
       reader.onload = (e) => {
-        this.importBackupForm.json = e.target.result || '';
+        const text = e.target.result || '';
+        this.importBackupForm.json = text;
+        // Auto-detect listen port from JSON
+        try {
+          const parsed = JSON.parse(text);
+          const port =
+            (parsed.interface && parsed.interface.listenPort) || // Cascade export
+            (parsed.server && parsed.server.port);               // AWG-Easy
+          if (port && !this.importBackupForm.listenPort) {
+            this.importBackupForm.listenPort = String(port);
+          }
+        } catch (_) {}
       };
       reader.readAsText(file);
     },
@@ -1358,6 +1404,57 @@ new Vue({
       }
     },
 
+    openExportInterface(iface) {
+      this.exportInterfaceId = iface.id;
+      this.exportInterfaceIncludePeers = true;
+      this.showExportInterface = true;
+    },
+
+    async doExportInterface() {
+      if (!this.exportInterfaceId) return;
+      try {
+        const blob = await this.api.exportTunnelInterface({
+          interfaceId: this.exportInterfaceId,
+          includePeers: this.exportInterfaceIncludePeers,
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${this.exportInterfaceId}-export.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.showExportInterface = false;
+      } catch (err) {
+        this.showToast(`Export failed: ${err.message}`, 'error');
+      }
+    },
+
+    async doImportInterface() {
+      const json = (this.importBackupForm.json || '').trim();
+      const port = parseInt(this.importBackupForm.listenPort, 10);
+      if (!json)        { this.showToast('Please select a backup file', 'error'); return; }
+      if (!port || port < 1 || port > 65535) {
+        this.showToast('Please enter a valid UDP port (1–65535)', 'error'); return;
+      }
+      try {
+        const res = await this.api.importTunnelInterface({ json, listenPort: port });
+        this.showImportBackup = false;
+        this.importBackupForm = { json: '', listenPort: '', fileName: '' };
+        await this.loadTunnelInterfaces();
+        this.loadNatInterfaces();
+        this.loadFirewallInterfaces();
+        const iface = res.interface || {};
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const msg = res.started
+          ? `✅ Interface restored: ${iface.id} · ${iface.address}${proto} · ${res.peersCreated} peers`
+          : `⚠️ Interface restored but failed to start: ${res.startError || ''}`;
+        this.showToast(msg, res.started ? 'success' : 'error');
+        if (res.started) this.activeInterfaceId = iface.id;
+      } catch (err) {
+        this.showToast(`Failed: ${err.message}`, 'error');
+      }
+    },
+
     // generateAndFillInterfaceParams — fills AWG2 fields in the Manual form
     // by generating a random profile via the /templates/generate endpoint.
     async generateAndFillInterfaceParams() {
@@ -1395,7 +1492,7 @@ new Vue({
       this.createMode = 'quick';
       this.interfaceCreate = {
         name: '', protocol: 'wireguard-1.0', address: '', listenPort: '',
-        disableRoutes: false, selectedTemplateId: '',
+        disableRoutes: false, dns: '', selectedTemplateId: '',
         settings: {
           jc: 6, jmin: 10, jmax: 50, s1: 64, s2: 67, s3: 64, s4: 4,
           h1: '', h2: '', h3: '', h4: '',
@@ -1458,6 +1555,7 @@ new Vue({
         listenPort: iface.listenPort || '',
         disableRoutes: !!iface.disableRoutes,
         natDisabled: !!iface.natDisabled,
+        dns: iface.dns || '',
         publicHost: iface.publicHost || '',
         mtu: iface.mtu || 0,
         mss: iface.mss || 0,
@@ -1495,7 +1593,7 @@ new Vue({
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, natDisabled, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, dns, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
@@ -1515,6 +1613,7 @@ new Vue({
         listenPort: listenPort !== '' && listenPort !== null ? Number(listenPort) : undefined,
         disableRoutes,
         natDisabled,
+        dns: dns || '',
         publicHost: publicHost || '',
         mtu: mtu || 0,
         mss: mss || 0,
@@ -1691,7 +1790,7 @@ new Vue({
         }
 
         if (showQR && mode === 'generate' && peerType === 'client' && peerId) {
-          this.qrcode = `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
+          this.qrcode = this.peerQrUrl(interfaceId, peerId);
         } else {
           this.showToast(peerType === 'client' ? 'Client created!' : 'Peer created!');
         }
@@ -2962,6 +3061,7 @@ new Vue({
         cellHeight: 60,
         margin: 8,
         animate: true,
+        float: true,
         resizable: { handles: 'se' },
       }, el);
 
@@ -3539,6 +3639,7 @@ new Vue({
         margin: 8,
         column: 12,
         animate: true,
+        float: true,
         resizable: { handles: 'se' },
       }, el);
       // Sync positions back to diagWidgets on change
@@ -4683,7 +4784,7 @@ new Vue({
         this.loadAliases();
 
         if (showQR && peerId) {
-          this.qrcode = `./api/tunnel-interfaces/${this.activeInterfaceId}/peers/${peerId}/qrcode.svg`;
+          this.qrcode = this.peerQrUrl(this.activeInterfaceId, peerId);
         } else {
           this.showToast('Client created!');
         }
@@ -4703,6 +4804,13 @@ new Vue({
     },
 
     // Extract IP from runtimeEndpoint "IP:port" string (IPv4 and IPv6)
+    peerQrUrl(interfaceId, peerId) {
+      const base = this.activeRemoteId
+        ? `./api/remotes/${this.activeRemoteId}/proxy/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`
+        : `./api/tunnel-interfaces/${interfaceId}/peers/${peerId}/qrcode.svg`;
+      return base;
+    },
+
     peerPublicIP(endpoint) {
       if (!endpoint) return '';
       if (endpoint.startsWith('[')) {
@@ -5603,6 +5711,129 @@ new Vue({
         this.showToast(err.message || 'Failed to disable 2FA', 'error');
       }
     },
+    // ========================================================================
+    // Wizard: Simple Client VPN
+    // ========================================================================
+
+    // Returns a random low port (400–999) not used by any existing interface.
+    // 443 is excluded — Caddy binds UDP 443 for QUIC/HTTP3 in the standard deploy.
+    wizardVPNPickPort() {
+      const usedPorts = new Set((this.tunnelInterfaces || []).map(i => i.listenPort));
+      usedPorts.add(443); // always skip — Caddy QUIC
+      for (let attempts = 0; attempts < 200; attempts++) {
+        const p = Math.floor(Math.random() * 600) + 400; // 400–999
+        if (!usedPorts.has(p)) return p;
+      }
+      return 8443; // last-resort fallback
+    },
+
+    wizardVPNInit() {
+      this.wizardVPN = {
+        step: 1,
+        protocol: 'wireguard',
+        ifaceName: '',
+        dns: this.globalSettings.dns || '',
+        peerName: 'My Device',
+        running: false,
+        error: '',
+        ifaceId: '',
+        peerId: '',
+        qrUrl: '',
+        ifaceAddr: '',
+        ifacePort: 0,
+        startWarning: '',
+      };
+    },
+
+    async wizardVPNRun() {
+      this.wizardVPN.running = true;
+      this.wizardVPN.error = '';
+      try {
+        const proto = this.wizardVPN.protocol;
+        let awgParams = null;
+
+        // Generate AWG obfuscation params if needed
+        if (proto === 'amneziawg') {
+          const host = (this.globalSettings.resolvedPublicIP || '').trim();
+          const isIPv4 = /^\d+\.\d+\.\d+\.\d+$/.test(host);
+          const isIPv6 = host.includes(':');
+          const isDomain = host && !isIPv4 && !isIPv6;
+          const profile = isDomain ? 'quic_burst' : 'tls_client_hello';
+          const res = await this.api.call({
+            method: 'post',
+            path: '/templates/generate',
+            body: { profile, intensity: 'medium', host: isDomain ? host : '' },
+          });
+          awgParams = res.params;
+        }
+
+        // Pick a low port (443 preferred, fallback random 400–999)
+        const wizardPort = this.wizardVPNPickPort();
+
+        // Create + start interface via quick-create
+        const qcBody = {
+          protocol: proto === 'amneziawg' ? 'amneziawg-2.0' : 'wireguard-1.0',
+        };
+        const trimmedName = (this.wizardVPN.ifaceName || '').trim();
+        if (trimmedName) qcBody.name = trimmedName;
+
+        const qcData = await this.api.call({ method: 'post', path: '/tunnel-interfaces/quick-create', body: qcBody });
+        const ifaceId = qcData.interface.id;
+        this.wizardVPN.ifaceId = ifaceId;
+        this.wizardVPN.ifaceAddr = qcData.interface.address || '';
+
+        // Apply port, DNS override and/or AWG params via PATCH (always needed for port)
+        const patch = { listenPort: wizardPort };
+        if (this.wizardVPN.dns) patch.dns = this.wizardVPN.dns;
+        if (awgParams) patch.settings = awgParams;
+        await this.api.call({ method: 'patch', path: `/tunnel-interfaces/${ifaceId}`, body: patch });
+        // PATCH with listenPort triggers restart automatically (wg-quick rebind)
+        this.wizardVPN.ifacePort = wizardPort;
+
+        // Create first peer
+        const peerRes = await this.api.call({
+          method: 'post',
+          path: `/tunnel-interfaces/${ifaceId}/peers`,
+          body: {
+            name: (this.wizardVPN.peerName || '').trim() || 'My Device',
+            peerType: 'client',
+            generateKeys: true,
+            autoAllocateIP: true,
+            persistentKeepalive: 25,
+          },
+        });
+        const peerId = peerRes.peer.id;
+        this.wizardVPN.peerId = peerId;
+        this.wizardVPN.qrUrl = this.peerQrUrl(ifaceId, peerId);
+        this.wizardVPN.step = 4;
+
+        // Wait for the async restart goroutine (PATCH with listenPort triggers
+        // restart in a goroutine — the API returns before wg-quick finishes).
+        await new Promise(r => setTimeout(r, 2500));
+        await this.loadTunnelInterfaces();
+        const created = this.tunnelInterfaces.find(i => i.id === ifaceId);
+        if (created && !created.enabled) {
+          this.wizardVPN.startWarning = `Interface ${ifaceId} was created but failed to start — UDP port ${wizardPort} may be in use. Go to Interfaces to start it manually or change the port.`;
+        }
+      } catch (err) {
+        this.wizardVPN.error = err.message || 'Unknown error';
+      } finally {
+        this.wizardVPN.running = false;
+      }
+    },
+
+    wizardVPNReset() {
+      this.wizardVPNInit();
+    },
+
+    wizardVPNDownload() {
+      this.downloadPeerConfig({
+        id: this.wizardVPN.peerId,
+        name: this.wizardVPN.peerName || 'My Device',
+        interfaceId: this.wizardVPN.ifaceId,
+      });
+    },
+
   },
   filters: {
     bytes,
