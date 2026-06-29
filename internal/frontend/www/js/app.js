@@ -5997,11 +5997,11 @@ new Vue({
       const w = this.wizardUplink;
       w.inlineIfaceCreating = true;
       try {
-        const res = await this.api.quickCreateTunnelInterface({
-          name: w.inlineIfaceName.trim() || undefined,
-          address: w.inlineIfaceAddr.trim() || undefined,
-          listenPort: w.inlineIfacePort ? parseInt(w.inlineIfacePort, 10) : undefined,
-        });
+        const body = {};
+        if (w.inlineIfaceName.trim()) body.name = w.inlineIfaceName.trim();
+        if (w.inlineIfaceAddr.trim()) body.address = w.inlineIfaceAddr.trim();
+        if (w.inlineIfacePort) body.listenPort = parseInt(w.inlineIfacePort, 10);
+        const res = await this.api.createTunnelInterface(body);
         await this.loadTunnelInterfaces();
         w.selectedIfaceIds.push(res.interface.id);
         w.showInlineCreate = false;
