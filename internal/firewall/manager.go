@@ -105,12 +105,13 @@ type portCombo struct {
 
 // TraceStep is one rule evaluated during SimulateTrace.
 type TraceStep struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Fwmark   *int   `json:"fwmark"`
-	SrcMatch bool   `json:"srcMatch"`
-	DstMatch bool   `json:"dstMatch"`
-	Matched  bool   `json:"matched"`
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Fwmark       *int   `json:"fwmark"`
+	SrcMatch     bool   `json:"srcMatch"`
+	DstMatch     bool   `json:"dstMatch"`
+	Matched      bool   `json:"matched"`
+	ProtoSkipped bool   `json:"protoSkipped,omitempty"` // true when rule has protocol/port condition that was not evaluated
 }
 
 // TraceResult is the output of SimulateTrace.
@@ -832,6 +833,12 @@ func (m *Manager) ReorderRules(ids []string) error {
 // SimulateTrace walks the rule list in order, matching srcIP/dstIP against
 // each enabled rule. Returns the first matching rule and all evaluated steps.
 // Used by the route test API to determine which PBR fwmark (if any) applies.
+//
+// Rules with protocol or port conditions are recorded in the trace with
+// ProtoSkipped=true and never counted as matched — the caller only provides
+// L3 addresses, so L4 conditions cannot be evaluated. When protocol/port
+// parameters are added to the trace in the future, pass them here and evaluate
+// them before the srcMatch/dstMatch block.
 func (m *Manager) SimulateTrace(srcIP, dstIP string) (*TraceResult, error) {
 	// Prefer the applied snapshot so results match what's actually in iptables.
 	// Fall back to live rules when the snapshot is empty (e.g. in tests).
@@ -851,6 +858,24 @@ func (m *Manager) SimulateTrace(srcIP, dstIP string) (*TraceResult, error) {
 		if !rule.Enabled || rule.RuleType == "separator" {
 			continue
 		}
+
+		// Rules with protocol or port conditions cannot be evaluated with L3-only
+		// input. Record them in the trace as skipped so the UI can show them, but
+		// never count them as matched — they must not block subsequent rules from
+		// being evaluated.
+		hasProto := rule.Protocol != "" && rule.Protocol != "any"
+		hasPort := rule.Source.Port != "" || rule.Source.PortAliasID != "" ||
+			rule.Destination.Port != "" || rule.Destination.PortAliasID != ""
+		if hasProto || hasPort {
+			result.Steps = append(result.Steps, TraceStep{
+				ID:           rule.ID,
+				Name:         rule.Name,
+				Fwmark:       rule.Fwmark,
+				ProtoSkipped: true,
+			})
+			continue
+		}
+
 		srcMatch, err := m.matchEndpoint(&rule.Source, srcIP)
 		if err != nil {
 			srcMatch = false
