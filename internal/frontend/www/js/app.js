@@ -431,6 +431,7 @@ new Vue({
 
     wizardsExpanded: false,
 
+
     // ── Wizard: Simple Client VPN ─────────────────────────────────────────────
     wizardVPN: {
       step: 1,                // 1=protocol, 2=name, 3=dns+peer, 4=result

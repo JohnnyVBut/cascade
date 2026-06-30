@@ -330,6 +330,16 @@ Full reference: [docs/API.en.md](docs/API.en.md) · [docs/API.md (RU)](docs/API.
 | Reverse proxy | Caddy 2 (HTTP/3 + QUIC) |
 | VPN | AmneziaWG 2.0 / WireGuard 1.0 |
 
+## ☕ Support the Project
+
+If Cascade is useful to you, consider supporting its development:
+
+| Method | Address |
+|--------|---------|
+| TRC20  | `TDm1VvwoLaRdjpp7149QNacBzQtXnGresW` |
+
+---
+
 ## 🙏 Credits
 
 - Based on [wg-easy](https://github.com/wg-easy/wg-easy)
