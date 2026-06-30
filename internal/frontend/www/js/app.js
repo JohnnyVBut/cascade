@@ -6428,7 +6428,6 @@ new Vue({
       let localIfaceId = '';
       try {
         const body = { name: w.localIfaceName, address: subnet.localAddr, disableRoutes: true, protocol: w.protocol };
-        if (w.protocol === 'amneziawg-2.0') body.settings = {};
         const res = await this.api.createTunnelInterface(body);
         localIfaceId = (res.interface || res).id || '';
         w.createdLocalIfaceId = localIfaceId;
