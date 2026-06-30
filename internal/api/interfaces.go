@@ -58,6 +58,7 @@ func RegisterInterfaces(api fiber.Router) {
 	// quick-create, import-conf and import-backup MUST be registered before /:id
 	// to avoid Fiber routing the literal path segment as a parameter value.
 	g.Post("/quick-create", quickCreateInterface)
+	g.Post("/parse-conf", parseConfPreview)
 	g.Post("/import-conf", importConfInterface)
 	g.Post("/import-conf-server", importConfServerInterface)
 	g.Post("/import-backup", importBackupInterface)
@@ -188,6 +189,14 @@ func createInterface(c *fiber.Ctx) error {
 		}
 	}
 
+	awg2 := body.AWG2
+	if body.Protocol == "amneziawg-2.0" && awg2 == nil {
+		var awg2Err error
+		awg2, awg2Err = mgr().BuildAWG2Params()
+		if awg2Err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "build AWG2 params: "+awg2Err.Error())
+		}
+	}
 	t, err := mgr().CreateInterface(tunnel.CreateInput{
 		Name:          strings.TrimSpace(body.Name),
 		Protocol:      body.Protocol,
@@ -195,7 +204,7 @@ func createInterface(c *fiber.Ctx) error {
 		ListenPort:    body.ListenPort,
 		DisableRoutes: body.DisableRoutes,
 		DNS:           strings.TrimSpace(body.DNS),
-		AWG2:          body.AWG2,
+		AWG2:          awg2,
 	})
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -318,6 +327,66 @@ func updateInterface(c *fiber.Ctx) error {
 // Parses a WireGuard / AmneziaWG client .conf and creates an interface + upstream peer.
 // DisableRoutes is always set to true — the server routing table is not modified.
 // Response: { interface, peer, started, startError?, conflictWarning? }
+// POST /api/tunnel-interfaces/parse-conf
+// Body: { conf: string }
+// Parses a WireGuard / AmneziaWG .conf and returns preview data without
+// creating any database records. PrivateKey is never included in the response.
+// Response: { address, protocol, listenPort, dns, mtu, peerEndpoint, peerAllowedIPs, peerMonitorIP }
+func parseConfPreview(c *fiber.Ctx) error {
+	var body struct {
+		Conf string `json:"conf"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
+	}
+	if strings.TrimSpace(body.Conf) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "conf is required")
+	}
+	parsed, err := tunnel.ParseWGConf(body.Conf)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	// Best-guess server overlay IP: take client address, replace last octet with 1.
+	// Common VPN convention (e.g. client 10.8.7.45 → server 10.8.7.1). User can override in wizard.
+	monitorIP := ""
+	if parsed.Address != "" {
+		clientCIDR := strings.TrimSpace(strings.Split(parsed.Address, ",")[0])
+		if host, _, err2 := parseFirstHost(clientCIDR); err2 == nil {
+			parts := strings.Split(host, ".")
+			if len(parts) == 4 {
+				parts[3] = "1"
+				monitorIP = strings.Join(parts, ".")
+			}
+		}
+	}
+	return c.JSON(fiber.Map{
+		"address":        parsed.Address,
+		"protocol":       parsed.Protocol,
+		"listenPort":     parsed.ListenPort,
+		"dns":            parsed.DNS,
+		"mtu":            parsed.MTU,
+		"peerEndpoint":   parsed.PeerEndpoint,
+		"peerAllowedIPs": parsed.PeerAllowedIPs,
+		"peerMonitorIP":  monitorIP,
+	})
+}
+
+// parseFirstHost extracts the host IP from a CIDR string (e.g. "10.0.0.1/32" → "10.0.0.1").
+func parseFirstHost(cidr string) (string, int, error) {
+	if cidr == "" {
+		return "", 0, fmt.Errorf("empty cidr")
+	}
+	parts := strings.SplitN(cidr, "/", 2)
+	if len(parts) != 2 {
+		return parts[0], 0, nil
+	}
+	prefix, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return parts[0], 0, nil
+	}
+	return parts[0], prefix, nil
+}
+
 func importConfInterface(c *fiber.Ctx) error {
 	var body struct {
 		Name string `json:"name"`

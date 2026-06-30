@@ -400,6 +400,15 @@ class API {
     });
   }
 
+  async parseTunnelConf({ conf }) {
+    return this.call({
+      method: 'post',
+      path: '/tunnel-interfaces/parse-conf',
+      body: { conf },
+    });
+  }
+
+
   async importTunnelConf({ name, conf }) {
     return this.call({
       method: 'post',

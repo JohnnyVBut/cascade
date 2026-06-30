@@ -895,6 +895,12 @@ func ipToUint32(ip net.IP) uint32 {
 	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
 }
 
+// BuildAWG2Params returns AWG2 params from the default template or a random profile.
+// Exported so API handlers can reuse the same logic as QuickCreate.
+func (m *Manager) BuildAWG2Params() (*peer.AWG2Settings, error) {
+	return m.buildAWG2Params()
+}
+
 // buildAWG2Params returns AWG2 params for QuickCreate.
 // Priority: default template → random generated profile.
 func (m *Manager) buildAWG2Params() (*peer.AWG2Settings, error) {
