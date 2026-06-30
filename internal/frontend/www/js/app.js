@@ -161,6 +161,7 @@ new Vue({
       { id: '_header_wizards',  label: 'Wizards', type: 'header' },
       { id: 'wizard-simple-vpn', label: 'Simple Client VPN' },
       { id: 'wizard-uplink-vpn', label: 'Cascade via WireGuard Uplink' },
+      { id: 'wizard-cascade-s2s', label: 'Cascade ↔ Cascade S2S' },
     ],
 
     // ── Dashboard ──────────────────────────────────────────────────────────────
@@ -487,6 +488,47 @@ new Vue({
       createdGatewayId: '',
       createdFwRuleId: '',
       createdNatRuleId: '',
+      done: false,
+      fatalError: '',
+    },
+
+    // ── Wizard: Cascade ↔ Cascade S2S ────────────────────────────────────────
+    wizardS2S: {
+      step: 1,           // 1=remote, 2=source, 3=destination, 4=options, 5=apply
+      // step 1 — remote
+      remotes: [],
+      remoteId: '',
+      showAddRemote: false,
+      addRemoteName: '', addRemoteURL: '', addRemoteMode: 'password',
+      addRemoteUser: '', addRemotePass: '', addRemoteToken: '',
+      addRemoteSkipTLS: false, addRemoteLoading: false,
+      // step 2 — source
+      selectedIfaceIds: [],
+      createSrcAlias: true,
+      srcAliasName: '',
+      // step 3 — destination
+      dstType: 'all',
+      dstCountries: [],
+      dstASN: '',
+      dstNegate: false,
+      dstAliasName: '',
+      // step 4 — options
+      protocol: 'wireguard',
+      mssClamp: true,
+      fallback: 'drop',
+      localIfaceName: '',
+      remoteIfaceName: '',
+      gatewayName: '',
+      fwRuleName: '',
+      // step 5 — apply
+      applying: false,
+      steps: [],
+      createdLocalIfaceId: '',
+      createdRemoteIfaceId: '',
+      createdSrcAliasId: '',
+      createdDstAliasId: '',
+      createdGatewayId: '',
+      createdFwRuleId: '',
       done: false,
       fatalError: '',
     },
@@ -1219,6 +1261,9 @@ new Vue({
       }
       if (pageId === 'wizard-uplink-vpn') {
         this.wizardUplinkInit();
+      }
+      if (pageId === 'wizard-cascade-s2s') {
+        this.wizardS2SInit();
       }
       if (pageId === 'firewall') {
         this.loadFirewallRules();
@@ -6225,6 +6270,352 @@ new Vue({
         this.wizardUplinkStepSet(s7, 'ok', w.natRuleName);
       } catch (e) {
         this.wizardUplinkStepSet(s7, 'warn', e.message);
+      }
+
+      w.applying = false;
+      w.done = true;
+    },
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Wizard: Cascade ↔ Cascade S2S
+    // ══════════════════════════════════════════════════════════════════════════
+
+    async wizardS2SInit() {
+      const w = this.wizardS2S;
+      w.step = 1;
+      w.remoteId = ''; w.showAddRemote = false;
+      w.addRemoteName = ''; w.addRemoteURL = ''; w.addRemoteMode = 'password';
+      w.addRemoteUser = ''; w.addRemotePass = ''; w.addRemoteToken = '';
+      w.addRemoteSkipTLS = false; w.addRemoteLoading = false;
+      w.selectedIfaceIds = []; w.createSrcAlias = true; w.srcAliasName = '';
+      w.dstType = 'all'; w.dstCountries = []; w.dstASN = ''; w.dstNegate = false; w.dstAliasName = '';
+      w.protocol = 'wireguard'; w.mssClamp = true; w.fallback = 'drop';
+      w.localIfaceName = ''; w.remoteIfaceName = ''; w.gatewayName = ''; w.fwRuleName = '';
+      w.applying = false; w.steps = [];
+      w.createdLocalIfaceId = ''; w.createdRemoteIfaceId = '';
+      w.createdSrcAliasId = ''; w.createdDstAliasId = '';
+      w.createdGatewayId = ''; w.createdFwRuleId = '';
+      w.done = false; w.fatalError = '';
+      try {
+        const res = await this.api.call({ method: 'get', path: '/remotes' });
+        w.remotes = res.remotes || res || [];
+      } catch (e) {
+        w.remotes = [];
+      }
+    },
+
+    wizardS2SOnNameChange() {
+      const w = this.wizardS2S;
+      const base = (w.localIfaceName || 's2s').trim();
+      if (!w.remoteIfaceName || w.remoteIfaceName === 'remote-' + base) w.remoteIfaceName = 'remote-' + base;
+      if (!w.srcAliasName || w.srcAliasName === 'src-' + base) w.srcAliasName = 'src-' + base;
+      if (!w.dstAliasName || w.dstAliasName === 'dst-' + base) w.dstAliasName = 'dst-' + base;
+      if (!w.gatewayName || w.gatewayName === 'gw-' + base) w.gatewayName = 'gw-' + base;
+      if (!w.fwRuleName || w.fwRuleName === 'pbr-' + base) w.fwRuleName = 'pbr-' + base;
+    },
+
+    wizardS2SAutoNames() {
+      const w = this.wizardS2S;
+      const remote = w.remotes.find(r => r.id === w.remoteId);
+      const base = (remote ? remote.name.toLowerCase().replace(/[^a-z0-9]/g, '-') : 'cascade') + '-s2s';
+      if (!w.localIfaceName) w.localIfaceName = base;
+      if (!w.remoteIfaceName) w.remoteIfaceName = 'remote-' + base;
+      if (!w.srcAliasName) w.srcAliasName = 'src-' + base;
+      if (!w.dstAliasName) w.dstAliasName = 'dst-' + base;
+      if (!w.gatewayName) w.gatewayName = 'gw-' + base;
+      if (!w.fwRuleName) w.fwRuleName = 'pbr-' + base;
+    },
+
+    async wizardS2SAddRemote() {
+      const w = this.wizardS2S;
+      w.addRemoteLoading = true;
+      try {
+        const body = {
+          name: w.addRemoteName.trim(),
+          url: w.addRemoteURL.trim(),
+          skipTLS: w.addRemoteSkipTLS,
+        };
+        if (w.addRemoteMode === 'password') {
+          body.username = w.addRemoteUser.trim();
+          body.password = w.addRemotePass;
+        } else {
+          body.token = w.addRemoteToken.trim();
+        }
+        const res = await this.api.call({ method: 'post', path: '/remotes', body });
+        const added = res.remote || res;
+        w.remotes.push(added);
+        w.remoteId = added.id;
+        w.showAddRemote = false;
+        w.addRemoteName = ''; w.addRemoteURL = ''; w.addRemoteUser = ''; w.addRemotePass = ''; w.addRemoteToken = '';
+      } catch (e) {
+        this.showToast(e.message || 'Failed to add remote', 'error');
+      } finally {
+        w.addRemoteLoading = false;
+      }
+    },
+
+    wizardS2SClientIfaces() {
+      return (this.tunnelInterfaces || []).filter(i => !i.disableRoutes);
+    },
+
+    wizardS2SIfaceSubnet(iface) {
+      if (!iface || !iface.address) return '';
+      const parts = iface.address.split('/');
+      if (parts.length < 2) return iface.address;
+      const ipParts = parts[0].split('.');
+      ipParts[3] = '0';
+      return ipParts.join('.') + '/' + parts[1];
+    },
+
+    wizardS2SToggleIface(id) {
+      const idx = this.wizardS2S.selectedIfaceIds.indexOf(id);
+      if (idx === -1) this.wizardS2S.selectedIfaceIds.push(id);
+      else this.wizardS2S.selectedIfaceIds.splice(idx, 1);
+    },
+
+    wizardS2SSelectedSubnets() {
+      return this.wizardS2S.selectedIfaceIds.map(id => {
+        const iface = (this.tunnelInterfaces || []).find(i => i.id === id);
+        return iface ? this.wizardS2SIfaceSubnet(iface) : '';
+      }).filter(Boolean);
+    },
+
+    wizardS2SFreeSubnet() {
+      const used = (this.tunnelInterfaces || []).map(i => i.address).filter(Boolean);
+      for (let base = 0; base < 256; base += 4) {
+        const localIP  = `10.255.255.${base + 1}`;
+        const remoteIP = `10.255.255.${base + 2}`;
+        const inUse = used.some(addr =>
+          addr.startsWith(localIP + '/') || addr.startsWith(localIP + ' ') || addr === localIP ||
+          addr.startsWith(remoteIP + '/') || addr.startsWith(remoteIP + ' ') || addr === remoteIP
+        );
+        if (!inUse) return { localAddr: localIP + '/30', remoteAddr: remoteIP + '/30', localIP, remoteIP };
+      }
+      return null;
+    },
+
+    wizardS2SStepAdd(label) {
+      this.wizardS2S.steps.push({ label, status: 'pending', detail: '' });
+      return this.wizardS2S.steps.length - 1;
+    },
+
+    wizardS2SStepSet(idx, status, detail) {
+      this.$set(this.wizardS2S.steps, idx, {
+        ...this.wizardS2S.steps[idx],
+        status,
+        detail: detail || '',
+      });
+    },
+
+    async wizardS2SApply() {
+      const w = this.wizardS2S;
+      w.applying = true; w.steps = []; w.done = false; w.fatalError = '';
+      const rid = w.remoteId;
+
+      // Step 1: Find free /30
+      const s0 = this.wizardS2SStepAdd('Allocating S2S subnet');
+      this.wizardS2SStepSet(s0, 'running');
+      const subnet = this.wizardS2SFreeSubnet();
+      if (!subnet) {
+        this.wizardS2SStepSet(s0, 'error', '10.255.255.0/24 exhausted');
+        w.fatalError = 'No free /30 in 10.255.255.0/24'; w.applying = false; return;
+      }
+      this.wizardS2SStepSet(s0, 'ok', `${subnet.localAddr} ↔ ${subnet.remoteAddr}`);
+
+      // Step 2: Create local S2S interface
+      const s1 = this.wizardS2SStepAdd('Creating local S2S interface');
+      this.wizardS2SStepSet(s1, 'running');
+      let localIfaceId = '';
+      try {
+        const body = { name: w.localIfaceName, address: subnet.localAddr, disableRoutes: true, protocol: w.protocol };
+        if (w.protocol === 'amneziawg-2.0') body.settings = {};
+        const res = await this.api.createTunnelInterface(body);
+        localIfaceId = (res.interface || res).id || '';
+        w.createdLocalIfaceId = localIfaceId;
+        await this.api.startTunnelInterface({ interfaceId: localIfaceId }).catch(() => {});
+        await this.loadTunnelInterfaces();
+        this.wizardS2SStepSet(s1, 'ok', w.localIfaceName);
+      } catch (e) {
+        this.wizardS2SStepSet(s1, 'error', e.message);
+        w.fatalError = e.message; w.applying = false; return;
+      }
+
+      // Step 3: Create remote S2S interface
+      const s2 = this.wizardS2SStepAdd('Creating remote S2S interface');
+      this.wizardS2SStepSet(s2, 'running');
+      let remoteIfaceId = '';
+      try {
+        const body = { name: w.remoteIfaceName, address: subnet.remoteAddr, disableRoutes: true, protocol: w.protocol };
+        const res = await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/tunnel-interfaces', body });
+        remoteIfaceId = (res.interface || res).id || '';
+        w.createdRemoteIfaceId = remoteIfaceId;
+        await this.api.remoteCall({ remoteId: rid, method: 'post', path: `/tunnel-interfaces/${remoteIfaceId}/start`, body: {} }).catch(() => {});
+        this.wizardS2SStepSet(s2, 'ok', w.remoteIfaceName);
+      } catch (e) {
+        this.wizardS2SStepSet(s2, 'error', e.message);
+        w.fatalError = e.message; w.applying = false; return;
+      }
+
+      // Step 4: Exchange WireGuard params
+      const s3 = this.wizardS2SStepAdd('Exchanging WireGuard keys');
+      this.wizardS2SStepSet(s3, 'running');
+      try {
+        const localParams = await this.api.call({ method: 'get', path: `/tunnel-interfaces/${localIfaceId}/export-params` });
+        const remoteParams = await this.api.remoteCall({ remoteId: rid, method: 'get', path: `/tunnel-interfaces/${remoteIfaceId}/export-params` });
+        // Adjust allowedIPs for S2S: each side allows the other's /32
+        localParams.allowedIPs = subnet.localIP + '/32';
+        remoteParams.allowedIPs = subnet.remoteIP + '/32';
+        await this.api.remoteCall({ remoteId: rid, method: 'post', path: `/tunnel-interfaces/${remoteIfaceId}/peers/import-json`, body: localParams });
+        await this.api.call({ method: 'post', path: `/tunnel-interfaces/${localIfaceId}/peers/import-json`, body: remoteParams });
+        this.wizardS2SStepSet(s3, 'ok', 'Keys exchanged');
+      } catch (e) {
+        this.wizardS2SStepSet(s3, 'error', e.message);
+        w.fatalError = e.message; w.applying = false; return;
+      }
+
+      // Step 5: Source alias
+      if (w.createSrcAlias && w.selectedIfaceIds.length > 0) {
+        const s4 = this.wizardS2SStepAdd('Creating source alias');
+        this.wizardS2SStepSet(s4, 'running');
+        try {
+          const subnets = this.wizardS2SSelectedSubnets();
+          const res = await this.api.createAlias({ name: w.srcAliasName, type: 'network', entries: subnets });
+          w.createdSrcAliasId = (res.alias || res).id || '';
+          this.wizardS2SStepSet(s4, 'ok', subnets.join(', '));
+        } catch (e) {
+          this.wizardS2SStepSet(s4, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 6: Destination alias (GEO/AS)
+      if (w.dstType !== 'all') {
+        const s5 = this.wizardS2SStepAdd('Creating destination alias');
+        this.wizardS2SStepSet(s5, 'running');
+        try {
+          const res = await this.api.createAlias({ name: w.dstAliasName, type: 'ipset', entries: [] });
+          const aliasId = (res.alias || res).id || '';
+          w.createdDstAliasId = aliasId;
+          const genBody = w.dstType === 'geo'
+            ? { country: w.dstCountries.join(','), asn: '', asnList: '' }
+            : { country: '', asn: w.dstASN.trim(), asnList: '' };
+          const genRes = await this.api.generateAlias({ id: aliasId, ...genBody });
+          const jobId = genRes.jobId;
+          let finished = false;
+          while (!finished) {
+            await new Promise(r => setTimeout(r, 1000));
+            const st = await this.api.getAliasJobStatus({ id: aliasId, jobId });
+            this.wizardS2SStepSet(s5, 'running', (st.progress || 0) + '% loaded…');
+            if (st.status === 'done') { finished = true; }
+            if (st.status === 'error') throw new Error(st.error || 'Generation failed');
+          }
+          this.wizardS2SStepSet(s5, 'ok', w.dstAliasName + ' created');
+        } catch (e) {
+          this.wizardS2SStepSet(s5, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 7: MSS clamping on local S2S interface
+      if (w.mssClamp && localIfaceId) {
+        const s6 = this.wizardS2SStepAdd('Enabling MSS clamping');
+        this.wizardS2SStepSet(s6, 'running');
+        try {
+          await this.api.updateTunnelInterface({ interfaceId: localIfaceId, mss: -1 });
+          this.wizardS2SStepSet(s6, 'ok', 'Auto PMTU');
+        } catch (e) {
+          this.wizardS2SStepSet(s6, 'warn', e.message + ' — continuing');
+        }
+      }
+
+      // Step 8: Local gateway
+      const s7 = this.wizardS2SStepAdd('Creating gateway');
+      this.wizardS2SStepSet(s7, 'running');
+      let gatewayId = '';
+      try {
+        const res = await this.api.createGateway({
+          name: w.gatewayName,
+          interface: localIfaceId,
+          gatewayIP: subnet.remoteIP,
+          monitorAddress: subnet.remoteIP,
+          monitor: true,
+          monitorInterval: 5,
+          latencyThreshold: 500,
+          monitorRule: 'icmp_only',
+        });
+        gatewayId = (res.gateway || res).id || '';
+        w.createdGatewayId = gatewayId;
+        this.wizardS2SStepSet(s7, 'ok', w.gatewayName);
+      } catch (e) {
+        this.wizardS2SStepSet(s7, 'warn', e.message + ' — continuing');
+      }
+
+      // Step 9: Local PBR firewall rule
+      const s8 = this.wizardS2SStepAdd('Creating firewall PBR rule');
+      this.wizardS2SStepSet(s8, 'running');
+      try {
+        const srcPart = w.createdSrcAliasId ? { type: 'alias', aliasId: w.createdSrcAliasId } : { type: 'any' };
+        const dstPart = w.dstType === 'all' ? { type: 'any' }
+          : w.createdDstAliasId ? { type: 'alias', aliasId: w.createdDstAliasId, invert: w.dstNegate } : { type: 'any' };
+        const res = await this.api.createFirewallRule({
+          name: w.fwRuleName,
+          interface: 'any',
+          protocol: 'any',
+          source: srcPart,
+          destination: dstPart,
+          action: 'accept',
+          gatewayId: gatewayId || undefined,
+          fallbackToDefault: w.fallback === 'allow',
+        });
+        w.createdFwRuleId = (res.rule || res).id || '';
+        await this.api.applyFirewallRules();
+        this.wizardS2SStepSet(s8, 'ok', w.fwRuleName);
+      } catch (e) {
+        this.wizardS2SStepSet(s8, 'warn', e.message + ' — continuing');
+      }
+
+      // Step 10: Remote return route (client subnets → local S2S IP)
+      const s9 = this.wizardS2SStepAdd('Adding return routes on remote');
+      this.wizardS2SStepSet(s9, 'running');
+      try {
+        const subnets = this.wizardS2SSelectedSubnets();
+        if (subnets.length > 0) {
+          await Promise.all(subnets.map(cidr =>
+            this.api.remoteCall({ remoteId: rid, method: 'post', path: '/routing/routes', body: {
+              destination: cidr,
+              gateway: subnet.localIP,
+              dev: w.remoteIfaceName,
+              enabled: true,
+            }})
+          ));
+          this.wizardS2SStepSet(s9, 'ok', subnets.join(', '));
+        } else {
+          this.wizardS2SStepSet(s9, 'warn', 'No subnets selected — skipped');
+        }
+      } catch (e) {
+        this.wizardS2SStepSet(s9, 'warn', e.message + ' — continuing');
+      }
+
+      // Step 11: Remote NAT MASQUERADE on system interface
+      const s10 = this.wizardS2SStepAdd('Adding NAT on remote');
+      this.wizardS2SStepSet(s10, 'running');
+      try {
+        const ifacesRes = await this.api.remoteCall({ remoteId: rid, method: 'get', path: '/system/interfaces' });
+        const ifaces = ifacesRes.interfaces || [];
+        const sysIface = ifaces.find(i => !i.name.startsWith('wg') && !i.name.startsWith('awg') && i.name !== 'lo');
+        if (!sysIface) throw new Error('No system interface found on remote');
+        const natBody = { name: 'nat-' + w.remoteIfaceName, outInterface: sysIface.name, type: 'MASQUERADE' };
+        if (w.createdSrcAliasId) {
+          // Create matching alias on remote too
+          const srcSubnets = this.wizardS2SSelectedSubnets();
+          const remoteAlias = await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/aliases', body: {
+            name: w.srcAliasName + '-remote', type: 'network', entries: srcSubnets,
+          }});
+          const remoteAliasId = (remoteAlias.alias || remoteAlias).id || '';
+          if (remoteAliasId) natBody.sourceAliasId = remoteAliasId;
+        }
+        await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/nat/rules', body: natBody });
+        this.wizardS2SStepSet(s10, 'ok', sysIface.name);
+      } catch (e) {
+        this.wizardS2SStepSet(s10, 'warn', e.message + ' — continuing');
       }
 
       w.applying = false;
