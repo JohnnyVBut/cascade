@@ -6462,15 +6462,19 @@ new Vue({
       }
 
       // Step 4: Exchange WireGuard params
+      // Order matters for PSK sync:
+      //   1. Export local (no PSK yet)  → import into remote  → remote generates PSK
+      //   2. Export remote (PSK present) → import into local   → local receives same PSK
+      // Reversing the export order causes both sides to generate independent PSKs → handshake failure.
       const s3 = this.wizardS2SStepAdd('Exchanging WireGuard keys');
       this.wizardS2SStepSet(s3, 'running');
       try {
         const localParams = await this.api.call({ method: 'get', path: `/tunnel-interfaces/${localIfaceId}/export-params` });
-        const remoteParams = await this.api.remoteCall({ remoteId: rid, method: 'get', path: `/tunnel-interfaces/${remoteIfaceId}/export-params` });
-        // Adjust allowedIPs for S2S: each side allows the other's /32
         localParams.allowedIPs = subnet.localIP + '/32';
-        remoteParams.allowedIPs = subnet.remoteIP + '/32';
         await this.api.remoteCall({ remoteId: rid, method: 'post', path: `/tunnel-interfaces/${remoteIfaceId}/peers/import-json`, body: localParams });
+        // Remote now has an interconnect peer with a generated PSK — re-export to get it.
+        const remoteParams = await this.api.remoteCall({ remoteId: rid, method: 'get', path: `/tunnel-interfaces/${remoteIfaceId}/export-params` });
+        remoteParams.allowedIPs = subnet.remoteIP + '/32';
         await this.api.call({ method: 'post', path: `/tunnel-interfaces/${localIfaceId}/peers/import-json`, body: remoteParams });
         this.wizardS2SStepSet(s3, 'ok', 'Keys exchanged');
       } catch (e) {
@@ -6478,7 +6482,22 @@ new Vue({
         w.fatalError = e.message; w.applying = false; return;
       }
 
-      // Step 5: Source alias
+      // Step 5: Add point-to-point routes for S2S subnet
+      const s3b = this.wizardS2SStepAdd('Adding S2S routes');
+      this.wizardS2SStepSet(s3b, 'running');
+      try {
+        await this.api.call({ method: 'post', path: '/routing/routes', body: {
+          destination: subnet.remoteIP + '/32', dev: localIfaceId, enabled: true,
+        }});
+        await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/routing/routes', body: {
+          destination: subnet.localIP + '/32', dev: remoteIfaceId, enabled: true,
+        }});
+        this.wizardS2SStepSet(s3b, 'ok', `${subnet.localIP} ↔ ${subnet.remoteIP}`);
+      } catch (e) {
+        this.wizardS2SStepSet(s3b, 'warn', e.message + ' — continuing');
+      }
+
+      // Step 6: Source alias
       if (w.createSrcAlias && w.selectedIfaceIds.length > 0) {
         const s4 = this.wizardS2SStepAdd('Creating source alias');
         this.wizardS2SStepSet(s4, 'running');
