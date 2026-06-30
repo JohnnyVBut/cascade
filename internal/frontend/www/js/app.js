@@ -6426,10 +6426,13 @@ new Vue({
       const s1 = this.wizardS2SStepAdd('Creating local S2S interface');
       this.wizardS2SStepSet(s1, 'running');
       let localIfaceId = '';
+      let localSettings = null;
       try {
         const body = { name: w.localIfaceName, address: subnet.localAddr, disableRoutes: true, protocol: w.protocol };
         const res = await this.api.createTunnelInterface(body);
-        localIfaceId = (res.interface || res).id || '';
+        const iface = res.interface || res;
+        localIfaceId = iface.id || '';
+        localSettings = iface.settings || null;
         w.createdLocalIfaceId = localIfaceId;
         await this.api.startTunnelInterface({ interfaceId: localIfaceId }).catch(() => {});
         await this.loadTunnelInterfaces();
@@ -6445,6 +6448,8 @@ new Vue({
       let remoteIfaceId = '';
       try {
         const body = { name: w.remoteIfaceName, address: subnet.remoteAddr, disableRoutes: true, protocol: w.protocol };
+        // Pass AWG2 settings from local interface so remote doesn't need to generate them independently.
+        if (w.protocol === 'amneziawg-2.0' && localSettings) body.settings = localSettings;
         const res = await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/tunnel-interfaces', body });
         remoteIfaceId = (res.interface || res).id || '';
         w.createdRemoteIfaceId = remoteIfaceId;
