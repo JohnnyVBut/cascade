@@ -46,6 +46,7 @@
 | 📊 **Monitoring** 🆕 | Real-time traffic metrics per interface, gateway status history (stacked bar chart), Diagnostics page with per-period history              |
 | ⚡ **Speed Test** 🆕 | iperf3-based speed test between any two managed servers — Auto / Tunnel / Internet mode, S2S tunnel autodetect, result history             |
 | 🚦 **Rate Limits** 🆕 | Per-client-group bandwidth limiting via tc HTB (kbps down/up enforced per IP)                                                              |
+| 🧙 **Wizards** 🆕 | Step-by-step setup wizards: Simple Client VPN, Cascade via WireGuard Uplink, Cascade ↔ Cascade S2S interconnect                            |
 
 ## 🎯 Why Cascade?
 
@@ -62,6 +63,7 @@
 - ✅ 🆕 **Multi-server management** — control multiple Cascade routers from one browser tab, with transparent API proxying
 - ✅ 🆕 **Built-in speed test** — iperf3 between any managed servers, S2S tunnel autodetect, result history
 - ✅ 🆕 **Traffic monitoring** — per-interface metrics and gateway health history with configurable time periods
+- ✅ 🆕 **Setup wizards** — guided wizards for Uplink VPN and S2S interconnect; auto-create interfaces, aliases, gateways, PBR rules and NAT in one flow
 
 ## 📋 Requirements
 

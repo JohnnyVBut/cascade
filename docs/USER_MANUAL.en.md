@@ -18,6 +18,7 @@
 14. [Speed Test 🆕](#14-speed-test-)
 15. [Monitoring & Diagnostics 🆕](#15-monitoring--diagnostics-)
 16. [Rate Limits 🆕](#16-rate-limits-)
+17. [Wizards 🆕](#17-wizards-)
 
 **Appendices:**
 - [Appendix A: Common Scenarios](#appendix-common-scenarios)
@@ -1155,3 +1156,62 @@ of all peers in that group. Limits are enforced per individual IP using Linux Tr
 - When a peer moves to a different group, the old limit is removed and the new group's limit is applied
 - Limits are restored automatically when a WireGuard interface is started or restarted
 - Setting both fields to `0` removes all tc rules for the group
+
+---
+
+## 17. Wizards 🆕
+
+Wizards guide you through multi-step configuration scenarios automatically, creating all required objects (interfaces, aliases, gateways, firewall rules, NAT) in the correct order.
+
+Access wizards via the **Wizards** section in the sidebar (click to expand/collapse).
+
+---
+
+### Wizard: Simple Client VPN
+
+Creates a ready-to-use WireGuard/AWG interface for client peers in a few clicks.
+
+**Steps:**
+1. Choose protocol (WireGuard or AmneziaWG)
+2. Name the interface and set DNS
+3. Add the first peer
+4. Done — QR code and config are ready to share
+
+---
+
+### Wizard: Cascade via WireGuard Uplink
+
+Connects Cascade as a client to an upstream WireGuard server and routes selected client traffic through it using PBR.
+
+**Use case:** route specific clients or destinations through a rented VPN server, while keeping other traffic on the default gateway.
+
+**Steps:**
+1. **Import `.conf`** — paste or upload the upstream server's WireGuard config. The wizard parses the public key, endpoint, and allowed IPs automatically.
+2. **Source** — select which client interfaces (and their peers) should use this uplink. The wizard can create a source alias automatically.
+3. **Destination** — choose what traffic to route through the uplink: all traffic, specific countries (GeoIP), or an AS number.
+4. **Options** — set interface name, gateway name, MSS clamping, and fallback policy.
+5. **Apply** — the wizard creates the uplink interface, starts it, creates aliases, a gateway, a PBR firewall rule, and a masquerade NAT rule.
+
+> **Note:** The uplink interface is created with **Disable Routes** enabled — routing is handled entirely by the PBR rule, not by wg-quick.
+
+---
+
+### Wizard: Cascade ↔ Cascade S2S
+
+Interconnects two Cascade routers over a WireGuard or AWG site-to-site tunnel and sets up PBR so selected clients on the local server route through the remote server.
+
+**Prerequisites:** both servers must be added to **Multi-Server Management** (Settings → Remotes).
+
+**Steps:**
+1. **Remote** — select the remote Cascade server. If not yet added, fill in the inline form (URL + password or API token).
+2. **Source** — select local client interfaces whose traffic should be routed through the S2S tunnel.
+3. **Destination** — choose what traffic to forward: all, specific countries, or an AS number.
+4. **Options** — set interface names, protocol (WireGuard / AWG), MSS clamping, and fallback policy.
+5. **Apply** — the wizard:
+   - Allocates a `/30` subnet from `10.255.255.0/24` for the S2S link
+   - Creates a local S2S interface and a remote S2S interface (via API)
+   - Exchanges public keys and PSK between both sides (correct PSK sync order)
+   - Creates source alias, destination alias, gateway, PBR firewall rule, and NAT on the local server
+   - Creates a return route and NAT on the remote server
+
+> **PSK sync:** the wizard first imports local params into the remote (which generates the PSK), then re-exports remote params (PSK now included) and imports into local — both sides end up with the same PSK.
