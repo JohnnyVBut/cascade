@@ -6451,7 +6451,8 @@ new Vue({
         // Pass AWG2 settings from local interface so remote doesn't need to generate them independently.
         if (w.protocol === 'amneziawg-2.0' && localSettings) body.settings = localSettings;
         const res = await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/tunnel-interfaces', body });
-        remoteIfaceId = (res.interface || res).id || '';
+        const remoteIface = res.interface || res;
+        remoteIfaceId = remoteIface.id || '';
         w.createdRemoteIfaceId = remoteIfaceId;
         await this.api.remoteCall({ remoteId: rid, method: 'post', path: `/tunnel-interfaces/${remoteIfaceId}/start`, body: {} }).catch(() => {});
         this.wizardS2SStepSet(s2, 'ok', w.remoteIfaceName);
@@ -6586,7 +6587,7 @@ new Vue({
             this.api.remoteCall({ remoteId: rid, method: 'post', path: '/routing/routes', body: {
               destination: cidr,
               gateway: subnet.localIP,
-              dev: w.remoteIfaceName,
+              dev: remoteIfaceId,
               enabled: true,
             }})
           ));
