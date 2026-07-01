@@ -29,10 +29,7 @@
 
 services:
   cascade:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: cascade:latest
+    image: ghcr.io/johnnyvbut/cascade:latest
     container_name: cascade
     hostname: cascade
     restart: unless-stopped
