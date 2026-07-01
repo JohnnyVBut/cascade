@@ -33,6 +33,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      network: host
     container_name: cascade
     hostname: cascade
     restart: unless-stopped
