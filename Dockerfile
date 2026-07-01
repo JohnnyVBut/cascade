@@ -40,9 +40,6 @@ FROM amneziavpn/amneziawg-go:latest
 HEALTHCHECK --interval=1m --timeout=5s --retries=3 \
     CMD /usr/bin/timeout 5s /bin/sh -c "/usr/bin/wg show | /bin/grep -q interface || exit 1"
 
-# Switch to Yandex mirror (faster from RU/CIS)
-RUN sed -i 's|https://dl-cdn.alpinelinux.org|https://mirror.yandex.ru/mirrors|g' /etc/apk/repositories
-
 # Runtime dependencies:
 # - dumb-init: proper PID 1 signal handling
 # - iptables / iptables-legacy: firewall management
