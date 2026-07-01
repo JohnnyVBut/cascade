@@ -300,7 +300,16 @@ func systemRestore(c *fiber.Ctx) error {
 	}
 	log.Printf("system/restore: restored %d files from %s", restored, fileHeader.Filename)
 
-	// Step 6: Apply interface remapping in the restored DB.
+	// Step 6: Remove WAL/SHM files left by the running process — they are incompatible
+	// with the newly written DB file and would cause "malformed" on restart.
+	for _, dbName := range []string{"cascade.db", "awg.db", "wireguard.db"} {
+		base := filepath.Join(systemDataDir, dbName)
+		os.Remove(base + "-wal")
+		os.Remove(base + "-shm")
+	}
+	log.Printf("system/restore: WAL/SHM files removed")
+
+	// Step 7: Apply interface remapping in the restored DB.
 	if len(ifaceMap) > 0 {
 		if err := applyIfaceRemap(ifaceMap); err != nil {
 			log.Printf("system/restore: ifaceMap apply failed (non-fatal): %v", err)
