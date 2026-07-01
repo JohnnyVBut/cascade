@@ -32,6 +32,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: cascade:latest
     container_name: cascade
     hostname: cascade
     restart: unless-stopped
