@@ -6415,6 +6415,45 @@ new Vue({
       w.applying = true; w.steps = []; w.done = false; w.fatalError = '';
       const rid = w.remoteId;
 
+      // Step 0: Pre-flight — verify source subnets are not already routed/NATed on remote
+      // This prevents partial execution when two servers share the same client subnets
+      // (e.g. two Cascade nodes routing to the same exit via the same remote).
+      if (w.selectedIfaceIds.length > 0) {
+        const sp = this.wizardS2SStepAdd('Checking source subnet availability on remote');
+        this.wizardS2SStepSet(sp, 'running');
+        try {
+          const localSubnets = this.wizardS2SSelectedSubnets();
+          this.wizardS2SStepSet(sp, 'running', `Local subnets: ${localSubnets.join(', ')}`);
+
+          const [natRes, routeRes] = await Promise.all([
+            this.api.remoteCall({ remoteId: rid, method: 'get', path: '/nat/rules' }).catch(() => ({ rules: [] })),
+            this.api.remoteCall({ remoteId: rid, method: 'get', path: '/routing/routes' }).catch(() => ({ routes: [] })),
+          ]);
+
+          // Collect all subnets already known on remote: NAT sources + static route destinations
+          const remoteSubnets = [];
+          for (const rule of (natRes.rules || [])) {
+            if (rule.source) remoteSubnets.push(rule.source);
+          }
+          for (const route of (routeRes.routes || [])) {
+            if (route.destination) remoteSubnets.push(route.destination);
+          }
+
+          // Check for conflicts — exact match
+          const conflicts = localSubnets.filter(s => remoteSubnets.includes(s));
+          if (conflicts.length > 0) {
+            const msg = `Source subnet(s) already used on remote: ${conflicts.join(', ')}`;
+            this.wizardS2SStepSet(sp, 'error', msg);
+            w.fatalError = msg; w.applying = false; return;
+          }
+
+          this.wizardS2SStepSet(sp, 'ok', `No conflicts (remote has ${remoteSubnets.length} existing subnets)`);
+        } catch (e) {
+          // If we cannot check — warn and continue; better to let the user decide
+          this.wizardS2SStepSet(sp, 'warn', `Could not check remote subnets: ${e.message} — continuing`);
+        }
+      }
+
       // Step 1: Find free /30 — check both local and remote interfaces
       const s0 = this.wizardS2SStepAdd('Allocating S2S subnet');
       this.wizardS2SStepSet(s0, 'running');
