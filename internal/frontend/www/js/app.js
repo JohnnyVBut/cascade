@@ -6381,8 +6381,10 @@ new Vue({
       }).filter(Boolean);
     },
 
-    wizardS2SFreeSubnet() {
-      const used = (this.tunnelInterfaces || []).map(i => i.address).filter(Boolean);
+    wizardS2SFreeSubnet(remoteAddresses) {
+      const localUsed  = (this.tunnelInterfaces || []).map(i => i.address).filter(Boolean);
+      const remoteUsed = remoteAddresses || [];
+      const used = [...localUsed, ...remoteUsed];
       for (let base = 0; base < 256; base += 4) {
         const localIP  = `10.255.255.${base + 1}`;
         const remoteIP = `10.255.255.${base + 2}`;
@@ -6413,12 +6415,69 @@ new Vue({
       w.applying = true; w.steps = []; w.done = false; w.fatalError = '';
       const rid = w.remoteId;
 
-      // Step 1: Find free /30
+      // Step 0: Pre-flight — verify source subnets are not already routed/NATed on remote.
+      // Prevents partial execution when two servers share the same client subnets
+      // (e.g. two Cascade nodes routing to the same exit via the same remote).
+      if (w.selectedIfaceIds.length > 0) {
+        const sp = this.wizardS2SStepAdd('Checking source subnet availability on remote');
+        this.wizardS2SStepSet(sp, 'running');
+
+        const localSubnets = this.wizardS2SSelectedSubnets();
+        this.wizardS2SStepSet(sp, 'running', `Local subnets: ${localSubnets.join(', ')}`);
+
+        // Fetch NAT rules and static routes from remote independently so we can report
+        // which fetch failed; do NOT silently swallow errors as "no subnets".
+        let natRules = null, remoteRoutes = null, fetchErr = '';
+        try { natRules = (await this.api.remoteCall({ remoteId: rid, method: 'get', path: '/nat/rules' })).rules || []; }
+        catch (e) { fetchErr += `NAT rules: ${e.message}; `; }
+        try { remoteRoutes = (await this.api.remoteCall({ remoteId: rid, method: 'get', path: '/routing/routes' })).routes || []; }
+        catch (e) { fetchErr += `Routes: ${e.message}; `; }
+
+        if (natRules === null && remoteRoutes === null) {
+          // Both fetches failed — cannot verify, block the wizard.
+          const msg = `Cannot reach remote to verify subnet availability: ${fetchErr.trimEnd()}`;
+          this.wizardS2SStepSet(sp, 'error', msg);
+          w.fatalError = msg; w.applying = false; return;
+        }
+
+        // Collect all subnets already known on remote: NAT sources + static route destinations
+        const remoteSubnets = [];
+        for (const rule of (natRules || [])) {
+          if (rule.source) remoteSubnets.push(rule.source);
+        }
+        for (const route of (remoteRoutes || [])) {
+          if (route.destination) remoteSubnets.push(route.destination);
+        }
+
+        if (fetchErr) {
+          // Partial fetch — note it but continue with what we have
+          this.wizardS2SStepSet(sp, 'running', `Partial data (${fetchErr.trimEnd()}) — ${remoteSubnets.length} subnets found`);
+        }
+
+        const conflicts = localSubnets.filter(s => remoteSubnets.includes(s));
+        if (conflicts.length > 0) {
+          const msg = `Source subnet(s) already present on remote: ${conflicts.join(', ')}. Another server may already route these subnets through this exit.`;
+          this.wizardS2SStepSet(sp, 'error', msg);
+          w.fatalError = msg; w.applying = false; return;
+        }
+
+        this.wizardS2SStepSet(sp, 'ok', `No conflicts — remote has ${remoteSubnets.length} existing subnet entries${fetchErr ? ' (partial data)' : ''}`);
+      }
+
+      // Step 1: Find free /30 — check both local and remote interfaces
       const s0 = this.wizardS2SStepAdd('Allocating S2S subnet');
       this.wizardS2SStepSet(s0, 'running');
-      const subnet = this.wizardS2SFreeSubnet();
+      let remoteAddresses = [];
+      try {
+        const remoteIfaces = await this.api.remoteCall({ remoteId: rid, method: 'get', path: '/tunnel-interfaces' });
+        remoteAddresses = ((remoteIfaces.interfaces || remoteIfaces || []).map(i => i.address)).filter(Boolean);
+        this.wizardS2SStepSet(s0, 'running', `Local: ${(this.tunnelInterfaces||[]).length} ifaces, remote: ${remoteAddresses.length} ifaces`);
+      } catch (e) {
+        this.wizardS2SStepSet(s0, 'running', 'Could not fetch remote interfaces — checking local only');
+      }
+      const subnet = this.wizardS2SFreeSubnet(remoteAddresses);
       if (!subnet) {
-        this.wizardS2SStepSet(s0, 'error', '10.255.255.0/24 exhausted');
+        this.wizardS2SStepSet(s0, 'error', '10.255.255.0/24 exhausted on local or remote');
         w.fatalError = 'No free /30 in 10.255.255.0/24'; w.applying = false; return;
       }
       this.wizardS2SStepSet(s0, 'ok', `${subnet.localAddr} ↔ ${subnet.remoteAddr}`);
