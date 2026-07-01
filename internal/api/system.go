@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/JohnnyVBut/cascade/internal/aliases"
+	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
 	"github.com/gofiber/fiber/v2"
@@ -132,6 +133,13 @@ func systemBackup(c *fiber.Ctx) error {
 		IncludeMetrics bool   `json:"includeMetrics"`
 	}
 	_ = c.BodyParser(&body)
+
+	// Flush WAL into the main DB file so the snapshot is consistent.
+	// Without this, pages modified since the last checkpoint exist only in the
+	// WAL file; copying the raw .db file would produce a malformed backup.
+	if _, err := db.DB().Exec(`PRAGMA wal_checkpoint(FULL)`); err != nil {
+		log.Printf("system/backup: wal_checkpoint: %v (non-fatal)", err)
+	}
 
 	// Build tar.gz into memory.
 	var tarBuf bytes.Buffer
@@ -330,6 +338,10 @@ func systemRestore(c *fiber.Ctx) error {
 
 // createAutoBackup creates a tar.gz of the current dataDir DB and .save files.
 func createAutoBackup(destPath string) error {
+	if _, err := db.DB().Exec(`PRAGMA wal_checkpoint(FULL)`); err != nil {
+		log.Printf("system/auto-backup: wal_checkpoint: %v (non-fatal)", err)
+	}
+
 	var tarBuf bytes.Buffer
 	gz := gzip.NewWriter(&tarBuf)
 	tw := tar.NewWriter(gz)
