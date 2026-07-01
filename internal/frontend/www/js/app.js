@@ -6381,8 +6381,10 @@ new Vue({
       }).filter(Boolean);
     },
 
-    wizardS2SFreeSubnet() {
-      const used = (this.tunnelInterfaces || []).map(i => i.address).filter(Boolean);
+    wizardS2SFreeSubnet(remoteAddresses) {
+      const localUsed  = (this.tunnelInterfaces || []).map(i => i.address).filter(Boolean);
+      const remoteUsed = remoteAddresses || [];
+      const used = [...localUsed, ...remoteUsed];
       for (let base = 0; base < 256; base += 4) {
         const localIP  = `10.255.255.${base + 1}`;
         const remoteIP = `10.255.255.${base + 2}`;
@@ -6413,12 +6415,20 @@ new Vue({
       w.applying = true; w.steps = []; w.done = false; w.fatalError = '';
       const rid = w.remoteId;
 
-      // Step 1: Find free /30
+      // Step 1: Find free /30 — check both local and remote interfaces
       const s0 = this.wizardS2SStepAdd('Allocating S2S subnet');
       this.wizardS2SStepSet(s0, 'running');
-      const subnet = this.wizardS2SFreeSubnet();
+      let remoteAddresses = [];
+      try {
+        const remoteIfaces = await this.api.remoteCall({ remoteId: rid, method: 'get', path: '/tunnel-interfaces' });
+        remoteAddresses = ((remoteIfaces.interfaces || remoteIfaces || []).map(i => i.address)).filter(Boolean);
+        this.wizardS2SStepSet(s0, 'running', `Local: ${(this.tunnelInterfaces||[]).length} ifaces, remote: ${remoteAddresses.length} ifaces`);
+      } catch (e) {
+        this.wizardS2SStepSet(s0, 'running', 'Could not fetch remote interfaces — checking local only');
+      }
+      const subnet = this.wizardS2SFreeSubnet(remoteAddresses);
       if (!subnet) {
-        this.wizardS2SStepSet(s0, 'error', '10.255.255.0/24 exhausted');
+        this.wizardS2SStepSet(s0, 'error', '10.255.255.0/24 exhausted on local or remote');
         w.fatalError = 'No free /30 in 10.255.255.0/24'; w.applying = false; return;
       }
       this.wizardS2SStepSet(s0, 'ok', `${subnet.localAddr} ↔ ${subnet.remoteAddr}`);
