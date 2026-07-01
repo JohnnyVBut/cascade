@@ -678,6 +678,17 @@ func (m *Manager) UpdatePeer(interfaceID, peerID string, upd peer.PeerUpdate) (*
 	return t.UpdatePeer(peerID, upd)
 }
 
+// ReloadPeerFromDB re-reads a single peer from SQLite and refreshes the
+// in-memory cache on the given interface. Use after a direct DB write that
+// bypasses UpdatePeer (e.g. peer.SavePrivateKey).
+func (m *Manager) ReloadPeerFromDB(interfaceID, peerID string) (*peer.Peer, error) {
+	t := m.GetInterface(interfaceID)
+	if t == nil {
+		return nil, fmt.Errorf("interface %q not found", interfaceID)
+	}
+	return t.ReloadPeerFromDB(peerID)
+}
+
 // RemovePeer removes the peer from the given interface.
 func (m *Manager) RemovePeer(interfaceID, peerID string) error {
 	t := m.GetInterface(interfaceID)

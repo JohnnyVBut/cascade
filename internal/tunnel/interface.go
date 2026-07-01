@@ -370,6 +370,24 @@ func (t *TunnelInterface) GetPeer(id string) *peer.Peer {
 	return t.peers[id]
 }
 
+// ReloadPeerFromDB re-reads a single peer from SQLite and replaces the
+// in-memory cached copy. Use after a direct DB write that bypasses
+// peer.UpdatePeer (e.g. SavePrivateKey) so computed fields like
+// DownloadableConfig stay in sync with the persisted row.
+func (t *TunnelInterface) ReloadPeerFromDB(id string) (*peer.Peer, error) {
+	fresh, err := peer.GetPeer(id)
+	if err != nil {
+		return nil, err
+	}
+	if fresh == nil {
+		return nil, nil
+	}
+	t.peersMu.Lock()
+	t.peers[id] = fresh
+	t.peersMu.Unlock()
+	return fresh, nil
+}
+
 // GetAllPeers returns a snapshot of all in-memory peers.
 func (t *TunnelInterface) GetAllPeers() []*peer.Peer {
 	t.peersMu.RLock()

@@ -174,9 +174,10 @@ func TestImportClientConfigs_MatchedPeer(t *testing.T) {
 		Matched   int      `json:"matched"`
 		Unmatched []string `json:"unmatched"`
 		Peers     []struct {
-			ID         string `json:"id"`
-			PrivateKey string `json:"privateKey"`
-			PublicKey  string `json:"publicKey"`
+			ID                 string `json:"id"`
+			PrivateKey         string `json:"privateKey"`
+			PublicKey          string `json:"publicKey"`
+			DownloadableConfig bool   `json:"downloadableConfig"`
 		} `json:"peers"`
 	}
 	if err := decodeJSON(resp, &out); err != nil {
@@ -198,6 +199,9 @@ func TestImportClientConfigs_MatchedPeer(t *testing.T) {
 	if out.Peers[0].PublicKey != peerAPublicKey {
 		t.Errorf("response peer PublicKey = %q, want %q", out.Peers[0].PublicKey, peerAPublicKey)
 	}
+	if !out.Peers[0].DownloadableConfig {
+		t.Error("response peer DownloadableConfig = false, want true — QR/download button would stay disabled")
+	}
 
 	// Verify persistence directly via peer.GetPeer — private key must now be stored.
 	saved, err := peer.GetPeer(out.Peers[0].ID)
@@ -209,6 +213,38 @@ func TestImportClientConfigs_MatchedPeer(t *testing.T) {
 	}
 	if saved.PrivateKey != peerAPrivateKey {
 		t.Errorf("stored PrivateKey = %q, want %q", saved.PrivateKey, peerAPrivateKey)
+	}
+
+	// Regression check: the in-memory peer cache inside tunnel.TunnelInterface
+	// must also reflect the new private key / DownloadableConfig — otherwise a
+	// subsequent GET /peers (which reads from the in-memory cache, not SQLite
+	// directly) would still show DownloadableConfig=false and the QR/download
+	// buttons would stay disabled in the UI even though the DB was updated.
+	listReq := httptest.NewRequest("GET", "/api/tunnel-interfaces/"+wgIfaceID+"/peers", nil)
+	listResp, err := importCfgApp.Test(listReq)
+	if err != nil {
+		t.Fatalf("GET /peers: %v", err)
+	}
+	var listOut struct {
+		Peers []struct {
+			ID                 string `json:"id"`
+			DownloadableConfig bool   `json:"downloadableConfig"`
+		} `json:"peers"`
+	}
+	if err := decodeJSON(listResp, &listOut); err != nil {
+		t.Fatalf("decode GET /peers response: %v", err)
+	}
+	found := false
+	for _, p := range listOut.Peers {
+		if p.ID == out.Peers[0].ID {
+			found = true
+			if !p.DownloadableConfig {
+				t.Error("GET /peers: in-memory cached peer has DownloadableConfig=false after import — cache was not refreshed")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("imported peer not found in GET /peers response")
 	}
 }
 

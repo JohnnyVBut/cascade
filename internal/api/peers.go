@@ -346,10 +346,17 @@ func importClientConfigs(c *fiber.Ctx) error {
 			fail(fh.Filename, "failed to save")
 			continue
 		}
+		// Refresh the in-memory cache so DownloadableConfig (and QR/download
+		// buttons in the UI) reflect the newly persisted private key.
+		fresh, err := mgr().ReloadPeerFromDB(ifaceID, p.ID)
+		if err != nil || fresh == nil {
+			log.Printf("api: importClientConfigs: reload peer %s after save: %v", p.ID, err)
+			fresh = p
+			fresh.PrivateKey = parsed.PrivateKey
+		}
 		seenPubKeys[pubKey] = true
 		matched++
-		p.PrivateKey = parsed.PrivateKey
-		updatedByID[p.ID] = p
+		updatedByID[fresh.ID] = fresh
 	}
 
 	if unmatched == nil {
