@@ -962,6 +962,23 @@ func (m *Manager) RebuildChains() error {
 	return m.rebuildChains()
 }
 
+// FlushAll flushes and removes Cascade-owned iptables chains.
+// Used before a full restore so no stale rules survive the DB replacement.
+func (m *Manager) FlushAll() {
+	cmds := []string{
+		"iptables-nft -t filter -F FIREWALL_FORWARD 2>/dev/null || true",
+		"iptables-nft -t filter -D FORWARD -j FIREWALL_FORWARD 2>/dev/null || true",
+		"iptables-nft -t filter -X FIREWALL_FORWARD 2>/dev/null || true",
+		"iptables-nft -t mangle -F FIREWALL_MANGLE 2>/dev/null || true",
+		"iptables-nft -t mangle -D PREROUTING -j FIREWALL_MANGLE 2>/dev/null || true",
+		"iptables-nft -t mangle -X FIREWALL_MANGLE 2>/dev/null || true",
+	}
+	for _, cmd := range cmds {
+		util.Exec(cmd, 5*time.Second, true) //nolint:errcheck
+	}
+	log.Printf("firewall: FlushAll: Cascade chains removed")
+}
+
 // rebuildChains flushes both chains, cleans up PBR routing, then re-applies
 // all enabled rules in order. Also resets fallback state.
 func (m *Manager) rebuildChains() error {

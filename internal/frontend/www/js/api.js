@@ -1132,19 +1132,44 @@ class API {
   }
 
   /**
-   * Restore from a backup file (plain .tar.gz or encrypted .tar.gz.enc).
+   * Preview a backup file — returns physical interface names found in backup NAT rules
+   * vs current server interfaces. Used to detect remapping needs before applying.
    * @param {{ file: File, password?: string }}
    */
-  async restoreSystemBackup({ file, password = '' }) {
+  async previewSystemRestore({ file, password = '' }) {
     const form = new FormData();
     form.append('backup', file);
     if (password) form.append('password', password);
+    const res = await fetch(`${this._systemApiBase()}/restore/preview`, { method: 'POST', body: form });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || res.statusText);
+    }
+    return res.json();
+  }
+
+  /**
+   * Restore from a backup file (plain .tar.gz or encrypted .tar.gz.enc).
+   * @param {{ file: File, password?: string, ifaceMap?: Object }}
+   */
+  async restoreSystemBackup({ file, password = '', ifaceMap = null }) {
+    const form = new FormData();
+    form.append('backup', file);
+    if (password) form.append('password', password);
+    if (ifaceMap && Object.keys(ifaceMap).length > 0) form.append('ifaceMap', JSON.stringify(ifaceMap));
     const res = await fetch(`${this._systemApiBase()}/restore`, { method: 'POST', body: form });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
       throw new Error(err.message || res.statusText);
     }
     return res.json();
+  }
+
+  /**
+   * List pre-restore auto-backups saved on the server.
+   */
+  async listSystemBackups() {
+    return this.call({ method: 'get', path: '/system/backups' });
   }
 
   // ── Remote servers ──────────────────────────────────────────────────────────

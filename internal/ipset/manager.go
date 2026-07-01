@@ -85,6 +85,25 @@ func (m *Manager) CreateSet(name string) error {
 	return err
 }
 
+// DestroyAll destroys all ipsets tracked by Cascade (.save files) and
+// removes their save files. Used before a full restore.
+func (m *Manager) DestroyAll() {
+	entries, err := os.ReadDir(m.dataDir)
+	if err != nil {
+		log.Printf("ipset: DestroyAll readdir: %v", err)
+		return
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".save") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".save")
+		util.ExecSilent(fmt.Sprintf("ipset destroy %s", name)) //nolint:errcheck
+		os.Remove(filepath.Join(m.dataDir, e.Name()))          //nolint:errcheck
+		log.Printf("ipset: DestroyAll: removed %s", name)
+	}
+}
+
 // DestroySet destroys the named ipset and removes its save file.
 // Errors from the kernel (e.g. set does not exist) are silently ignored.
 func (m *Manager) DestroySet(name string) error {

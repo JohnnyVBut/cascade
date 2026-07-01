@@ -699,6 +699,14 @@ new Vue({
     showRestorePasswordModal: false, // password prompt for encrypted restore
     restorePassword: '',
     restoreFile: null,          // File object pending restore after password entry
+    // Restore preview / remap state
+    showRestorePreviewModal: false,
+    restorePreview: null,       // { backupIfaces, serverIfaces, needsRemap }
+    restoreIfaceMap: {},        // { oldIface: newIface } selected by user
+    restorePreviewLoading: false,
+    // Pre-restore auto-backups list
+    preRestoreBackups: [],
+    preRestoreBackupsLoading: false,
 
     // Firewall Rules (поглощает PBR)
     firewallRules: [],
@@ -1232,7 +1240,7 @@ new Vue({
         this.pingLoadInterfaces();
       }
       if (pageId === 'interfaces') this.loadTunnelInterfaces();
-      if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); }
+      if (pageId === 'settings') { this.loadSettings(); this.loadUsers(); this.loadApiTokens(); this.loadPreRestoreBackups(); }
       if (pageId === 'remotes') this.loadRemotes();
       if (pageId === 'gateways') {
         this.loadGateways();
@@ -4500,33 +4508,83 @@ new Vue({
       if (!file) return;
       const isEnc = file.name.endsWith('.enc');
       if (isEnc) {
-        // Ask for password before restoring.
         this.restoreFile = file;
         this.restorePassword = '';
         this.showRestorePasswordModal = true;
       } else {
-        this._doRestore(file, '');
+        this._startRestorePreview(file, '');
       }
     },
 
     async confirmRestoreWithPassword() {
       this.showRestorePasswordModal = false;
-      await this._doRestore(this.restoreFile, this.restorePassword);
-      this.restoreFile = null;
+      await this._startRestorePreview(this.restoreFile, this.restorePassword);
       this.restorePassword = '';
     },
 
-    async _doRestore(file, password) {
-      if (!confirm(`Restore backup from "${file.name}"?\n\nThis will replace ALL data and restart the server.`)) return;
+    // Step 1: preview — upload file, get interface mapping info.
+    async _startRestorePreview(file, password) {
+      this.restorePreviewLoading = true;
+      try {
+        const preview = await this.api.previewSystemRestore({ file, password });
+        this.restoreFile = file;
+        this.restorePreview = preview;
+        // Init ifaceMap: for each backup iface not found on server, default to first server iface.
+        const map = {};
+        for (const bi of (preview.backupIfaces || [])) {
+          const found = (preview.serverIfaces || []).includes(bi);
+          map[bi] = found ? bi : ((preview.serverIfaces || [])[0] || bi);
+        }
+        this.restoreIfaceMap = map;
+        this.showRestorePreviewModal = true;
+      } catch (err) {
+        this.showToast(err.message || 'Preview failed', 'error');
+      } finally {
+        this.restorePreviewLoading = false;
+      }
+    },
+
+    // Step 2: confirm — apply backup with optional remap.
+    async confirmRestoreApply() {
+      this.showRestorePreviewModal = false;
+      const file = this.restoreFile;
+      const password = this.restorePassword || '';
+      // Only send ifaceMap if remapping is actually needed.
+      const ifaceMap = (this.restorePreview && this.restorePreview.needsRemap) ? this.restoreIfaceMap : null;
+      await this._doRestore(file, password, ifaceMap);
+      this.restoreFile = null;
+      this.restorePreview = null;
+      this.restoreIfaceMap = {};
+    },
+
+    async _doRestore(file, password, ifaceMap) {
       try {
         this.systemRestoring = true;
-        await this.api.restoreSystemBackup({ file, password });
+        await this.api.restoreSystemBackup({ file, password, ifaceMap });
         this.showToast('Backup restored. Server is restarting…', 'success');
-        setTimeout(() => window.location.reload(), 4000);
+        // Poll until server is back online (up to 60s).
+        const start = Date.now();
+        const tryReload = () => {
+          if (Date.now() - start > 60000) { window.location.reload(); return; }
+          fetch(window.location.pathname).then(r => { if (r.ok) window.location.reload(); else setTimeout(tryReload, 2000); }).catch(() => setTimeout(tryReload, 2000));
+        };
+        setTimeout(tryReload, 3000);
       } catch (err) {
         this.showToast(err.message || 'Restore failed', 'error');
       } finally {
         this.systemRestoring = false;
+      }
+    },
+
+    async loadPreRestoreBackups() {
+      this.preRestoreBackupsLoading = true;
+      try {
+        const res = await this.api.listSystemBackups();
+        this.preRestoreBackups = res.backups || [];
+      } catch (err) {
+        this.preRestoreBackups = [];
+      } finally {
+        this.preRestoreBackupsLoading = false;
       }
     },
 

@@ -620,6 +620,26 @@ func (m *Manager) StartInterface(id string) (*TunnelInterface, error) {
 	return t, t.Start()
 }
 
+// StopAll stops all managed WireGuard interfaces (wg-quick down).
+// Used before a full restore so kernel state is clean.
+func (m *Manager) StopAll() {
+	m.mu.RLock()
+	ids := make([]string, 0, len(m.interfaces))
+	for id := range m.interfaces {
+		ids = append(ids, id)
+	}
+	m.mu.RUnlock()
+	for _, id := range ids {
+		t := m.GetInterface(id)
+		if t == nil {
+			continue
+		}
+		if err := t.Stop(); err != nil {
+			log.Printf("tunnel: StopAll: stop %s: %v", id, err)
+		}
+	}
+}
+
 // StopInterface stops the interface and returns it.
 func (m *Manager) StopInterface(id string) (*TunnelInterface, error) {
 	t := m.GetInterface(id)

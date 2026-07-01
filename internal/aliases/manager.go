@@ -84,6 +84,11 @@ func New(im *ipset.Manager) *Manager {
 	return &Manager{ipsetMgr: im}
 }
 
+// IpsetMgr returns the underlying ipset.Manager for low-level operations (e.g. DestroyAll during restore).
+func (m *Manager) IpsetMgr() *ipset.Manager {
+	return m.ipsetMgr
+}
+
 // ── Public CRUD ───────────────────────────────────────────────────────────────
 
 // GetAll returns all aliases ordered by created_at ASC.

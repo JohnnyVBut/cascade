@@ -3901,24 +3901,46 @@
                 </button>
               </div>
               <!-- Restore -->
-              <div style="border-top:1px solid rgba(0,0,0,0.08); padding-top:16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:200px;">
-                  <p class="text-sm font-medium dark:text-neutral-300">Restore from Backup</p>
-                  <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
-                    Supports plain <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code>
-                    and encrypted <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz.enc</code>.
-                    <span style="color:#dc2626; font-weight:500;">All current data will be replaced.</span>
-                  </p>
+              <div style="border-top:1px solid rgba(0,0,0,0.08); padding-top:16px;">
+                <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:200px;">
+                    <p class="text-sm font-medium dark:text-neutral-300">Restore from Backup</p>
+                    <p class="text-xs text-gray-500 dark:text-neutral-400 mt-1">
+                      Supports plain <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz</code>
+                      and encrypted <code class="font-mono bg-gray-100 dark:bg-neutral-600 px-1 rounded">.tar.gz.enc</code>.
+                      Current state is saved automatically before restore.
+                    </p>
+                  </div>
+                  <label class="btn font-medium text-sm rounded-lg cursor-pointer"
+                    style="background:#f3f4f6; color:#374151; padding:8px 20px; white-space:nowrap;"
+                    :style="(systemRestoring || restorePreviewLoading) ? 'opacity:0.6; pointer-events:none;' : ''">
+                    <span v-if="systemRestoring">Restoring…</span>
+                    <span v-else-if="restorePreviewLoading">Analyzing…</span>
+                    <span v-else>⬆ Restore Backup</span>
+                    <input type="file" class="hidden" accept=".tar.gz,.gz,.enc"
+                      :disabled="systemRestoring || restorePreviewLoading"
+                      @change="e => { pickRestoreFile(e.target.files[0]); e.target.value=''; }">
+                  </label>
                 </div>
-                <label class="btn font-medium text-sm rounded-lg cursor-pointer"
-                  style="background:#f3f4f6; color:#374151; padding:8px 20px; white-space:nowrap;"
-                  :style="systemRestoring ? 'opacity:0.6; pointer-events:none;' : ''">
-                  <span v-if="systemRestoring">Restoring…</span>
-                  <span v-else>⬆ Restore Backup</span>
-                  <input type="file" class="hidden" accept=".tar.gz,.gz,.enc"
-                    :disabled="systemRestoring"
-                    @change="e => { pickRestoreFile(e.target.files[0]); e.target.value=''; }">
-                </label>
+                <!-- Pre-restore auto-backups list -->
+                <div style="margin-top:14px;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+                    <p class="text-xs font-medium dark:text-neutral-400" style="color:#6b7280;">Pre-restore backups (rollback points)</p>
+                    <button @click="loadPreRestoreBackups()" class="text-xs" style="color:#3b82f6; background:none; border:none; cursor:pointer; padding:0;">↺ Refresh</button>
+                  </div>
+                  <div v-if="preRestoreBackupsLoading" class="text-xs text-gray-400 dark:text-neutral-500">Loading…</div>
+                  <div v-else-if="preRestoreBackups.length === 0" class="text-xs text-gray-400 dark:text-neutral-500">No pre-restore backups yet.</div>
+                  <div v-else>
+                    <div v-for="bk in preRestoreBackups" :key="bk.name"
+                      style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; border-radius:6px; margin-bottom:4px;"
+                      :style="{ background: theme==='dark' ? '#2a2a2a' : '#f9fafb', border: theme==='dark' ? '1px solid #404040' : '1px solid #e5e7eb' }">
+                      <div>
+                        <span class="text-xs font-mono dark:text-neutral-300">{{ bk.name }}</span>
+                        <span class="text-xs text-gray-400 dark:text-neutral-500" style="margin-left:8px;">{{ (bk.size / 1024).toFixed(0) }} KB</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -4008,6 +4030,67 @@
                   class="rounded-lg font-medium text-sm btn text-white"
                   style="background:#dc2626;">
                   ⬆ Restore
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Restore Preview / Interface Remap Modal -->
+          <div v-if="showRestorePreviewModal"
+            class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+            style="padding:40px 24px;" @click.self="showRestorePreviewModal = false">
+            <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:520px; margin:0 auto;">
+              <div class="modal-header dark:border-neutral-600">
+                <p class="text-lg font-semibold dark:text-neutral-100">Restore Backup</p>
+              </div>
+              <div class="modal-body" style="display:flex; flex-direction:column; gap:16px;">
+                <!-- No remap needed -->
+                <div v-if="restorePreview && !restorePreview.needsRemap">
+                  <p class="text-sm text-gray-600 dark:text-neutral-400" style="margin-bottom:10px;">
+                    Network interfaces match. Ready to restore.
+                  </p>
+                  <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 14px;">
+                    <p class="text-sm" style="color:#166534;">
+                      ✓ All NAT rules reference interfaces present on this server:
+                      <strong>{{ (restorePreview.backupIfaces || []).join(', ') || 'none' }}</strong>
+                    </p>
+                  </div>
+                </div>
+                <!-- Remap needed -->
+                <div v-if="restorePreview && restorePreview.needsRemap">
+                  <p class="text-sm text-gray-600 dark:text-neutral-400" style="margin-bottom:10px;">
+                    The backup references network interfaces that differ from this server.
+                    Map each backup interface to the correct interface on this server.
+                  </p>
+                  <div v-for="bi in (restorePreview.backupIfaces || [])" :key="bi"
+                    style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+                    <span class="text-sm font-mono dark:text-neutral-200" style="min-width:100px; color:#dc2626;">{{ bi }}</span>
+                    <span class="text-sm dark:text-neutral-400">→</span>
+                    <select v-model="restoreIfaceMap[bi]"
+                      style="flex:1; border-radius:6px; padding:6px 10px; font-size:0.85rem;"
+                      :style="{ background: theme==='dark' ? '#1a1a1a' : '#fff', color: theme==='dark' ? '#e5e5e5' : '#111827', border: theme==='dark' ? '1px solid #525252' : '1px solid #d1d5db' }">
+                      <option v-for="si in (restorePreview.serverIfaces || [])" :key="si" :value="si">{{ si }}</option>
+                    </select>
+                  </div>
+                </div>
+                <!-- Warning -->
+                <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px;">
+                  <p class="text-sm" style="color:#991b1b;">
+                    ⚠ This will stop all interfaces, clear firewall rules and ipsets,
+                    replace the database, and restart the server.
+                    A pre-restore backup will be saved automatically.
+                  </p>
+                </div>
+              </div>
+              <div class="modal-footer dark:border-neutral-600">
+                <button @click="showRestorePreviewModal = false; restoreFile = null; restorePreview = null;"
+                  class="bg-gray-200 dark:bg-neutral-600 text-gray-700 dark:text-neutral-200 rounded-lg font-medium text-sm btn">
+                  Cancel
+                </button>
+                <button @click="confirmRestoreApply()"
+                  class="rounded-lg font-medium text-sm btn text-white"
+                  style="background:#dc2626;">
+                  ⬆ Apply Restore
                 </button>
               </div>
             </div>
