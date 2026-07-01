@@ -599,6 +599,27 @@ class API {
   }
 
   /**
+   * Импортировать один или несколько клиентских .conf файлов, чтобы восстановить
+   * приватные ключи пиров (например, после импорта интерфейса с другого сервера).
+   * Возвращает { matched, unmatched: [filenames], peers: [...] }.
+   * @param {{ interfaceId: string, files: File[] }}
+   */
+  async importClientConfigs({ interfaceId, files }) {
+    const form = new FormData();
+    for (const f of files) form.append('configs', f);
+    const res = await fetch(`./api/tunnel-interfaces/${interfaceId}/peers/import-client-configs`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${this.token}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ message: res.statusText }));
+      throw new Error(err.message || res.statusText);
+    }
+    return res.json();
+  }
+
+  /**
    * Экспортировать AWG2 параметры обфускации интерфейса.
    * Возвращает объект с Jc, Jmin, Jmax, S1-S4, H1-H4, I1-I5.
    * Формат совместим с createTemplate() — можно сохранить как профиль.

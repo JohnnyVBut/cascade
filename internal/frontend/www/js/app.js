@@ -708,6 +708,11 @@ new Vue({
     preRestoreBackups: [],
     preRestoreBackupsLoading: false,
 
+    // Import client configs (restore private keys for imported peers)
+    importClientConfigsLoading: false,
+    showImportClientConfigsResult: false,
+    importClientConfigsResult: null, // { matched, unmatched: [...] }
+
     // Firewall Rules (поглощает PBR)
     firewallRules: [],
     firewallRulesLoading: false,
@@ -4585,6 +4590,36 @@ new Vue({
         this.preRestoreBackups = [];
       } finally {
         this.preRestoreBackupsLoading = false;
+      }
+    },
+
+    // ========================================================================
+    // Import Client Configs — restore private keys for peers imported without
+    // a server-side key (e.g. peers migrated from another server's backup).
+    // ========================================================================
+
+    openImportClientConfigs() {
+      this.$refs.importClientConfigsInput.click();
+    },
+
+    async onImportClientConfigsSelected(event) {
+      const files = Array.from(event.target.files || []);
+      event.target.value = '';
+      if (files.length === 0) return;
+      const interfaceId = this.currentInterface && this.currentInterface.id;
+      if (!interfaceId) return;
+
+      this.importClientConfigsLoading = true;
+      try {
+        const res = await this.api.importClientConfigs({ interfaceId, files });
+        this.importClientConfigsResult = res;
+        this.showImportClientConfigsResult = true;
+        await this._refreshPeersOrAll();
+        this.showToast(`${res.matched} config${res.matched === 1 ? '' : 's'} matched`, res.matched > 0 ? 'success' : 'error');
+      } catch (err) {
+        this.showToast(err.message || 'Import failed', 'error');
+      } finally {
+        this.importClientConfigsLoading = false;
       }
     },
 

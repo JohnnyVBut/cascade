@@ -5,6 +5,7 @@
 //	GET    /api/tunnel-interfaces/:id/peers
 //	POST   /api/tunnel-interfaces/:id/peers
 //	POST   /api/tunnel-interfaces/:id/peers/import-json        ← interconnect import
+//	POST   /api/tunnel-interfaces/:id/peers/import-client-configs ← restore private keys from client .conf files
 //	GET    /api/tunnel-interfaces/:id/peers/:peerId
 //	PATCH  /api/tunnel-interfaces/:id/peers/:peerId
 //	DELETE /api/tunnel-interfaces/:id/peers/:peerId
@@ -22,6 +23,7 @@ package api
 import (
 	"crypto/rand"
 	"fmt"
+	"io"
 	"log"
 	"strings"
 	"time"
@@ -30,6 +32,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/tunnel"
 )
 
 // RegisterOneTimeLink registers the unauthenticated GET /cnf/:token route.
@@ -82,6 +85,7 @@ func RegisterPeers(api fiber.Router) {
 	g.Get("", listPeers)
 	g.Post("", createPeer)
 	g.Post("/import-json", importPeerJSON)
+	g.Post("/import-client-configs", importClientConfigs)
 
 	g.Get("/:peerId", getPeer)
 	g.Patch("/:peerId", updatePeer)
@@ -245,6 +249,122 @@ func importPeerJSON(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"peer": sanitizePeer(p)})
+}
+
+// POST /api/tunnel-interfaces/:id/peers/import-client-configs
+// Multipart form field "configs" (multiple files). Each file is a WireGuard
+// client .conf. For each one, we extract the PrivateKey, derive its public
+// key, and match it against a peer already on this interface (imported
+// without a stored private key). Matched peers get their private key saved,
+// unlocking QR code / config download.
+func importClientConfigs(c *fiber.Ctx) error {
+	ifaceID := c.Params("id")
+
+	t := mgr().GetInterface(ifaceID)
+	if t == nil {
+		return fiber.NewError(fiber.StatusNotFound, "interface not found")
+	}
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid multipart form")
+	}
+	files := form.File["configs"]
+	if len(files) == 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "provide one or more files in 'configs' field")
+	}
+	const maxFiles = 100
+	if len(files) > maxFiles {
+		return fiber.NewError(fiber.StatusBadRequest, fmt.Sprintf("too many files (max %d)", maxFiles))
+	}
+
+	bin := "wg"
+	if t.Protocol == "amneziawg-2.0" {
+		bin = "awg"
+	}
+
+	peers, err := mgr().GetPeers(ifaceID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	byPubKey := make(map[string]*peer.Peer, len(peers))
+	for _, p := range peers {
+		byPubKey[p.PublicKey] = p
+	}
+
+	matched := 0
+	var unmatched []string
+	seenPubKeys := make(map[string]bool, len(files))
+	updatedByID := make(map[string]*peer.Peer, len(files))
+
+	fail := func(filename, reason string) {
+		unmatched = append(unmatched, fmt.Sprintf("%s (%s)", filename, reason))
+	}
+
+	for _, fh := range files {
+		f, err := fh.Open()
+		if err != nil {
+			fail(fh.Filename, "cannot open")
+			continue
+		}
+		buf, err := io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			fail(fh.Filename, "cannot read")
+			continue
+		}
+
+		parsed, err := tunnel.ParseWGConf(string(buf))
+		if err != nil {
+			fail(fh.Filename, "not a valid WireGuard config")
+			continue
+		}
+
+		pubKey, err := peer.DerivePublicKey(bin, parsed.PrivateKey)
+		if err != nil {
+			log.Printf("api: importClientConfigs: derive pubkey for %s: %v", fh.Filename, err)
+			fail(fh.Filename, "invalid private key")
+			continue
+		}
+
+		p, ok := byPubKey[pubKey]
+		if !ok {
+			fail(fh.Filename, "no matching peer on this interface")
+			continue
+		}
+		if p.PrivateKey != "" {
+			fail(fh.Filename, "peer already has a private key — skipped to avoid overwrite")
+			continue
+		}
+		if seenPubKeys[pubKey] {
+			fail(fh.Filename, "duplicate — another uploaded file already matched this peer")
+			continue
+		}
+
+		if err := peer.SavePrivateKey(p.ID, parsed.PrivateKey); err != nil {
+			log.Printf("api: importClientConfigs: save private key for peer %s: %v", p.ID, err)
+			fail(fh.Filename, "failed to save")
+			continue
+		}
+		seenPubKeys[pubKey] = true
+		matched++
+		p.PrivateKey = parsed.PrivateKey
+		updatedByID[p.ID] = p
+	}
+
+	if unmatched == nil {
+		unmatched = []string{}
+	}
+	updatedPeers := make([]*peer.Peer, 0, len(updatedByID))
+	for _, p := range updatedByID {
+		updatedPeers = append(updatedPeers, p)
+	}
+
+	return c.JSON(fiber.Map{
+		"matched":   matched,
+		"unmatched": unmatched,
+		"peers":     sanitizePeers(updatedPeers),
+	})
 }
 
 // PATCH /api/tunnel-interfaces/:id/peers/:peerId

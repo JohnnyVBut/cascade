@@ -2410,6 +2410,17 @@
                     <span class="max-md:hidden text-sm">Restore</span>
                     <input type="file" accept=".json" @change="restoreInterface" class="hidden"/>
                   </label>
+                  <!-- Import client configs (restore private keys / QR for imported peers) -->
+                  <button @click="openImportClientConfigs()" title="Import client .conf files to restore QR/download for imported peers"
+                    :style="importClientConfigsLoading ? 'opacity:0.6; pointer-events:none;' : ''"
+                    class="hover:bg-red-800 hover:border-red-800 hover:text-white text-gray-700 dark:text-neutral-200 max-md:border-x-0 border-2 border-gray-100 dark:border-neutral-600 py-2 px-4 md:rounded inline-flex items-center transition">
+                    <svg class="w-4 md:mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"></path>
+                    </svg>
+                    <span class="max-md:hidden text-sm">{{ importClientConfigsLoading ? 'Importing…' : 'Import Configs' }}</span>
+                    <input ref="importClientConfigsInput" type="file" accept=".conf" multiple
+                      @change="onImportClientConfigsSelected" class="hidden"/>
+                  </button>
                   <!-- Manual peer add (wrench) -->
                   <button @click="peerCreate.peerType = 'client'; peerCreate.groupId = defaultGroupId(); showPeerCreate = true" :title="currentInterface && currentInterface.disableRoutes ? 'Add peer manually' : 'Add client manually'"
                     class="hover:bg-red-800 hover:border-red-800 hover:text-white text-gray-700 dark:text-neutral-200 max-md:border-x-0 border-2 border-gray-100 dark:border-neutral-600 py-2 px-4 md:rounded inline-flex items-center transition">
@@ -4030,6 +4041,39 @@
                   class="rounded-lg font-medium text-sm btn text-white"
                   style="background:#dc2626;">
                   ⬆ Restore
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Import Client Configs Result Modal -->
+          <div v-if="showImportClientConfigsResult"
+            class="fixed inset-0 bg-black bg-opacity-50 z-50 overflow-y-auto"
+            style="padding:40px 24px;" @click.self="showImportClientConfigsResult = false">
+            <div class="bg-white dark:bg-neutral-700 rounded-lg" style="max-width:480px; margin:0 auto;">
+              <div class="modal-header dark:border-neutral-600">
+                <p class="text-lg font-semibold dark:text-neutral-100">Import Client Configs</p>
+              </div>
+              <div class="modal-body" style="display:flex; flex-direction:column; gap:14px;" v-if="importClientConfigsResult">
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:10px 14px;">
+                  <p class="text-sm" style="color:#166534;">
+                    {{ importClientConfigsResult.matched }} config{{ importClientConfigsResult.matched === 1 ? '' : 's' }} matched — QR/download unlocked.
+                  </p>
+                </div>
+                <div v-if="importClientConfigsResult.unmatched && importClientConfigsResult.unmatched.length > 0"
+                  style="background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:10px 14px;">
+                  <p class="text-sm" style="color:#991b1b; margin-bottom:6px;">
+                    {{ importClientConfigsResult.unmatched.length }} file{{ importClientConfigsResult.unmatched.length === 1 ? '' : 's' }} not matched to any peer:
+                  </p>
+                  <ul class="text-xs font-mono" style="color:#991b1b; padding-left:16px; margin:0;">
+                    <li v-for="fn in importClientConfigsResult.unmatched" :key="fn">{{ fn }}</li>
+                  </ul>
+                </div>
+              </div>
+              <div class="modal-footer dark:border-neutral-600">
+                <button @click="showImportClientConfigsResult = false"
+                  class="btn font-medium text-sm rounded-lg" style="background:#f3f4f6; color:#374151; padding:8px 20px;">
+                  Close
                 </button>
               </div>
             </div>

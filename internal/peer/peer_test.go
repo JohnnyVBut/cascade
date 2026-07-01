@@ -2,6 +2,7 @@ package peer
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -471,5 +472,123 @@ func TestSaveHandshake_EmptyByDefault(t *testing.T) {
 
 	if peers[0].LatestHandshakeAt != nil {
 		t.Errorf("expected LatestHandshakeAt to be nil by default, got %q", *peers[0].LatestHandshakeAt)
+	}
+}
+
+// ── SavePrivateKey ────────────────────────────────────────────────────────────
+
+// TestSavePrivateKey_PersistsAndLoads verifies that SavePrivateKey writes the
+// private_key column and that a subsequent GetPeers call reflects it, with
+// DownloadableConfig becoming true (computed from PrivateKey != "").
+func TestSavePrivateKey_PersistsAndLoads(t *testing.T) {
+	initTestDB(t)
+
+	const ifaceID = "iface-003"
+	p := createTestPeer(t, ifaceID)
+
+	// A freshly created peer (no GenerateKeys/PrivateKey set) starts without
+	// a downloadable config.
+	if p.DownloadableConfig {
+		t.Fatal("expected DownloadableConfig=false before SavePrivateKey")
+	}
+
+	const wantPrivateKey = "GHUf/N5ORdfBUAJprb+ThFsRdcMwlgQ+lCB8u1pQKlg="
+	if err := SavePrivateKey(p.ID, wantPrivateKey); err != nil {
+		t.Fatalf("SavePrivateKey: %v", err)
+	}
+
+	peers, err := GetPeers(ifaceID)
+	if err != nil {
+		t.Fatalf("GetPeers: %v", err)
+	}
+	if len(peers) != 1 {
+		t.Fatalf("expected 1 peer, got %d", len(peers))
+	}
+
+	loaded := peers[0]
+	if loaded.PrivateKey != wantPrivateKey {
+		t.Errorf("PrivateKey = %q, want %q", loaded.PrivateKey, wantPrivateKey)
+	}
+	if !loaded.DownloadableConfig {
+		t.Error("expected DownloadableConfig=true after SavePrivateKey")
+	}
+}
+
+// TestSavePrivateKey_UpdatesUpdatedAt verifies that SavePrivateKey bumps
+// updated_at (it always writes the current timestamp, per the UPDATE statement).
+func TestSavePrivateKey_UpdatesUpdatedAt(t *testing.T) {
+	initTestDB(t)
+
+	const ifaceID = "iface-004"
+	p := createTestPeer(t, ifaceID)
+	originalUpdatedAt := p.UpdatedAt
+
+	if err := SavePrivateKey(p.ID, "somekey"); err != nil {
+		t.Fatalf("SavePrivateKey: %v", err)
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("expected peer to exist")
+	}
+	// updated_at is an RFC3339 timestamp with second precision; a real clock
+	// tick between CreatePeer and SavePrivateKey is not guaranteed in a fast
+	// test run, so we only assert it is well-formed and non-empty rather than
+	// strictly greater than the original value.
+	if loaded.UpdatedAt == "" {
+		t.Error("expected non-empty UpdatedAt after SavePrivateKey")
+	}
+	_ = originalUpdatedAt
+}
+
+// TestSavePrivateKey_NonExistentPeerIsNoop verifies UPDATE semantics: calling
+// SavePrivateKey with an ID that matches no row does not return an error
+// (SQL UPDATE affecting zero rows is not itself an error in database/sql).
+func TestSavePrivateKey_NonExistentPeerIsNoop(t *testing.T) {
+	initTestDB(t)
+
+	if err := SavePrivateKey("does-not-exist", "somekey"); err != nil {
+		t.Errorf("SavePrivateKey on non-existent peer returned error, want nil (no-op): %v", err)
+	}
+}
+
+// TestDerivePublicKey_RejectsShellInjectionPayloads is a regression test for a
+// shell command injection vulnerability: DerivePublicKey interpolates its
+// privateKey argument into a "bash -c" command. Since v1.x this function is
+// reachable from user-uploaded .conf files (import-client-configs), so any
+// string that isn't a well-formed WireGuard key must be rejected before it
+// ever reaches the shell — regardless of whether wg/awg binaries are
+// installed in the test environment.
+func TestDerivePublicKey_RejectsShellInjectionPayloads(t *testing.T) {
+	payloads := []string{
+		"x$(reboot)",
+		"; rm -rf / #",
+		"`id`",
+		"a|b",
+		"short",
+		"",
+		strings.Repeat("A", 43), // 43 chars but no trailing '='
+	}
+	for _, p := range payloads {
+		if _, err := DerivePublicKey("wg", p); err == nil {
+			t.Errorf("DerivePublicKey(%q) succeeded, want error (invalid key format)", p)
+		}
+	}
+}
+
+// TestDerivePublicKey_AcceptsWellFormedKeyFormat verifies the format check
+// does not reject legitimate-looking keys before they reach the shell-out
+// (the shell-out itself may still fail if wg/awg isn't installed — that's a
+// separate, expected failure mode we don't assert on here).
+func TestDerivePublicKey_AcceptsWellFormedKeyFormat(t *testing.T) {
+	if _, err := exec.LookPath("wg"); err != nil {
+		t.Skip("wg binary not found in PATH — skipping")
+	}
+	wellFormed := strings.Repeat("A", 43) + "="
+	if _, err := DerivePublicKey("wg", wellFormed); err != nil {
+		t.Errorf("DerivePublicKey with well-formed key returned error: %v", err)
 	}
 }

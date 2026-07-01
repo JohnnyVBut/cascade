@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"strings"
 	"time"
 
@@ -370,6 +371,17 @@ func SaveHandshake(peerID, handshakeAt string) error {
 	return err
 }
 
+// SavePrivateKey persists a private key recovered from an imported client .conf
+// file. Used to restore QR/config download capability for peers that were
+// created without a server-side private key (e.g. imported from another server).
+func SavePrivateKey(peerID, privateKey string) error {
+	_, err := db.DB().Exec(
+		`UPDATE peers SET private_key = ?, updated_at = ? WHERE id = ?`,
+		privateKey, time.Now().UTC().Format(time.RFC3339), peerID,
+	)
+	return err
+}
+
 // SaveTrafficTotals persists lifetime accumulated RX/TX bytes for a peer.
 // Called by TunnelInterface.FlushTrafficTotals() every 60 s and before wg-quick down.
 // UPDATE on a non-existent peer is a no-op (returns nil) — safe after peer deletion.
@@ -434,12 +446,24 @@ func GenerateKeys(bin string) (GeneratedKeys, error) {
 	return GeneratedKeys{PrivateKey: priv, PublicKey: pub, PresharedKey: psk}, nil
 }
 
+// wgKeyPattern matches a valid WireGuard base64 key: 43 base64 chars + '='.
+// Used to reject anything that isn't a well-formed key before it is ever
+// interpolated into a shell command (DerivePublicKey shells out via bash -c).
+var wgKeyPattern = regexp.MustCompile(`^[A-Za-z0-9+/]{43}=$`)
+
 // DerivePublicKey derives the public key from an existing private key using
 // the given WireGuard binary (wg or awg). Used when importing a .conf file
 // where the private key is already known.
+//
+// privateKey may originate from an untrusted source (e.g. a user-uploaded
+// .conf file) and is interpolated into a shell command below — it MUST be
+// validated as a well-formed base64 key first to prevent shell injection.
 func DerivePublicKey(bin, privateKey string) (string, error) {
 	if bin == "" {
 		bin = "wg"
+	}
+	if !wgKeyPattern.MatchString(privateKey) {
+		return "", fmt.Errorf("invalid private key format")
 	}
 	pubCmd := fmt.Sprintf("echo %s | %s pubkey", privateKey, bin)
 	pub, err := util.Exec(pubCmd, util.DefaultTimeout, false) // log=false: hides private key
