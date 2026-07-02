@@ -188,6 +188,16 @@ func main() {
 		c.Set("Cache-Control", "no-cache, must-revalidate")
 		return c.Next()
 	})
+	// New Vue 3 / Vite frontend (UI2), served at /ui2. Registered BEFORE the
+	// catch-all "/" mount below so it is not swallowed by the legacy SPA
+	// fallback. Its own NotFoundFile serves the UI2 index.html so Vue Router
+	// (history mode, base /ui2/) handles deep links like /ui2/interfaces.
+	app.Use("/ui2", filesystem.New(filesystem.Config{
+		Root:         frontend.UI2FS(),
+		Index:        "index.html",
+		Browse:       false,
+		NotFoundFile: "index.html",
+	}))
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root:         frontend.FS(),
 		Index:        "index.html",

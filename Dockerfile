@@ -1,6 +1,19 @@
 # ============================================================
 # Cascade — Go/Fiber build
 # ============================================================
+# Stage 0: Build the UI2 frontend (Vue 3 / Vite). Node is only needed here at
+# build time — it is never present in the runtime image (Go binary embeds the
+# built assets). Kept as a separate stage so changes to Vue source don't
+# invalidate the Go dependency cache and vice versa.
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/internal/frontend/ui2
+# Copy manifests first so `npm ci` is cached unless dependencies change.
+COPY internal/frontend/ui2/package.json internal/frontend/ui2/package-lock.json ./
+RUN npm ci
+COPY internal/frontend/ui2/ ./
+RUN npm run build
+
+# ============================================================
 # Stage 1: Build Go binary
 FROM golang:1.23-alpine AS builder
 
@@ -10,6 +23,10 @@ WORKDIR /app
 COPY go.mod ./
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+
+# Overwrite the committed placeholder ui2/dist with the real Vite build output
+# so go:embed picks up the actual app instead of the placeholder.
+COPY --from=frontend-builder /app/internal/frontend/ui2/dist ./internal/frontend/ui2/dist
 
 # Resolve full dependency graph, update go.mod with indirect deps, generate go.sum.
 # Cached unless go.mod or source changes.

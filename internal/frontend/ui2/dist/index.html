@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<!--
+  Tracked placeholder for go:embed.
+
+  This file exists so `go:embed all:ui2/dist` never fails on a fresh clone that
+  hasn't run the frontend build. The real Vite output (which references hashed
+  asset bundles under dist/assets/, git-ignored) overwrites this file when you
+  run `npm run build` in internal/frontend/ui2/. After a local build this file
+  will show as modified in git — that is expected; do not commit the built
+  version over this placeholder.
+
+  The Dockerfile frontend-builder stage regenerates dist/ during image builds,
+  so production always serves the real app regardless of this placeholder.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cascade UI2</title>
+    <style>
+      body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #e5e5e5;
+             display: flex; align-items: center; justify-content: center;
+             min-height: 100vh; margin: 0; }
+      .box { text-align: center; max-width: 30rem; padding: 2rem; }
+      code { background: #262626; padding: 0.15rem 0.4rem; border-radius: 0.25rem; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h1>Cascade UI2</h1>
+      <p>Frontend not built yet. Run <code>npm run build</code> in
+        <code>internal/frontend/ui2/</code> to build the app.</p>
+    </div>
+  </body>
+</html>

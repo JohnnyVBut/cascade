@@ -1,1 +1,7 @@
 /src/node_modules
+
+# UI2 frontend: node_modules and local build output must not enter the build
+# context. The Dockerfile frontend-builder stage runs `npm ci` + `npm run build`
+# to regenerate them inside the image.
+internal/frontend/ui2/node_modules
+internal/frontend/ui2/dist
