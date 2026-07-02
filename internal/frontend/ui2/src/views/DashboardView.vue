@@ -68,28 +68,26 @@ async function toggleInterface(iface) {
       <div v-if="interfaces.length === 0" style="font-size:14px; color:var(--text-secondary);">
         No interfaces yet.
       </div>
-      <div v-else style="display:flex; flex-direction:column; gap:8px;">
-        <BaseCard v-for="iface in interfaces" :key="iface.id" :pad="false">
-          <div style="padding:14px 16px; display:flex; align-items:center; gap:14px;">
+      <div v-else style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px;">
+        <BaseCard v-for="iface in interfaces" :key="iface.id">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
             <span
-              :style="{ width:'8px', height:'8px', borderRadius:'50%',
+              :style="{ width:'8px', height:'8px', borderRadius:'50%', flexShrink:0,
                         background: iface.enabled ? 'var(--success)' : 'var(--idle)' }"
             />
-            <div style="flex:1; min-width:0;">
-              <div style="font-size:14px; font-weight:500;">
-                {{ iface.name }}
-                <span style="font-size:12px; font-weight:400; color:var(--text-muted); font-family:ui-monospace,monospace;">{{ iface.address }}</span>
-              </div>
-              <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">
-                {{ iface.protocol === 'amneziawg-2.0' ? 'AmneziaWG' : 'WireGuard' }}
-                · :{{ iface.listenPort }} · {{ iface.peerCount || 0 }} peers
-              </div>
-            </div>
-            <div v-if="ifaceRate(iface.name)" style="font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace; text-align:right;">
-              ↓{{ ifaceRate(iface.name).rx.value }} ↑{{ ifaceRate(iface.name).tx.value }}
-            </div>
-            <StatusBadge :tone="iface.enabled ? 'success' : 'idle'" :label="iface.enabled ? 'up' : 'down'" />
+            <span style="font-size:14px; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ iface.name }}</span>
             <BaseToggle :model-value="iface.enabled" @update:model-value="toggleInterface(iface)" />
+          </div>
+          <div style="font-size:12px; color:var(--text-muted); font-family:ui-monospace,monospace; margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ iface.address }}</div>
+          <div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">
+            {{ iface.protocol === 'amneziawg-2.0' ? 'AmneziaWG' : 'WireGuard' }} · :{{ iface.listenPort }} · {{ iface.peerCount || 0 }} peers
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span v-if="ifaceRate(iface.name)" style="font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
+              ↓{{ ifaceRate(iface.name).rx.value }} ↑{{ ifaceRate(iface.name).tx.value }}
+            </span>
+            <span v-else style="font-size:12px; color:var(--text-muted);">—</span>
+            <StatusBadge :tone="iface.enabled ? 'success' : 'idle'" :label="iface.enabled ? 'up' : 'down'" />
           </div>
         </BaseCard>
       </div>
@@ -98,20 +96,16 @@ async function toggleInterface(iface) {
     <!-- Gateways (only when configured) -->
     <div v-if="gateways.length > 0">
       <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Gateways</div>
-      <div style="display:flex; flex-direction:column; gap:8px;">
-        <BaseCard v-for="gw in gateways" :key="gw.id" :pad="false">
-          <div style="padding:14px 16px; display:flex; align-items:center; gap:14px;">
-            <div style="flex:1; min-width:0;">
-              <div style="font-size:14px; font-weight:500;">
-                {{ gw.name }}
-                <span style="font-size:12px; font-weight:400; color:var(--text-muted);">{{ gw.interface }}</span>
-              </div>
-              <div style="font-size:12px; color:var(--text-secondary); margin-top:2px; font-family:ui-monospace,monospace;">
-                <span v-if="gw.latency != null">{{ gw.latency }} ms</span><span v-else>— ms</span>
-                · <span v-if="gw.packetLoss != null">{{ gw.packetLoss }}% loss</span><span v-else>—% loss</span>
-              </div>
-            </div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px;">
+        <BaseCard v-for="gw in gateways" :key="gw.id">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <span style="font-size:14px; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ gw.name }}</span>
             <StatusBadge :tone="gatewayTone[gw.status] || 'idle'" :label="gw.status || 'unknown'" />
+          </div>
+          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">{{ gw.interface }}</div>
+          <div style="font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
+            <span v-if="gw.latency != null">{{ gw.latency }} ms</span><span v-else>— ms</span>
+            · <span v-if="gw.packetLoss != null">{{ gw.packetLoss }}% loss</span><span v-else>—% loss</span>
           </div>
         </BaseCard>
       </div>
