@@ -104,7 +104,7 @@ const distColors = ['var(--accent)', 'var(--success)', 'var(--warning)', '#a78bf
       <div v-if="interfaces.length === 0" style="font-size:14px; color:var(--text-secondary);">
         No interfaces yet.
       </div>
-      <div v-else style="display:flex; flex-direction:column; gap:12px;">
+      <div v-else style="display:grid; grid-template-columns:repeat(auto-fill, minmax(440px, 1fr)); gap:12px; align-items:start;">
         <InterfaceCard
           v-for="iface in interfaces" :key="iface.id"
           :iface="iface" :rate="ifaceRate(iface.name)"

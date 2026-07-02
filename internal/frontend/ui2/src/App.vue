@@ -12,7 +12,7 @@ const themeLabel = { light: 'Light', dark: 'Dark', auto: 'Auto' }
 <template>
   <div style="min-height:100vh; background:var(--bg); color:var(--text);">
     <header style="border-bottom:1px solid var(--border);">
-      <nav style="max-width:1100px; margin:0 auto; display:flex; align-items:center; gap:20px; padding:14px 24px;">
+      <nav style="max-width:1400px; margin:0 auto; display:flex; align-items:center; gap:20px; padding:14px 24px;">
         <span style="font-size:16px; font-weight:500; letter-spacing:-0.01em;">Cascade</span>
         <div style="display:flex; gap:4px;">
           <RouterLink to="/" class="nav-link">Dashboard</RouterLink>
@@ -27,7 +27,7 @@ const themeLabel = { light: 'Light', dark: 'Dark', auto: 'Auto' }
       </nav>
     </header>
 
-    <main style="max-width:1100px; margin:0 auto; padding:24px;">
+    <main style="max-width:1400px; margin:0 auto; padding:24px;">
       <RouterView />
     </main>
 
