@@ -1,6 +1,7 @@
 <script setup>
 import { RouterLink, RouterView } from 'vue-router'
 import { useTheme } from './composables/useTheme.js'
+import ToastHost from './components/ToastHost.vue'
 
 const { mode, cycle } = useTheme()
 
@@ -29,6 +30,8 @@ const themeLabel = { light: 'Light', dark: 'Dark', auto: 'Auto' }
     <main style="max-width:1100px; margin:0 auto; padding:24px;">
       <RouterView />
     </main>
+
+    <ToastHost />
   </div>
 </template>
 

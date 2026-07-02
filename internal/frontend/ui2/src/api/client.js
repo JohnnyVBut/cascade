@@ -82,3 +82,10 @@ export const api = {
   put: (path, body) => request('PUT', path, body),
   delete: (path) => request('DELETE', path),
 }
+
+// Root-relative URL for a resource served by the API (e.g. QR image, config
+// download). Includes any Caddy prefix so <img src> / <a href> resolve
+// correctly; the session cookie is sent automatically (same origin).
+export function apiUrl(path) {
+  return resolveApiBase(window.location.pathname) + path
+}

@@ -1,14 +1,13 @@
 <script setup>
 import { computed } from 'vue'
-import StatCard from '../components/StatCard.vue'
-import BaseCard from '../components/BaseCard.vue'
+import { IconServer2, IconRoute, IconUsers } from '@tabler/icons-vue'
+import WidgetPanel from '../components/WidgetPanel.vue'
 import StatusBadge from '../components/StatusBadge.vue'
-import BaseToggle from '../components/BaseToggle.vue'
+import InterfaceCard from '../components/InterfaceCard.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
-  startInterface, stopInterface,
 } from '../composables/useDashboardData.js'
-import { fmtRate, fmtPct, fmtMemGB } from '../utils/format.js'
+import { fmtPct, fmtMemGB } from '../utils/format.js'
 
 const { data: sys } = useSystemInfo()
 const { data: metrics } = useMetrics()
@@ -16,128 +15,108 @@ const { data: interfaces, refresh: refreshInterfaces } = useInterfaces()
 const { data: gateways } = useGateways()
 
 const netMap = computed(() => (metrics.value && metrics.value.net) || {})
+function ifaceRate(name) { return netMap.value[name] || null }
 
-const upCount = computed(() => interfaces.value.filter(i => i.enabled).length)
-const totalPeers = computed(() => interfaces.value.reduce((n, i) => n + (i.peerCount || 0), 0))
-
-const totalRate = computed(() => {
-  let sum = 0
-  for (const k in netMap.value) {
-    const ns = netMap.value[k]
-    sum += (ns.rxMbps || 0) + (ns.txMbps || 0)
-  }
-  return fmtRate(sum)
-})
-
-function ifaceRate(name) {
-  const ns = netMap.value[name]
-  if (!ns) return null
-  return { rx: fmtRate(ns.rxMbps || 0), tx: fmtRate(ns.txMbps || 0) }
-}
-
+const totalPeers = computed(() => interfaces.value.reduce((n, i) => n + ((i.peers && i.peers.length) || 0), 0))
+const peerDist = computed(() =>
+  interfaces.value.map(i => ({ name: i.name, count: (i.peers && i.peers.length) || 0 }))
+    .filter(x => x.count > 0)
+)
+const healthyGw = computed(() => gateways.value.filter(g => g.status === 'healthy').length)
 const gatewayTone = { healthy: 'success', degraded: 'warning', down: 'danger', admin_down: 'idle', unknown: 'idle' }
-
-async function toggleInterface(iface) {
-  try {
-    if (iface.enabled) await stopInterface(iface.id)
-    else await startInterface(iface.id)
-  } catch (e) {
-    // Surface later via a toast system; refresh reflects the true state.
-  } finally {
-    refreshInterfaces()
-  }
-}
+const distColors = ['var(--accent)', 'var(--success)', 'var(--warning)', '#a78bfa', '#f472b6']
 </script>
 
 <template>
   <section style="display:flex; flex-direction:column; gap:22px;">
     <h1 style="font-size:22px; font-weight:500; letter-spacing:-0.01em; margin:0;">Dashboard</h1>
 
-    <!-- Metric row -->
-    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:12px;">
-      <StatCard label="Interfaces" :value="upCount" :suffix="'/ ' + interfaces.length + ' up'" />
-      <StatCard label="Peers" :value="totalPeers" />
-      <StatCard label="Throughput" :value="totalRate.value" :suffix="totalRate.unit" />
-      <StatCard label="CPU" :value="fmtPct(metrics.cpu)" />
-      <StatCard label="Memory" :value="fmtPct(metrics.mem)" />
+    <!-- Monitoring widgets -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
+
+      <WidgetPanel title="System" icon-color="#a78bfa">
+        <template #icon><IconServer2 :size="16" /></template>
+        <template #summary><span style="font-family:ui-monospace,monospace;">{{ sys.hostname || '—' }}</span></template>
+        <div style="display:flex; flex-direction:column; gap:11px;">
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+              <span style="color:var(--text-muted);">CPU</span>
+              <span style="font-family:ui-monospace,monospace;">{{ fmtPct(metrics.cpu) }}</span>
+            </div>
+            <div class="bar"><div class="bar-fill" :style="{ width: (metrics.cpu || 0) + '%' }" /></div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+              <span style="color:var(--text-muted);">Memory</span>
+              <span style="font-family:ui-monospace,monospace;">{{ fmtMemGB(sys.memUsed) }} / {{ fmtMemGB(sys.memTotal) }} GB</span>
+            </div>
+            <div class="bar"><div class="bar-fill" :style="{ width: (sys.memPct || 0) + '%' }" /></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;">
+            <span style="color:var(--text-muted);">Load</span>
+            <span style="font-family:ui-monospace,monospace;">{{ (sys.load1||0).toFixed(2) }} · {{ (sys.load5||0).toFixed(2) }} · {{ (sys.load15||0).toFixed(2) }}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:12px;">
+            <span style="color:var(--text-muted);">Uptime</span>
+            <span style="font-family:ui-monospace,monospace;">{{ sys.uptime || '—' }}</span>
+          </div>
+        </div>
+      </WidgetPanel>
+
+      <WidgetPanel v-if="gateways.length > 0" title="Gateways" icon-color="var(--warning)">
+        <template #icon><IconRoute :size="16" /></template>
+        <template #summary>{{ healthyGw }} / {{ gateways.length }} healthy</template>
+        <div style="display:flex; flex-direction:column;">
+          <div v-for="(gw, idx) in gateways" :key="gw.id"
+               style="display:flex; align-items:center; gap:8px; padding:7px 0;"
+               :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }">
+            <span class="dot" :style="{ background: gatewayTone[gw.status] === 'success' ? 'var(--success)' : gatewayTone[gw.status] === 'warning' ? 'var(--warning)' : gatewayTone[gw.status] === 'danger' ? 'var(--danger)' : 'var(--idle)' }" />
+            <span style="font-size:13px; font-weight:500;">{{ gw.name }}</span>
+            <span style="font-size:12px; color:var(--text-muted);">{{ gw.interface }}</span>
+            <span style="margin-left:auto; font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
+              <template v-if="gw.latency != null">{{ gw.latency }}ms · {{ gw.packetLoss != null ? gw.packetLoss : '—' }}%</template>
+              <template v-else>—</template>
+            </span>
+          </div>
+        </div>
+      </WidgetPanel>
+
+      <WidgetPanel title="Peers" icon-color="#f472b6">
+        <template #icon><IconUsers :size="16" /></template>
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <span style="font-size:30px; font-weight:500;">{{ totalPeers }}</span>
+          <span style="font-size:12px; color:var(--text-muted);">across {{ interfaces.length }} interfaces</span>
+        </div>
+        <div v-if="peerDist.length > 0" style="margin-top:14px; display:flex; gap:4px;">
+          <div v-for="(d, idx) in peerDist" :key="d.name"
+               :style="{ flex: d.count, height:'6px', borderRadius:'3px', background: distColors[idx % distColors.length] }" />
+        </div>
+        <div v-if="peerDist.length > 0" style="margin-top:6px; font-size:11px; color:var(--text-muted);">
+          {{ peerDist.map(d => d.name + ' ' + d.count).join(' · ') }}
+        </div>
+      </WidgetPanel>
+
     </div>
 
-    <!-- Interfaces -->
+    <!-- Interfaces (full management) -->
     <div>
       <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Interfaces</div>
       <div v-if="interfaces.length === 0" style="font-size:14px; color:var(--text-secondary);">
         No interfaces yet.
       </div>
-      <div v-else style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px;">
-        <BaseCard v-for="iface in interfaces" :key="iface.id">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-            <span
-              :style="{ width:'8px', height:'8px', borderRadius:'50%', flexShrink:0,
-                        background: iface.enabled ? 'var(--success)' : 'var(--idle)' }"
-            />
-            <span style="font-size:14px; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ iface.name }}</span>
-            <BaseToggle :model-value="iface.enabled" @update:model-value="toggleInterface(iface)" />
-          </div>
-          <div style="font-size:12px; color:var(--text-muted); font-family:ui-monospace,monospace; margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ iface.address }}</div>
-          <div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">
-            {{ iface.protocol === 'amneziawg-2.0' ? 'AmneziaWG' : 'WireGuard' }} · :{{ iface.listenPort }} · {{ iface.peerCount || 0 }} peers
-          </div>
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-            <span v-if="ifaceRate(iface.name)" style="font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
-              ↓{{ ifaceRate(iface.name).rx.value }} ↑{{ ifaceRate(iface.name).tx.value }}
-            </span>
-            <span v-else style="font-size:12px; color:var(--text-muted);">—</span>
-            <StatusBadge :tone="iface.enabled ? 'success' : 'idle'" :label="iface.enabled ? 'up' : 'down'" />
-          </div>
-        </BaseCard>
+      <div v-else style="display:flex; flex-direction:column; gap:12px;">
+        <InterfaceCard
+          v-for="iface in interfaces" :key="iface.id"
+          :iface="iface" :rate="ifaceRate(iface.name)"
+          @changed="refreshInterfaces"
+        />
       </div>
-    </div>
-
-    <!-- Gateways (only when configured) -->
-    <div v-if="gateways.length > 0">
-      <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Gateways</div>
-      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px;">
-        <BaseCard v-for="gw in gateways" :key="gw.id">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-            <span style="font-size:14px; font-weight:500; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ gw.name }}</span>
-            <StatusBadge :tone="gatewayTone[gw.status] || 'idle'" :label="gw.status || 'unknown'" />
-          </div>
-          <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">{{ gw.interface }}</div>
-          <div style="font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
-            <span v-if="gw.latency != null">{{ gw.latency }} ms</span><span v-else>— ms</span>
-            · <span v-if="gw.packetLoss != null">{{ gw.packetLoss }}% loss</span><span v-else>—% loss</span>
-          </div>
-        </BaseCard>
-      </div>
-    </div>
-
-    <!-- System panel -->
-    <div>
-      <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">System</div>
-      <BaseCard>
-        <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px;">
-          <div>
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">Host</div>
-            <div style="font-size:14px; font-weight:500;">{{ sys.hostname || '—' }}</div>
-            <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">up {{ sys.uptime || '—' }}</div>
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">Load average</div>
-            <div style="font-size:14px; font-weight:500; font-family:ui-monospace,monospace;">
-              {{ (sys.load1 || 0).toFixed(2) }} · {{ (sys.load5 || 0).toFixed(2) }} · {{ (sys.load15 || 0).toFixed(2) }}
-            </div>
-          </div>
-          <div>
-            <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">Memory</div>
-            <div style="font-size:14px; font-weight:500;">
-              {{ fmtMemGB(sys.memUsed) }} / {{ fmtMemGB(sys.memTotal) }} GB
-            </div>
-            <div style="height:5px; border-radius:3px; background:var(--border); margin-top:6px; overflow:hidden;">
-              <div :style="{ width: (sys.memPct || 0) + '%', height:'100%', background:'var(--accent)' }" />
-            </div>
-          </div>
-        </div>
-      </BaseCard>
     </div>
   </section>
 </template>
+
+<style scoped>
+.bar { height: 4px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.bar-fill { height: 100%; background: var(--accent); }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+</style>

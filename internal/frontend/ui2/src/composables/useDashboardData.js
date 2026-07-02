@@ -27,10 +27,24 @@ export function useGateways() {
   }, 5000, [])
 }
 
-// Start or stop an interface, then the caller should refresh.
+// Interface actions. Caller refreshes afterwards.
 export function startInterface(id) {
   return api.post(`/tunnel-interfaces/${id}/start`)
 }
 export function stopInterface(id) {
   return api.post(`/tunnel-interfaces/${id}/stop`)
+}
+export function restartInterface(id) {
+  return api.post(`/tunnel-interfaces/${id}/restart`)
+}
+
+// Peer actions.
+export function enablePeer(ifaceId, peerId) {
+  return api.post(`/tunnel-interfaces/${ifaceId}/peers/${peerId}/enable`)
+}
+export function disablePeer(ifaceId, peerId) {
+  return api.post(`/tunnel-interfaces/${ifaceId}/peers/${peerId}/disable`)
+}
+export function deletePeer(ifaceId, peerId) {
+  return api.delete(`/tunnel-interfaces/${ifaceId}/peers/${peerId}`)
 }

@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@tabler/icons-vue": "^3.44.0",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },

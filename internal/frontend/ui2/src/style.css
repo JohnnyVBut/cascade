@@ -80,3 +80,22 @@ html, body {
   color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
+
+/* Icon button: square, transparent, subtle hover. Used across cards/rows. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.icon-btn:hover { background: var(--surface-hover); color: var(--text); }
+.icon-btn.bordered { border: 1px solid var(--border-strong); width: 30px; height: 30px; }
+.icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
