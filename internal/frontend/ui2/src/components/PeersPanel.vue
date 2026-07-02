@@ -1,0 +1,102 @@
+<script setup>
+import { ref, computed } from 'vue'
+import { IconUsers } from '@tabler/icons-vue'
+import PeerDenseRow from './PeerDenseRow.vue'
+
+const props = defineProps({
+  interfaces: { type: Array, required: true },
+})
+const emit = defineEmits(['changed'])
+
+const ifaceFilter = ref('')
+const sortBy = ref('name')
+
+// Flatten peers across all interfaces, tagging each with interface context.
+const allPeers = computed(() => {
+  const out = []
+  for (const iface of props.interfaces) {
+    for (const p of (iface.peers || [])) {
+      out.push({ ...p, interfaceId: iface.id, interfaceName: iface.name })
+    }
+  }
+  return out
+})
+
+const filtered = computed(() => {
+  let peers = allPeers.value
+  if (ifaceFilter.value === '__clients__') {
+    peers = peers.filter(p => p.peerType !== 'interconnect')
+  } else if (ifaceFilter.value === '__s2s__') {
+    peers = peers.filter(p => p.peerType === 'interconnect')
+  } else if (ifaceFilter.value) {
+    peers = peers.filter(p => p.interfaceId === ifaceFilter.value)
+  }
+
+  const sorted = [...peers]
+  if (sortBy.value === 'traffic') {
+    sorted.sort((a, b) => ((b.totalTx || 0) + (b.totalRx || 0)) - ((a.totalTx || 0) + (a.totalRx || 0)))
+  } else if (sortBy.value === 'seen') {
+    sorted.sort((a, b) => {
+      const ta = a.latestHandshakeAt ? new Date(a.latestHandshakeAt).getTime() : 0
+      const tb = b.latestHandshakeAt ? new Date(b.latestHandshakeAt).getTime() : 0
+      return tb - ta
+    })
+  } else {
+    sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  }
+  return sorted
+})
+</script>
+
+<template>
+  <div class="panel">
+    <div class="head">
+      <IconUsers :size="16" style="color:#f472b6;" />
+      <span style="font-size:13px; font-weight:500;">Peers</span>
+      <span style="margin-left:auto; font-size:12px; color:var(--text-muted);">{{ filtered.length }}</span>
+    </div>
+
+    <div class="filter-bar">
+      <select v-model="ifaceFilter" class="select">
+        <option value="">All peers</option>
+        <option value="__clients__">All clients</option>
+        <option value="__s2s__">All S2S</option>
+        <option v-for="iface in interfaces" :key="iface.id" :value="iface.id">{{ iface.name }}</option>
+      </select>
+      <select v-model="sortBy" class="select">
+        <option value="name">Sort: Name</option>
+        <option value="traffic">Sort: Traffic</option>
+        <option value="seen">Sort: Last seen</option>
+      </select>
+    </div>
+
+    <div class="list">
+      <div v-if="filtered.length === 0" style="padding:20px 0; text-align:center; font-size:12px; color:var(--text-muted);">
+        No peers
+      </div>
+      <PeerDenseRow
+        v-for="p in filtered" :key="p.id"
+        :peer="p"
+        @changed="emit('changed')"
+      />
+    </div>
+  </div>
+</template>
+
+<style scoped>
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  display: flex; flex-direction: column;
+  height: 100%;
+}
+.head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.filter-bar { display: flex; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.select {
+  flex: 1; font-size: 11.5px; padding: 4px 6px;
+  border: 1px solid var(--border-strong); border-radius: 5px;
+  background: var(--surface); color: var(--text); cursor: pointer;
+}
+.list { flex: 1; overflow-y: auto; padding: 0 14px; max-height: 560px; }
+</style>
