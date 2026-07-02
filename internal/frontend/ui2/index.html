@@ -1,7 +1,17 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Anti-FOUC: apply the saved (or OS-preferred) theme before first paint,
+      // matching useTheme.js resolution. Avoids a flash of the wrong theme.
+      (function () {
+        var m = localStorage.getItem('cascade-ui2-theme') || 'auto';
+        var dark = m === 'dark' || (m === 'auto' &&
+          window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (dark) document.documentElement.classList.add('dark');
+      })();
+    </script>
     <!--
       Set <base href> at runtime to the /<prefix?>/ui2/ directory (with a
       trailing slash) BEFORE any asset tag is parsed. This makes Vite's
