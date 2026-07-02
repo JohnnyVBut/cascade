@@ -73,10 +73,8 @@ function soon() { push('Coming soon', 'warning') }
 <style scoped>
 .row {
   display: flex; align-items: center; gap: 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-card);
-  padding: 10px 12px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
 }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }

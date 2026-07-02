@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { IconServer2, IconRoute } from '@tabler/icons-vue'
 import WidgetPanel from '../components/WidgetPanel.vue'
-import InterfaceCompactRow from '../components/InterfaceCompactRow.vue'
+import InterfacesPanel from '../components/InterfacesPanel.vue'
 import PeersPanel from '../components/PeersPanel.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
@@ -86,19 +86,10 @@ function onAddPeer() { push('Coming soon', 'warning') }
 
     <!-- Interfaces (left, compact controls) + Peers (right, filterable list) -->
     <div class="split">
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <div style="font-size:13px; color:var(--text-muted);">Interfaces</div>
-        <div v-if="interfaces.length === 0" style="font-size:14px; color:var(--text-secondary);">
-          No interfaces yet.
-        </div>
-        <InterfaceCompactRow
-          v-for="iface in interfaces" :key="iface.id"
-          :iface="iface" :rate="ifaceRate(iface.name)"
-          @changed="refreshInterfaces"
-          @add-peer="onAddPeer"
-        />
-      </div>
-
+      <InterfacesPanel
+        :interfaces="interfaces" :rate-for="ifaceRate"
+        @changed="refreshInterfaces" @add-peer="onAddPeer"
+      />
       <PeersPanel :interfaces="interfaces" @changed="refreshInterfaces" />
     </div>
   </section>
