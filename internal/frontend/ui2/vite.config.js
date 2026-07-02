@@ -1,10 +1,14 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// The UI2 app is served from the Go binary under the /ui2/ path prefix, so
-// asset URLs must be prefixed accordingly. Vue Router uses the same base.
+// Assets are referenced with RELATIVE URLs (base './') so the app works no
+// matter what path prefix it is served under. In production the app sits behind
+// Caddy's hidden admin path at /<ADMIN_PATH>/ui2/, which is not known at build
+// time — a relative base resolves assets against the document location and
+// therefore picks up the prefix automatically. (The legacy UI relies on the
+// same relative-path trick.)
 export default defineConfig({
-  base: '/ui2/',
+  base: './',
   plugins: [vue()],
   server: {
     // Local dev: proxy API calls to the running Go backend so `npm run dev`
