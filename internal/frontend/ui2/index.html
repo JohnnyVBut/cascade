@@ -2,7 +2,24 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Set <base href> at runtime to the /<prefix?>/ui2/ directory (with a
+      trailing slash) BEFORE any asset tag is parsed. This makes Vite's
+      relative './assets/...' URLs resolve correctly regardless of whether the
+      page was opened as /ui2 or /ui2/, and regardless of the Caddy admin-path
+      prefix. Must stay first in <head> so it runs before the injected script/
+      link tags.
+    -->
+    <script>
+      (function () {
+        var p = location.pathname;
+        var i = p.indexOf('/ui2');
+        var base = i >= 0 ? p.slice(0, i + 4) + '/' : '/ui2/';
+        document.write('<base href="' + base + '">');
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230a0a0a'/%3E%3Cpath d='M4 10.5 L8 5 L12 10.5' stroke='%2360a5fa' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
     <title>Cascade</title>
   </head>
   <body>
