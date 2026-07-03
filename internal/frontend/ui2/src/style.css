@@ -99,3 +99,27 @@ html, body {
 .icon-btn.bordered { border: 1px solid var(--border-strong); width: 30px; height: 30px; }
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/*
+  Dashboard grid: fixed 4-column system. Every widget's width must be a
+  multiple of one quarter (span 1..4), so any row composition is possible:
+  4x1/4, 2x1/2, 1/4+1/4+1/2, 1/4+3/4, or a single full-width 4/4 widget.
+  Widgets wrap to the next row automatically when a row's spans exceed 4.
+*/
+.grid4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.g-1 { grid-column: span 1; }
+.g-2 { grid-column: span 2; }
+.g-3 { grid-column: span 3; }
+.g-4 { grid-column: span 4; }
+
+@media (max-width: 900px) {
+  .grid4 .g-1, .grid4 .g-2, .grid4 .g-3, .grid4 .g-4 { grid-column: span 4; }
+}
+@media (min-width: 901px) and (max-width: 1200px) {
+  .grid4 .g-1 { grid-column: span 2; }
+}
+
