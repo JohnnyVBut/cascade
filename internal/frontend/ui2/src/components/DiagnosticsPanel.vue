@@ -90,19 +90,48 @@ function gatewayBars(key) {
   })
 }
 
-// Time axis labels for the current period: 6 evenly spaced points, oldest →
-// now, shown as actual clock time (or date for multi-day periods) rather
-// than a relative offset — avoids mixing units (e.g. "-1h", "-48m", "-36m").
+// Reference timestamps for the axis: the actual times backing the charts
+// currently on screen (first shownKeys entry with data), not a separately
+// computed "period ago vs now" guess. This keeps the axis in lockstep with
+// what a chart tooltip reports for the same point — previously the axis was
+// computed once per period change (frozen at that instant) while realtime
+// data kept accumulating, so hovering a recent point showed a time the axis
+// never displayed.
+const referenceTimes = computed(() => {
+  for (const key of shownKeys.value) {
+    const t = (chartData[key] || {}).t
+    if (t && t.length > 0) return t
+  }
+  // Gateway keys in history mode store buckets separately (gwBuckets), not
+  // chartData — check those too (ts_ms there, convert to seconds).
+  for (const key of shownKeys.value) {
+    const bk = gwBuckets[key]
+    if (bk && bk.length > 0) return bk.map(b => b[0] / 1000)
+  }
+  return null
+})
+
+// Time axis labels: 6 evenly spaced points, oldest → now, shown as actual
+// clock time (or date for multi-day periods) rather than a relative offset
+// — avoids mixing units (e.g. "-1h", "-48m", "-36m").
 const axisLabels = computed(() => {
-  const total = PERIOD_SECONDS[period.value]
-  const now = Date.now()
   const showDate = period.value === '7d' || period.value === '30d'
-  return [5, 4, 3, 2, 1, 0].map(i => {
-    const d = new Date(now - total * i / 5 * 1000)
+  const fmt = (ms) => {
+    const d = new Date(ms)
     return showDate
       ? d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })
       : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  })
+  }
+  const ref = referenceTimes.value
+  if (ref && ref.length > 1) {
+    const first = ref[0] * 1000
+    const last = ref[ref.length - 1] * 1000
+    return [0, 1, 2, 3, 4, 5].map(i => fmt(first + (last - first) * i / 5))
+  }
+  // No data yet: fall back to period-relative estimate.
+  const total = PERIOD_SECONDS[period.value]
+  const now = Date.now()
+  return [5, 4, 3, 2, 1, 0].map(i => fmt(now - total * i / 5 * 1000))
 })
 
 // ── Realtime (5m) accumulation ──────────────────────────────────────────────
