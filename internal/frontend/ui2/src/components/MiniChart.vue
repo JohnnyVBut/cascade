@@ -38,8 +38,10 @@ function tooltipPlugin() {
         if (idx == null) { tip.style.display = 'none'; return }
         const v = u.data[1][idx]
         if (v == null) { tip.style.display = 'none'; return }
+        const t = u.data[0][idx]
+        const time = t ? new Date(t * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
         const rounded = Math.round(v * 10) / 10
-        tip.textContent = `${rounded}${props.unit}`
+        tip.textContent = time ? `${time}  ${rounded}${props.unit}` : `${rounded}${props.unit}`
         tip.style.display = 'block'
         const left = u.cursor.left
         tip.style.left = left + 'px'

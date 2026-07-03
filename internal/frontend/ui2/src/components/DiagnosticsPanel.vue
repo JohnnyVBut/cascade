@@ -63,26 +63,29 @@ function currentValue(key) {
   return Math.round(v).toString()
 }
 
-// Bars for a gateway key in the current period.
+// Bars for a gateway key in the current period. Each bar carries its unix
+// timestamp (seconds) so the chart's tooltip can show date/time.
 function gatewayBars(key) {
   if (period.value === '5m') {
     const cd = chartData[key]
     if (!cd) return []
-    return cd.v.map(v => {
+    return cd.v.map((v, i) => {
       const s = Math.round(v)
       return {
         healthy: s >= 3 ? 100 : 0, degraded: s === 2 ? 100 : 0,
         down: s === 1 ? 100 : 0, adminDown: s <= 0 ? 100 : 0,
+        time: cd.t[i],
       }
     })
   }
   const bk = gwBuckets[key] || []
   return bk.map(b => {
-    const [, h, d, dn, ad] = b
+    const [ts, h, d, dn, ad] = b
     const total = (h + d + dn + ad) || 1
     return {
       healthy: h / total * 100, degraded: d / total * 100,
       down: dn / total * 100, adminDown: ad / total * 100,
+      time: ts / 1000,
     }
   })
 }
