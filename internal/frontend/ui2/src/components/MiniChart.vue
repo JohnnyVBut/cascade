@@ -9,6 +9,7 @@ const props = defineProps({
   times: { type: Array, required: true },   // unix seconds
   values: { type: Array, required: true },  // numbers (may contain nulls)
   color: { type: String, required: true },  // hex stroke
+  unit: { type: String, default: '' },      // tooltip suffix, e.g. '%' or ' Mbps'
   height: { type: Number, default: 42 },
 })
 
@@ -21,6 +22,35 @@ function hexToRgba(hex, a) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
 }
 
+// Cursor tooltip: a small box showing the hovered value, positioned at the
+// cursor. uPlot has no built-in tooltip, so we drive one from the cursor hook.
+function tooltipPlugin() {
+  let tip
+  return {
+    hooks: {
+      init: (u) => {
+        tip = document.createElement('div')
+        tip.className = 'mc-tip'
+        u.over.appendChild(tip)
+      },
+      setCursor: (u) => {
+        const idx = u.cursor.idx
+        if (idx == null) { tip.style.display = 'none'; return }
+        const v = u.data[1][idx]
+        if (v == null) { tip.style.display = 'none'; return }
+        const rounded = Math.round(v * 10) / 10
+        tip.textContent = `${rounded}${props.unit}`
+        tip.style.display = 'block'
+        const left = u.cursor.left
+        tip.style.left = left + 'px'
+        tip.style.top = '2px'
+        // Flip to the left near the right edge so it stays visible.
+        tip.style.transform = left > u.over.clientWidth - 60 ? 'translateX(-100%)' : 'translateX(-50%)'
+      },
+    },
+  }
+}
+
 function build(width) {
   if (chart) { chart.destroy(); chart = null }
   const opts = {
@@ -30,10 +60,8 @@ function build(width) {
     cursor: { y: false, points: { size: 5 } },
     legend: { show: false },
     scales: { x: { time: false } },
-    axes: [
-      { show: false },
-      { show: false },
-    ],
+    axes: [{ show: false }, { show: false }],
+    plugins: [tooltipPlugin()],
     series: [
       {},
       {
@@ -71,8 +99,21 @@ watch(() => [props.times, props.values], () => {
 </template>
 
 <style scoped>
-.mini-chart { width: 100%; }
-/* Neutralize uPlot's default cursor line color to fit the dark/light theme. */
+.mini-chart { width: 100%; position: relative; }
 .mini-chart :deep(.u-cursor-x),
 .mini-chart :deep(.u-cursor-y) { border-color: var(--border-strong); }
+.mini-chart :deep(.mc-tip) {
+  position: absolute;
+  pointer-events: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  font-family: ui-monospace, monospace;
+  color: var(--text);
+  white-space: nowrap;
+  z-index: 5;
+  display: none;
+}
 </style>

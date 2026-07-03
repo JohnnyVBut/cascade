@@ -46,6 +46,11 @@ function labelFor(key) {
   const m = available.value.find(m => m.key === key)
   return m ? m.label : key
 }
+function unitFor(key) {
+  if (key === 'cpu' || key === 'mem') return '%'
+  if (key.startsWith('net:')) return ' Mbps'
+  return ''
+}
 
 function currentValue(key) {
   const v = metricValue(metrics.value, key)
@@ -183,7 +188,7 @@ function toggleKey(key) {
             <span style="font-family:ui-monospace,monospace;" :style="{ color: metricColor(key) }">{{ currentValue(key) }}</span>
           </div>
           <GatewayChart v-if="isGatewayKey(key)" :bars="gatewayBars(key)" />
-          <MiniChart v-else :times="(chartData[key] || {}).t || []" :values="(chartData[key] || {}).v || []" :color="metricChartColor(key)" />
+          <MiniChart v-else :times="(chartData[key] || {}).t || []" :values="(chartData[key] || {}).v || []" :color="metricChartColor(key)" :unit="unitFor(key)" />
         </div>
 
         <div class="time-axis">
