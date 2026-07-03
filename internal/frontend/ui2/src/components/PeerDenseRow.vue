@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { IconQrcode, IconDownload, IconTrash } from '@tabler/icons-vue'
 import BaseToggle from './BaseToggle.vue'
 import QrModal from './QrModal.vue'
+import CopyableText from './CopyableText.vue'
 import { apiUrl } from '../api/client.js'
 import { enablePeer, disablePeer, deletePeer } from '../composables/useDashboardData.js'
 import { useToast } from '../composables/useToast.js'
@@ -95,8 +96,8 @@ async function remove() {
         </span>
       </div>
       <div style="font-size:10.5px; color:var(--text-muted); font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        {{ (peer.address || '').split('/')[0] }}
-        <span v-if="publicAddr">· {{ publicAddr }}</span>
+        <CopyableText :value="(peer.address || '').split('/')[0]" />
+        <template v-if="publicAddr">· <CopyableText :value="publicAddr" /></template>
         · {{ fmtAgo(peer.latestHandshakeAt) }}
       </div>
     </div>

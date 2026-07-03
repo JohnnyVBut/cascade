@@ -1,6 +1,7 @@
 <script setup>
 import { IconPlus, IconRefresh, IconSettings } from '@tabler/icons-vue'
 import BaseToggle from './BaseToggle.vue'
+import CopyableText from './CopyableText.vue'
 import { startInterface, stopInterface, restartInterface } from '../composables/useDashboardData.js'
 import { useToast } from '../composables/useToast.js'
 import { fmtRate, fmtBytes } from '../utils/format.js'
@@ -65,7 +66,7 @@ function soon() { push('Coming soon', 'warning') }
     <div style="min-width:0; flex:1;">
       <div style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
         {{ iface.name }}
-        <span style="font-size:11px; font-weight:400; color:var(--text-muted); font-family:ui-monospace,monospace;">{{ iface.address }}</span>
+        <CopyableText :value="iface.address" style="font-size:11px; font-weight:400; color:var(--text-muted); font-family:ui-monospace,monospace;" />
         <span class="tag" :class="isAwg ? 'tag-awg' : 'tag-wg'">{{ isAwg ? 'AmneziaWG' : 'WireGuard' }}</span>
         <span v-if="rateLabel" class="tag tag-live" title="Live throughput">
           ↓{{ rateLabel.rx.value }} ↑{{ rateLabel.tx.value }} Mbps
