@@ -9,7 +9,7 @@ import GridPlaceholder from '../components/GridPlaceholder.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
 } from '../composables/useDashboardData.js'
-import { fmtPct, fmtMemGB, fmtBytesGB, usageColor, gatewayStatusColor } from '../utils/format.js'
+import { fmtPct, fmtMemGB, fmtBytesGB, fmtRate, usageColor, gatewayStatusColor } from '../utils/format.js'
 import { useToast } from '../composables/useToast.js'
 
 const { data: sys } = useSystemInfo()
@@ -83,15 +83,20 @@ function onAddPeer() { push('Coming soon', 'warning') }
         <template #icon><IconRoute :size="16" /></template>
         <template #summary>{{ healthyGw }} / {{ gateways.length }} healthy</template>
         <div style="display:flex; flex-direction:column;">
-          <div v-for="(gw, idx) in gateways" :key="gw.id"
-               style="display:flex; align-items:center; gap:8px; padding:6px 0;"
-               :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }">
-            <span class="dot" :style="{ background: gatewayStatusColor(gw.status) }" />
-            <span style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ gw.name }}</span>
-            <span style="margin-left:auto; font-size:12px; font-family:ui-monospace,monospace; flex-shrink:0;" :style="{ color: gatewayStatusColor(gw.status) }">
-              <template v-if="gw.latency != null">{{ gw.latency }}ms</template>
-              <template v-else>—</template>
-            </span>
+          <div v-for="(gw, idx) in gateways" :key="gw.id" :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none', padding: '6px 0' }">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="dot" :style="{ background: gatewayStatusColor(gw.status) }" />
+              <span style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ gw.name }}</span>
+              <span style="font-size:12px; color:var(--text-muted);">{{ gw.interface }}</span>
+              <span style="margin-left:auto; font-size:12px; font-family:ui-monospace,monospace; flex-shrink:0;" :style="{ color: gatewayStatusColor(gw.status) }">
+                <template v-if="gw.latency != null">{{ gw.latency }}ms</template>
+                <template v-else>—</template>
+              </span>
+            </div>
+            <div v-if="ifaceRate(gw.interface)" style="display:flex; justify-content:flex-end; gap:10px; padding-left:15px; font-size:11px; font-family:ui-monospace,monospace;">
+              <span style="color:var(--danger-fg);">↓ {{ fmtRate(ifaceRate(gw.interface).rxMbps).value }} {{ fmtRate(ifaceRate(gw.interface).rxMbps).unit }}</span>
+              <span style="color:var(--success-fg);">↑ {{ fmtRate(ifaceRate(gw.interface).txMbps).value }} {{ fmtRate(ifaceRate(gw.interface).txMbps).unit }}</span>
+            </div>
           </div>
         </div>
       </WidgetPanel>
