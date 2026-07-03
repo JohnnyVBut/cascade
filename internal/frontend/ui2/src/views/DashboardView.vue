@@ -41,8 +41,8 @@ function onAddPeer() { push('Coming soon', 'warning') }
       auto-flow wrap): each row's spans are padded to exactly 4/4 with
       GridPlaceholder, so layout stays predictable even when a widget is
       conditionally hidden (e.g. no gateways configured).
-      Row 1: System 1/4, Gateways 1/4, Interfaces 1/2
-      Row 2: Peers 1/2, (placeholder) 1/2
+      Row 1: System 1/4, Gateways 1/4, (placeholder) 1/4, (placeholder) 1/4
+      Row 2: Interfaces 1/2, Peers 1/2
     -->
     <div class="grid4">
 
@@ -88,6 +88,8 @@ function onAddPeer() { push('Coming soon', 'warning') }
         </div>
       </WidgetPanel>
       <GridPlaceholder v-else :span="1" />
+      <GridPlaceholder :span="1" />
+      <GridPlaceholder :span="1" />
 
       <InterfacesPanel
         class="g-2"
@@ -95,7 +97,6 @@ function onAddPeer() { push('Coming soon', 'warning') }
         @changed="refreshInterfaces" @add-peer="onAddPeer"
       />
       <PeersPanel class="g-2" :interfaces="interfaces" @changed="refreshInterfaces" />
-      <GridPlaceholder :span="2" />
     </div>
   </section>
 </template>

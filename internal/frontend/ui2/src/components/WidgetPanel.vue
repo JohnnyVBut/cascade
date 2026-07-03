@@ -24,6 +24,8 @@ defineProps({
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   padding: 16px;
+  height: 100%;
+  box-sizing: border-box;
 }
 .widget-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .widget-icon { display: inline-flex; }
