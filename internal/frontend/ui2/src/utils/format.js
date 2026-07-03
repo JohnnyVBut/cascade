@@ -117,3 +117,12 @@ const GATEWAY_STATUS_VAR = {
 export function gatewayStatusColor(status) {
   return GATEWAY_STATUS_VAR[status] || GATEWAY_STATUS_VAR.unknown
 }
+
+// Extract the IP from a peer's runtimeEndpoint ("1.2.3.4:51820" or
+// "[::1]:51820") — the real public address seen in the last handshake, as
+// opposed to the peer's internal VPN address. '' if no endpoint yet.
+export function peerPublicIP(endpoint) {
+  if (!endpoint) return ''
+  if (endpoint.startsWith('[')) return endpoint.slice(1, endpoint.indexOf(']'))
+  return endpoint.split(':')[0]
+}

@@ -6,7 +6,7 @@ import QrModal from './QrModal.vue'
 import { apiUrl } from '../api/client.js'
 import { enablePeer, disablePeer, deletePeer } from '../composables/useDashboardData.js'
 import { useToast } from '../composables/useToast.js'
-import { fmtBytes, fmtAgo, fmtKbps, effectiveRate, expiryUrgency, fmtDateShort } from '../utils/format.js'
+import { fmtBytes, fmtAgo, fmtKbps, effectiveRate, expiryUrgency, fmtDateShort, peerPublicIP } from '../utils/format.js'
 
 const props = defineProps({
   peer: { type: Object, required: true }, // includes interfaceId, interfaceName, peerType
@@ -42,6 +42,15 @@ const rateLabel = computed(() => {
 })
 
 const urgency = computed(() => expiryUrgency(props.peer.expiredAt))
+
+// S2S peers show the full endpoint (host is meaningful, e.g. a static peer
+// address); client peers show just the public IP (port is ephemeral/NAT).
+const publicAddr = computed(() => {
+  if (!props.peer.runtimeEndpoint) return ''
+  return props.peer.peerType === 'interconnect'
+    ? props.peer.runtimeEndpoint
+    : peerPublicIP(props.peer.runtimeEndpoint)
+})
 
 async function toggle() {
   if (busy.value) return
@@ -85,8 +94,10 @@ async function remove() {
           {{ fmtDateShort(peer.expiredAt) }}
         </span>
       </div>
-      <div style="font-size:10.5px; color:var(--text-muted); font-family:ui-monospace,monospace;">
-        {{ (peer.address || '').split('/')[0] }} · {{ fmtAgo(peer.latestHandshakeAt) }}
+      <div style="font-size:10.5px; color:var(--text-muted); font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        {{ (peer.address || '').split('/')[0] }}
+        <span v-if="publicAddr">· {{ publicAddr }}</span>
+        · {{ fmtAgo(peer.latestHandshakeAt) }}
       </div>
     </div>
     <span v-if="peer.enabled" style="font-size:10.5px; font-family:ui-monospace,monospace; flex-shrink:0; text-align:right;">
