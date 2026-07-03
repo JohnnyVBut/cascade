@@ -2,11 +2,14 @@
 import { ref, computed } from 'vue'
 import { IconUsers } from '@tabler/icons-vue'
 import PeerDenseRow from './PeerDenseRow.vue'
+import { useClientGroups } from '../composables/useDashboardData.js'
 
 const props = defineProps({
   interfaces: { type: Array, required: true },
 })
 const emit = defineEmits(['changed'])
+
+const { data: groups } = useClientGroups()
 
 const ifaceFilter = ref('')
 const sortBy = ref('name')
@@ -21,6 +24,12 @@ const allPeers = computed(() => {
   }
   return out
 })
+
+// Recently active = handshake within the last 3 minutes (mirrors legacy
+// peers-summary "Connected" stat).
+const connectedCount = computed(() =>
+  allPeers.value.filter(p => p.latestHandshakeAt && (Date.now() - new Date(p.latestHandshakeAt).getTime()) < 3 * 60 * 1000).length
+)
 
 const filtered = computed(() => {
   let peers = allPeers.value
@@ -53,7 +62,10 @@ const filtered = computed(() => {
     <div class="head">
       <IconUsers :size="16" style="color:#f472b6;" />
       <span style="font-size:13px; font-weight:500;">Peers</span>
-      <span style="margin-left:auto; font-size:12px; color:var(--text-muted);">{{ filtered.length }}</span>
+      <span style="margin-left:auto; display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-muted);">
+        <span style="color:var(--success-fg);">{{ connectedCount }} connected</span>
+        <span>· {{ filtered.length }}</span>
+      </span>
     </div>
 
     <div class="filter-bar">
@@ -76,7 +88,7 @@ const filtered = computed(() => {
       </div>
       <PeerDenseRow
         v-for="p in filtered" :key="p.id"
-        :peer="p"
+        :peer="p" :groups="groups"
         @changed="emit('changed')"
       />
     </div>

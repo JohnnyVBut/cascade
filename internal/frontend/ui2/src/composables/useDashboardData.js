@@ -27,6 +27,14 @@ export function useGateways() {
   }, 5000, [])
 }
 
+// Client groups (id, name, rateDown/rateUp in kbps). Rarely change, poll slowly.
+export function useClientGroups() {
+  return usePolling(async () => {
+    const res = await api.get('/aliases/client-groups')
+    return res.groups || []
+  }, 30000, [])
+}
+
 // Interface actions. Caller refreshes afterwards.
 export function startInterface(id) {
   return api.post(`/tunnel-interfaces/${id}/start`)

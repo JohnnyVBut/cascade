@@ -48,3 +48,58 @@ export function initials(name) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[1][0]).toUpperCase()
 }
+
+// kbps → "1.5M" / "512K". Empty string when zero/unset.
+export function fmtKbps(kbps) {
+  const v = Number(kbps) || 0
+  if (v <= 0) return ''
+  if (v >= 1000) return (v / 1000).toFixed(v % 1000 === 0 ? 0 : 1) + 'M'
+  return v + 'K'
+}
+
+// Resolve effective rate limit for a peer: its own limit takes precedence,
+// otherwise falls back to its client group's limit. Mirrors the legacy
+// peerEffectiveRate() logic in internal/frontend/www/js/app.js.
+export function effectiveRate(peer, groups) {
+  if (peer.rateDown > 0 || peer.rateUp > 0) {
+    return { rateDown: peer.rateDown, rateUp: peer.rateUp, fromGroup: false }
+  }
+  if (peer.groupId) {
+    const g = (groups || []).find(g => g.id === peer.groupId)
+    if (g && (g.rateDown > 0 || g.rateUp > 0)) {
+      return { rateDown: g.rateDown, rateUp: g.rateUp, fromGroup: true }
+    }
+  }
+  return { rateDown: 0, rateUp: 0, fromGroup: false }
+}
+
+// Expiry urgency: 'expired' | 'soon' (within 7 days) | 'far' | null (no expiry).
+export function expiryUrgency(expiredAt) {
+  if (!expiredAt) return null
+  const t = new Date(expiredAt).getTime()
+  if (!t) return null
+  const diff = t - Date.now()
+  if (diff < 0) return 'expired'
+  if (diff < 7 * 24 * 3600 * 1000) return 'soon'
+  return 'far'
+}
+
+// Short date "DD-MM-YYYY" for expiry badges.
+export function fmtDateShort(iso) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-')
+}
+
+// Gateway status → design token CSS var (single source of truth, mirrors
+// gatewayStatusColor() in internal/frontend/www/js/app.js).
+const GATEWAY_STATUS_VAR = {
+  healthy: 'var(--success-fg)',
+  degraded: 'var(--warning-fg)',
+  down: 'var(--danger-fg)',
+  admin_down: 'var(--idle-fg)',
+  unknown: 'var(--idle-fg)',
+}
+export function gatewayStatusColor(status) {
+  return GATEWAY_STATUS_VAR[status] || GATEWAY_STATUS_VAR.unknown
+}

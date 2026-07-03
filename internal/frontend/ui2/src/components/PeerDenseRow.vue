@@ -1,15 +1,16 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { IconQrcode, IconDownload, IconTrash } from '@tabler/icons-vue'
 import BaseToggle from './BaseToggle.vue'
 import QrModal from './QrModal.vue'
 import { apiUrl } from '../api/client.js'
 import { enablePeer, disablePeer, deletePeer } from '../composables/useDashboardData.js'
 import { useToast } from '../composables/useToast.js'
-import { fmtBytes, fmtAgo } from '../utils/format.js'
+import { fmtBytes, fmtAgo, fmtKbps, effectiveRate, expiryUrgency, fmtDateShort } from '../utils/format.js'
 
 const props = defineProps({
   peer: { type: Object, required: true }, // includes interfaceId, interfaceName, peerType
+  groups: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['changed'])
 const { push } = useToast()
@@ -24,6 +25,23 @@ const recentlySeen = () => {
   if (!props.peer.latestHandshakeAt) return false
   return Date.now() - new Date(props.peer.latestHandshakeAt).getTime() < 600000
 }
+
+const groupName = computed(() => {
+  if (!props.peer.groupId) return ''
+  const g = props.groups.find(g => g.id === props.peer.groupId)
+  return g ? g.name : ''
+})
+
+const rate = computed(() => effectiveRate(props.peer, props.groups))
+const rateLabel = computed(() => {
+  const r = rate.value
+  const parts = []
+  if (r.rateDown > 0) parts.push('↓' + fmtKbps(r.rateDown))
+  if (r.rateUp > 0) parts.push('↑' + fmtKbps(r.rateUp))
+  return parts.join(' ')
+})
+
+const urgency = computed(() => expiryUrgency(props.peer.expiredAt))
 
 async function toggle() {
   if (busy.value) return
@@ -59,13 +77,21 @@ async function remove() {
         {{ peer.name }}
         <span class="tag">{{ peer.interfaceName }}</span>
         <span v-if="peer.peerType === 'interconnect'" class="tag tag-s2s">S2S</span>
+        <span v-if="groupName" class="tag tag-group" :title="'Group: ' + groupName">{{ groupName }}</span>
+        <span v-if="rateLabel" class="tag" :class="rate.fromGroup ? 'tag-rate-group' : 'tag-rate-own'" :title="(rate.fromGroup ? 'Group limit: ' : 'Rate limit: ') + rateLabel">
+          <span v-if="rate.fromGroup" style="opacity:0.75;">G</span>{{ rateLabel }}
+        </span>
+        <span v-if="urgency" class="tag" :class="'tag-exp-' + urgency" :title="'Expires: ' + fmtDateShort(peer.expiredAt)">
+          {{ fmtDateShort(peer.expiredAt) }}
+        </span>
       </div>
       <div style="font-size:10.5px; color:var(--text-muted); font-family:ui-monospace,monospace;">
         {{ (peer.address || '').split('/')[0] }} · {{ fmtAgo(peer.latestHandshakeAt) }}
       </div>
     </div>
-    <span v-if="peer.enabled" style="font-size:10.5px; color:var(--text-secondary); font-family:ui-monospace,monospace; flex-shrink:0;">
-      ↓{{ fmtBytes(peer.totalRx) }} ↑{{ fmtBytes(peer.totalTx) }}
+    <span v-if="peer.enabled" style="font-size:10.5px; font-family:ui-monospace,monospace; flex-shrink:0; text-align:right;">
+      <span style="color:var(--danger-fg);">↓{{ fmtBytes(peer.totalRx) }}</span>
+      <span style="color:var(--success-fg); margin-left:4px;">↑{{ fmtBytes(peer.totalTx) }}</span>
     </span>
     <div class="actions">
       <button class="icon-btn sm" :disabled="!peer.downloadableConfig" title="QR code" @click="showQr = true"><IconQrcode :size="14" /></button>
@@ -89,8 +115,15 @@ async function remove() {
 .tag {
   font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px;
   background: var(--idle-bg); color: var(--text-secondary);
+  white-space: nowrap;
 }
 .tag-s2s { background: var(--accent-soft-bg); color: var(--accent-soft-fg); }
+.tag-group { background: var(--success-bg); color: var(--success-fg); }
+.tag-rate-own { background: var(--warning-bg); color: var(--warning-fg); }
+.tag-rate-group { background: var(--accent-soft-bg); color: var(--accent-soft-fg); }
+.tag-exp-expired { background: var(--danger-bg); color: var(--danger-fg); }
+.tag-exp-soon { background: var(--warning-bg); color: var(--warning-fg); }
+.tag-exp-far { background: var(--idle-bg); color: var(--text-secondary); }
 .actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
 .icon-btn.sm { width: 22px; height: 22px; }
 </style>

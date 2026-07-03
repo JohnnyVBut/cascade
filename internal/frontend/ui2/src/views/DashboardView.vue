@@ -7,7 +7,7 @@ import PeersPanel from '../components/PeersPanel.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
 } from '../composables/useDashboardData.js'
-import { fmtPct, fmtMemGB } from '../utils/format.js'
+import { fmtPct, fmtMemGB, gatewayStatusColor } from '../utils/format.js'
 import { useToast } from '../composables/useToast.js'
 
 const { data: sys } = useSystemInfo()
@@ -22,7 +22,6 @@ function ifaceRate(name) { return netMap.value[name] || null }
 const upCount = computed(() => interfaces.value.filter(i => i.enabled).length)
 const totalPeers = computed(() => interfaces.value.reduce((n, i) => n + ((i.peers && i.peers.length) || 0), 0))
 const healthyGw = computed(() => gateways.value.filter(g => g.status === 'healthy').length)
-const gatewayTone = { healthy: 'success', degraded: 'warning', down: 'danger', admin_down: 'idle', unknown: 'idle' }
 
 function onAddPeer() { push('Coming soon', 'warning') }
 </script>
@@ -71,12 +70,15 @@ function onAddPeer() { push('Coming soon', 'warning') }
           <div v-for="(gw, idx) in gateways" :key="gw.id"
                style="display:flex; align-items:center; gap:8px; padding:6px 0;"
                :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }">
-            <span class="dot" :style="{ background: gatewayTone[gw.status] === 'success' ? 'var(--success)' : gatewayTone[gw.status] === 'warning' ? 'var(--warning)' : gatewayTone[gw.status] === 'danger' ? 'var(--danger)' : 'var(--idle)' }" />
+            <span class="dot" :style="{ background: gatewayStatusColor(gw.status) }" />
             <span style="font-size:13px; font-weight:500;">{{ gw.name }}</span>
             <span style="font-size:12px; color:var(--text-muted);">{{ gw.interface }}</span>
-            <span style="margin-left:auto; font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
-              <template v-if="gw.latency != null">{{ gw.latency }}ms · {{ gw.packetLoss != null ? gw.packetLoss : '—' }}%</template>
+            <span style="margin-left:auto; font-size:12px; font-family:ui-monospace,monospace;" :style="{ color: gatewayStatusColor(gw.status) }">
+              <template v-if="gw.latency != null">{{ gw.latency }}ms</template>
               <template v-else>—</template>
+            </span>
+            <span style="font-size:12px; color:var(--text-secondary); font-family:ui-monospace,monospace;">
+              {{ gw.packetLoss != null ? gw.packetLoss : '—' }}%
             </span>
           </div>
         </div>
