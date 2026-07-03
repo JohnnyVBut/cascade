@@ -4,6 +4,7 @@ import { IconServer2, IconRoute } from '@tabler/icons-vue'
 import WidgetPanel from '../components/WidgetPanel.vue'
 import InterfacesPanel from '../components/InterfacesPanel.vue'
 import PeersPanel from '../components/PeersPanel.vue'
+import GridPlaceholder from '../components/GridPlaceholder.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
 } from '../composables/useDashboardData.js'
@@ -35,7 +36,14 @@ function onAddPeer() { push('Coming soon', 'warning') }
       </span>
     </div>
 
-    <!-- 4-column widget grid: System 1/4, Gateways 1/4, Interfaces 1/2, Peers 1/2 -->
+    <!--
+      4-column widget grid. Rows are composed EXPLICITLY (no reliance on grid
+      auto-flow wrap): each row's spans are padded to exactly 4/4 with
+      GridPlaceholder, so layout stays predictable even when a widget is
+      conditionally hidden (e.g. no gateways configured).
+      Row 1: System 1/4, Gateways 1/4, Interfaces 1/2
+      Row 2: Peers 1/2, (placeholder) 1/2
+    -->
     <div class="grid4">
 
       <WidgetPanel class="g-1" title="System" icon-color="#a78bfa">
@@ -79,6 +87,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
           </div>
         </div>
       </WidgetPanel>
+      <GridPlaceholder v-else :span="1" />
 
       <InterfacesPanel
         class="g-2"
@@ -86,6 +95,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
         @changed="refreshInterfaces" @add-peer="onAddPeer"
       />
       <PeersPanel class="g-2" :interfaces="interfaces" @changed="refreshInterfaces" />
+      <GridPlaceholder :span="2" />
     </div>
   </section>
 </template>
