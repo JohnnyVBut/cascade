@@ -87,16 +87,19 @@ function gatewayBars(key) {
   })
 }
 
-// Time axis labels for the current period (6 evenly spaced, oldest → now).
+// Time axis labels for the current period: 6 evenly spaced points, oldest →
+// now, shown as actual clock time (or date for multi-day periods) rather
+// than a relative offset — avoids mixing units (e.g. "-1h", "-48m", "-36m").
 const axisLabels = computed(() => {
   const total = PERIOD_SECONDS[period.value]
-  const fmt = (sec) => {
-    if (sec === 0) return 'now'
-    if (sec < 3600) return `-${Math.round(sec / 60)}m`
-    if (sec < 86400) return `-${Math.round(sec / 3600)}h`
-    return `-${Math.round(sec / 86400)}d`
-  }
-  return [5, 4, 3, 2, 1, 0].map(i => fmt(total * i / 5))
+  const now = Date.now()
+  const showDate = period.value === '7d' || period.value === '30d'
+  return [5, 4, 3, 2, 1, 0].map(i => {
+    const d = new Date(now - total * i / 5 * 1000)
+    return showDate
+      ? d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })
+      : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  })
 })
 
 // ── Realtime (5m) accumulation ──────────────────────────────────────────────

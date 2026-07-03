@@ -18,6 +18,20 @@ export function fmtMemGB(kb) {
   return ((Number(kb) || 0) / 1024 / 1024).toFixed(1)
 }
 
+// Bytes → GB string (for disk, which the API reports in raw bytes).
+export function fmtBytesGB(bytes) {
+  return ((Number(bytes) || 0) / 1024 / 1024 / 1024).toFixed(1)
+}
+
+// Usage percent → a token color, gradated by severity (used for capacity
+// bars: memory, disk). <70% ok, 70-89% warning, >=90% danger.
+export function usageColor(pct) {
+  const p = Number(pct) || 0
+  if (p >= 90) return 'var(--danger)'
+  if (p >= 70) return 'var(--warning)'
+  return 'var(--accent)'
+}
+
 // Bytes → compact "1.2G" / "88M" / "512K" / "0".
 export function fmtBytes(bytes) {
   const b = Number(bytes) || 0

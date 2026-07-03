@@ -9,7 +9,7 @@ import GridPlaceholder from '../components/GridPlaceholder.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
 } from '../composables/useDashboardData.js'
-import { fmtPct, fmtMemGB, gatewayStatusColor } from '../utils/format.js'
+import { fmtPct, fmtMemGB, fmtBytesGB, usageColor, gatewayStatusColor } from '../utils/format.js'
 import { useToast } from '../composables/useToast.js'
 
 const { data: sys } = useSystemInfo()
@@ -56,14 +56,21 @@ function onAddPeer() { push('Coming soon', 'warning') }
               <span style="color:var(--text-muted);">CPU</span>
               <span style="font-family:ui-monospace,monospace;">{{ fmtPct(metrics.cpu) }}</span>
             </div>
-            <div class="bar"><div class="bar-fill" :style="{ width: (metrics.cpu || 0) + '%' }" /></div>
+            <div class="bar"><div class="bar-fill" :style="{ width: (metrics.cpu || 0) + '%', background: usageColor(metrics.cpu) }" /></div>
           </div>
           <div>
             <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
               <span style="color:var(--text-muted);">Memory</span>
               <span style="font-family:ui-monospace,monospace;">{{ fmtMemGB(sys.memUsed) }}/{{ fmtMemGB(sys.memTotal) }}G</span>
             </div>
-            <div class="bar"><div class="bar-fill" :style="{ width: (sys.memPct || 0) + '%' }" /></div>
+            <div class="bar"><div class="bar-fill" :style="{ width: (sys.memPct || 0) + '%', background: usageColor(sys.memPct) }" /></div>
+          </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+              <span style="color:var(--text-muted);">Disk</span>
+              <span style="font-family:ui-monospace,monospace;">{{ fmtBytesGB(sys.diskUsed) }}/{{ fmtBytesGB(sys.diskTotal) }}G</span>
+            </div>
+            <div class="bar"><div class="bar-fill" :style="{ width: (sys.diskPct || 0) + '%', background: usageColor(sys.diskPct) }" /></div>
           </div>
         </div>
         <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:10px;">

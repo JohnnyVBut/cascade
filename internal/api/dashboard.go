@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -98,6 +99,10 @@ type SystemInfo struct {
 	MemFree   int64   `json:"memFree"`   // kB (MemAvailable)
 	MemUsed   int64   `json:"memUsed"`   // kB
 	MemPct    int     `json:"memPct"`    // 0-100
+	DiskTotal int64   `json:"diskTotal"` // bytes, root filesystem
+	DiskFree  int64   `json:"diskFree"`  // bytes
+	DiskUsed  int64   `json:"diskUsed"`  // bytes
+	DiskPct   int     `json:"diskPct"`   // 0-100
 }
 
 func getSystemInfo(c *fiber.Ctx) error {
@@ -150,6 +155,17 @@ func getSystemInfo(c *fiber.Ctx) error {
 		info.MemUsed = info.MemTotal - info.MemFree
 		if info.MemTotal > 0 {
 			info.MemPct = int(math.Round(float64(info.MemUsed) / float64(info.MemTotal) * 100))
+		}
+	}
+
+	// Root filesystem usage (bytes). Covers the data volume in typical deploys.
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/", &stat); err == nil {
+		info.DiskTotal = int64(stat.Blocks) * int64(stat.Bsize)
+		info.DiskFree = int64(stat.Bavail) * int64(stat.Bsize)
+		info.DiskUsed = info.DiskTotal - info.DiskFree
+		if info.DiskTotal > 0 {
+			info.DiskPct = int(math.Round(float64(info.DiskUsed) / float64(info.DiskTotal) * 100))
 		}
 	}
 
