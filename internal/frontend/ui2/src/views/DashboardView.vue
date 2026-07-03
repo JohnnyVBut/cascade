@@ -4,6 +4,7 @@ import { IconServer2, IconRoute } from '@tabler/icons-vue'
 import WidgetPanel from '../components/WidgetPanel.vue'
 import InterfacesPanel from '../components/InterfacesPanel.vue'
 import PeersPanel from '../components/PeersPanel.vue'
+import DiagnosticsPanel from '../components/DiagnosticsPanel.vue'
 import GridPlaceholder from '../components/GridPlaceholder.vue'
 import {
   useSystemInfo, useMetrics, useInterfaces, useGateways,
@@ -41,7 +42,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
       auto-flow wrap): each row's spans are padded to exactly 4/4 with
       GridPlaceholder, so layout stays predictable even when a widget is
       conditionally hidden (e.g. no gateways configured).
-      Row 1: System 1/4, Gateways 1/4, (placeholder) 1/4, (placeholder) 1/4
+      Row 1: System 1/4, Gateways 1/4, Diagnostics 1/2
       Row 2: Interfaces 1/2, Peers 1/2
     -->
     <div class="grid4">
@@ -88,8 +89,8 @@ function onAddPeer() { push('Coming soon', 'warning') }
         </div>
       </WidgetPanel>
       <GridPlaceholder v-else :span="1" />
-      <GridPlaceholder :span="1" />
-      <GridPlaceholder :span="1" />
+
+      <DiagnosticsPanel class="g-2" :interfaces="interfaces" />
 
       <InterfacesPanel
         class="g-2"
