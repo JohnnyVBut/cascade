@@ -35,6 +35,17 @@ export function useClientGroups() {
   }, 30000, [])
 }
 
+// Historical metric series for a longer period. Returns { points: [[ts, val], ...] }.
+export function fetchMetricsHistory(key, period) {
+  return api.get(`/metrics/history?key=${encodeURIComponent(key)}&period=${period}`)
+}
+
+// Gateway status distribution per bucket for the stacked chart.
+// Returns { buckets: [[ts_ms, healthy, degraded, down, admin_down], ...] }.
+export function fetchGatewayDist(key, period) {
+  return api.get(`/metrics/gateway-dist?key=${encodeURIComponent(key)}&period=${period}`)
+}
+
 // Interface actions. Caller refreshes afterwards.
 export function startInterface(id) {
   return api.post(`/tunnel-interfaces/${id}/start`)

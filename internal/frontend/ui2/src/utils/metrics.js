@@ -10,7 +10,7 @@
 // Build the list of available metric keys from a snapshot + interface list.
 // Interfaces provide stable names/labels; net.* keys in the snapshot confirm
 // which are actually reporting.
-export function availableMetrics(snapshot, interfaces) {
+export function availableMetrics(snapshot, interfaces, gateways) {
   const list = [
     { key: 'cpu', label: 'CPU %', group: 'System' },
     { key: 'mem', label: 'RAM %', group: 'System' },
@@ -21,10 +21,19 @@ export function availableMetrics(snapshot, interfaces) {
     list.push({ key: `net:${iface.name}:rx`, label: `${iface.name} ↓ Mbps`, group: iface.name })
     list.push({ key: `net:${iface.name}:tx`, label: `${iface.name} ↑ Mbps`, group: iface.name })
   }
+  for (const gw of (gateways || [])) {
+    list.push({ key: `gateway:${gw.id}`, label: `${gw.name} status`, group: 'Gateways' })
+  }
   return list
 }
 
+// True if the key is a gateway status metric (rendered as a stacked bar chart).
+export function isGatewayKey(key) {
+  return key.startsWith('gateway:')
+}
+
 // Extract a numeric value for a key from a snapshot; null if unavailable.
+// Gateway values are a status code: >=3 healthy, 2 degraded, 1 down, <=0 admin/unknown.
 export function metricValue(snapshot, key) {
   if (!snapshot) return null
   if (key === 'cpu') return snapshot.cpu ?? null
@@ -35,7 +44,19 @@ export function metricValue(snapshot, key) {
     if (!ns) return null
     return (dir === 'rx' ? ns.rxMbps : ns.txMbps) ?? null
   }
+  if (key.startsWith('gateway:')) {
+    const id = key.slice(8)
+    return (snapshot.gateways && snapshot.gateways[id]) ?? null
+  }
   return null
+}
+
+// Stacked gateway status colors (healthy → admin_down), fixed hex for both themes.
+export const GATEWAY_STACK_COLORS = {
+  healthy: '#22c55e',
+  degraded: '#eab308',
+  down: '#ef4444',
+  adminDown: '#9ca3af',
 }
 
 // Human label for a key (falls back to the key itself).

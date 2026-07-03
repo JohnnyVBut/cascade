@@ -1,77 +1,161 @@
 <script setup>
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { IconChartLine, IconAdjustments } from '@tabler/icons-vue'
 import MiniChart from './MiniChart.vue'
-import { useMetrics } from '../composables/useDashboardData.js'
-import { availableMetrics, metricValue, metricLabel, metricColor, metricChartColor } from '../utils/metrics.js'
+import GatewayChart from './GatewayChart.vue'
+import { useMetrics, fetchMetricsHistory, fetchGatewayDist } from '../composables/useDashboardData.js'
+import {
+  availableMetrics, metricValue, metricColor, metricChartColor, isGatewayKey,
+} from '../utils/metrics.js'
 
 const props = defineProps({
   interfaces: { type: Array, required: true },
+  gateways: { type: Array, default: () => [] },
 })
 
 const { data: metrics } = useMetrics()
 
-// Rolling history: shared timestamp array + per-key aligned value arrays.
-// 150 points at the 2s poll interval ≈ the last 5 minutes.
-const MAX = 150
-const times = ref([])
-const series = reactive({})
+const MAX = 150 // realtime points (~5m at 2s)
+const PERIODS = ['5m', '1h', '6h', '24h', '7d', '30d']
+const PERIOD_SECONDS = { '5m': 300, '1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800, '30d': 2592000 }
 
-const STORAGE_KEY = 'cascade-ui2-diag-metrics'
-function readSelected() {
-  try {
-    const v = JSON.parse(localStorage.getItem(STORAGE_KEY))
-    if (Array.isArray(v)) return v
-  } catch (_) { /* ignore */ }
-  return ['cpu', 'mem']
+// Per-key data. Area keys use {t:[], v:[]}; gateway keys reuse it in realtime
+// (v = status code) and gwBuckets in history mode.
+const chartData = reactive({})
+const gwBuckets = reactive({}) // key -> [[ts,h,d,dn,ad], ...]
+
+function readLS(key, fallback) {
+  try { const v = JSON.parse(localStorage.getItem(key)); if (v != null) return v } catch (_) { /* */ }
+  return fallback
 }
-const selectedKeys = ref(readSelected())
-watch(selectedKeys, (v) => localStorage.setItem(STORAGE_KEY, JSON.stringify(v)), { deep: true })
+const selectedKeys = ref(readLS('cascade-ui2-diag-metrics', ['cpu', 'mem']))
+const period = ref(readLS('cascade-ui2-diag-period', '5m'))
+watch(selectedKeys, v => localStorage.setItem('cascade-ui2-diag-metrics', JSON.stringify(v)), { deep: true })
+watch(period, v => localStorage.setItem('cascade-ui2-diag-period', JSON.stringify(v)))
 
 const showConfig = ref(false)
 
-const available = computed(() => availableMetrics(metrics.value, props.interfaces))
-// Group available metrics for the config checklist: { group: [items] }.
+const available = computed(() => availableMetrics(metrics.value, props.interfaces, props.gateways))
 const grouped = computed(() => {
   const g = {}
-  for (const m of available.value) {
-    (g[m.group] || (g[m.group] = [])).push(m)
-  }
+  for (const m of available.value) (g[m.group] || (g[m.group] = [])).push(m)
   return g
 })
-
-// Only render selected keys that are currently available.
-const shownKeys = computed(() =>
-  selectedKeys.value.filter(k => available.value.some(m => m.key === k))
-)
-
-function toggleKey(key) {
-  const i = selectedKeys.value.indexOf(key)
-  if (i >= 0) selectedKeys.value.splice(i, 1)
-  else selectedKeys.value.push(key)
+const shownKeys = computed(() => selectedKeys.value.filter(k => available.value.some(m => m.key === k)))
+function labelFor(key) {
+  const m = available.value.find(m => m.key === key)
+  return m ? m.label : key
 }
 
 function currentValue(key) {
   const v = metricValue(metrics.value, key)
   if (v == null) return '—'
   if (key === 'cpu' || key === 'mem') return `${Math.round(v)}%`
+  if (isGatewayKey(key)) {
+    const s = Math.round(v)
+    return s >= 3 ? 'healthy' : s === 2 ? 'degraded' : s === 1 ? 'down' : 'admin'
+  }
   return Math.round(v).toString()
 }
 
-// Append a sample whenever the metrics snapshot updates.
+// Bars for a gateway key in the current period.
+function gatewayBars(key) {
+  if (period.value === '5m') {
+    const cd = chartData[key]
+    if (!cd) return []
+    return cd.v.map(v => {
+      const s = Math.round(v)
+      return {
+        healthy: s >= 3 ? 100 : 0, degraded: s === 2 ? 100 : 0,
+        down: s === 1 ? 100 : 0, adminDown: s <= 0 ? 100 : 0,
+      }
+    })
+  }
+  const bk = gwBuckets[key] || []
+  return bk.map(b => {
+    const [, h, d, dn, ad] = b
+    const total = (h + d + dn + ad) || 1
+    return {
+      healthy: h / total * 100, degraded: d / total * 100,
+      down: dn / total * 100, adminDown: ad / total * 100,
+    }
+  })
+}
+
+// Time axis labels for the current period (6 evenly spaced, oldest → now).
+const axisLabels = computed(() => {
+  const total = PERIOD_SECONDS[period.value]
+  const fmt = (sec) => {
+    if (sec === 0) return 'now'
+    if (sec < 3600) return `-${Math.round(sec / 60)}m`
+    if (sec < 86400) return `-${Math.round(sec / 3600)}h`
+    return `-${Math.round(sec / 86400)}d`
+  }
+  return [5, 4, 3, 2, 1, 0].map(i => fmt(total * i / 5))
+})
+
+// ── Realtime (5m) accumulation ──────────────────────────────────────────────
 watch(metrics, (snap) => {
+  if (period.value !== '5m') return
   if (!snap || Object.keys(snap).length === 0) return
   const t = Date.now() / 1000
-  const avail = available.value.map(m => m.key)
-  const keys = new Set([...Object.keys(series), ...avail])
-  const oldLen = times.value.length
-  for (const key of keys) {
-    const prev = series[key] || new Array(oldLen).fill(null)
-    const v = avail.includes(key) ? metricValue(snap, key) : null
-    series[key] = [...prev, v].slice(-MAX)
+  for (const m of available.value) {
+    const key = m.key
+    const cd = chartData[key] || { t: [], v: [] }
+    cd.t = [...cd.t, t].slice(-MAX)
+    cd.v = [...cd.v, metricValue(snap, key)].slice(-MAX)
+    chartData[key] = cd
   }
-  times.value = [...times.value, t].slice(-MAX)
 })
+
+// ── History (longer periods) fetching ───────────────────────────────────────
+let refreshTimer = null
+
+async function loadHistory() {
+  if (period.value === '5m') return
+  for (const key of shownKeys.value) {
+    try {
+      if (isGatewayKey(key)) {
+        const res = await fetchGatewayDist(key, period.value)
+        gwBuckets[key] = res.buckets || []
+      } else {
+        const res = await fetchMetricsHistory(key, period.value)
+        const pts = res.points || []
+        chartData[key] = { t: pts.map(p => p[0]), v: pts.map(p => Math.round(p[1] * 100) / 100) }
+      }
+    } catch (_) { /* non-fatal */ }
+  }
+}
+
+function setupRefresh() {
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null }
+  if (period.value !== '5m') refreshTimer = setInterval(loadHistory, 30000)
+}
+
+// On period change: clear buffers, then load (history) or let realtime fill.
+watch(period, () => {
+  for (const k in chartData) delete chartData[k]
+  for (const k in gwBuckets) delete gwBuckets[k]
+  loadHistory()
+  setupRefresh()
+})
+// Fetch history for a newly selected key when in a history period.
+watch(shownKeys, (keys, prev) => {
+  if (period.value === '5m') return
+  const added = keys.filter(k => !prev.includes(k))
+  if (added.length) loadHistory()
+})
+
+// Initial load if starting in a history period.
+if (period.value !== '5m') { loadHistory(); setupRefresh() }
+
+onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
+
+function toggleKey(key) {
+  const i = selectedKeys.value.indexOf(key)
+  if (i >= 0) selectedKeys.value.splice(i, 1)
+  else selectedKeys.value.push(key)
+}
 </script>
 
 <template>
@@ -79,8 +163,10 @@ watch(metrics, (snap) => {
     <div class="head">
       <IconChartLine :size="16" style="color:#38bdf8;" />
       <span style="font-size:13px; font-weight:500;">Diagnostics</span>
-      <span style="margin-left:auto; font-size:10.5px; color:var(--text-muted); font-family:ui-monospace,monospace;">last 5m</span>
-      <button class="icon-btn bordered" style="width:26px; height:26px; margin-left:6px;" title="Select metrics" @click="showConfig = !showConfig">
+      <div class="periods">
+        <button v-for="p in PERIODS" :key="p" class="period-btn" :class="{ on: period === p }" @click="period = p">{{ p }}</button>
+      </div>
+      <button class="icon-btn bordered" style="width:26px; height:26px;" title="Select metrics" @click="showConfig = !showConfig">
         <IconAdjustments :size="15" />
       </button>
     </div>
@@ -91,30 +177,28 @@ watch(metrics, (snap) => {
       </div>
 
       <template v-else>
-        <div v-for="key in shownKeys" :key="key" style="margin-bottom:10px;">
+        <div v-for="key in shownKeys" :key="key + period" style="margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
-            <span style="color:var(--text-muted);">{{ metricLabel(key, interfaces) }}</span>
+            <span style="color:var(--text-muted);">{{ labelFor(key) }}</span>
             <span style="font-family:ui-monospace,monospace;" :style="{ color: metricColor(key) }">{{ currentValue(key) }}</span>
           </div>
-          <MiniChart :times="times" :values="series[key] || []" :color="metricChartColor(key)" />
+          <GatewayChart v-if="isGatewayKey(key)" :bars="gatewayBars(key)" />
+          <MiniChart v-else :times="(chartData[key] || {}).t || []" :values="(chartData[key] || {}).v || []" :color="metricChartColor(key)" />
         </div>
 
         <div class="time-axis">
-          <span>-5m</span><span>-4m</span><span>-3m</span><span>-2m</span><span>-1m</span><span>now</span>
+          <span v-for="(l, i) in axisLabels" :key="i">{{ l }}</span>
         </div>
       </template>
     </div>
 
-    <!-- Config popover -->
     <div v-if="showConfig" class="config-backdrop" @click.self="showConfig = false">
       <div class="config-pop">
         <div style="font-size:12px; font-weight:500; margin-bottom:10px;">Select metrics</div>
         <div v-for="(items, group) in grouped" :key="group" style="margin-bottom:8px;">
           <div style="font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:3px;">{{ group }}</div>
           <label v-for="m in items" :key="m.key" class="cfg-row">
-            <span class="cbox" :class="{ on: selectedKeys.includes(m.key) }">
-              <span v-if="selectedKeys.includes(m.key)">✓</span>
-            </span>
+            <span class="cbox" :class="{ on: selectedKeys.includes(m.key) }"><span v-if="selectedKeys.includes(m.key)">✓</span></span>
             <input type="checkbox" :checked="selectedKeys.includes(m.key)" @change="toggleKey(m.key)" style="display:none;" />
             {{ m.label }}
           </label>
@@ -135,6 +219,14 @@ watch(metrics, (snap) => {
   box-sizing: border-box;
 }
 .head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.periods { margin-left: auto; display: flex; gap: 2px; }
+.period-btn {
+  font-size: 10.5px; padding: 3px 7px; border-radius: 5px;
+  border: none; background: transparent; color: var(--text-muted); cursor: pointer;
+  font-family: ui-monospace, monospace;
+}
+.period-btn:hover { background: var(--surface-hover); color: var(--text); }
+.period-btn.on { background: var(--accent-soft-bg); color: var(--accent-soft-fg); }
 .body { display: flex; flex-direction: column; }
 .time-axis {
   display: flex; justify-content: space-between;
@@ -142,16 +234,13 @@ watch(metrics, (snap) => {
   border-top: 1px solid var(--border);
   font-size: 10px; color: var(--text-muted); font-family: ui-monospace, monospace;
 }
-.config-backdrop {
-  position: absolute; inset: 0; z-index: 20;
-  background: transparent;
-}
+.config-backdrop { position: absolute; inset: 0; z-index: 20; background: transparent; }
 .config-pop {
   position: absolute; top: 44px; right: 12px; width: 220px;
   background: var(--surface); border: 1px solid var(--border-strong);
   border-radius: 10px; padding: 12px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  max-height: 300px; overflow-y: auto;
+  max-height: 320px; overflow-y: auto;
 }
 .cfg-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; cursor: pointer; color: var(--text); }
 .cbox {

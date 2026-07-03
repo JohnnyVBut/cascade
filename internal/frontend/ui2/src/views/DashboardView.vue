@@ -90,7 +90,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
       </WidgetPanel>
       <GridPlaceholder v-else :span="1" />
 
-      <DiagnosticsPanel class="g-2" :interfaces="interfaces" />
+      <DiagnosticsPanel class="g-2" :interfaces="interfaces" :gateways="gateways" />
 
       <InterfacesPanel
         class="g-2"
