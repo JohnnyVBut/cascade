@@ -27,6 +27,9 @@
 
 ---
 
+<img width="190" height="32" alt="image" src="https://github.com/user-attachments/assets/5fd42af6-2f61-4028-90ab-f90cfbd5578c" />
+
+
 ## ✨ Features
 
 | Module | Description                                                                                                                                |
