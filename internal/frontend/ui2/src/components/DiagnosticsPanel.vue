@@ -161,7 +161,11 @@ async function loadHistory() {
       } else {
         const res = await fetchMetricsHistory(key, period.value)
         const pts = res.points || []
-        chartData[key] = { t: pts.map(p => p[0]), v: pts.map(p => Math.round(p[1] * 100) / 100) }
+        // Backend returns [ts_ms, value] (see metrics.History, "// ms for JS");
+        // every other timestamp in this component (realtime accumulation,
+        // gatewayBars, axisLabels, MiniChart's tooltip) is unix SECONDS —
+        // convert here so history-mode points land on the same timeline.
+        chartData[key] = { t: pts.map(p => p[0] / 1000), v: pts.map(p => Math.round(p[1] * 100) / 100) }
       }
     } catch (_) { /* non-fatal */ }
   }
