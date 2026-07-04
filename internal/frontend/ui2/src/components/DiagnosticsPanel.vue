@@ -3,9 +3,9 @@ import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { IconChartLine, IconAdjustments } from '@tabler/icons-vue'
 import MiniChart from './MiniChart.vue'
 import GatewayChart from './GatewayChart.vue'
-import { useMetrics, fetchMetricsHistory, fetchGatewayDist } from '../composables/useDashboardData.js'
+import { useMetrics, fetchMetricsHistory, fetchGatewayDist, useGlobalSettings } from '../composables/useDashboardData.js'
 import {
-  availableMetrics, metricValue, metricColor, metricChartColor, isGatewayKey,
+  availableMetrics, metricValue, metricColor, metricChartColor, isGatewayKey, healthColor,
 } from '../utils/metrics.js'
 
 const props = defineProps({
@@ -14,6 +14,7 @@ const props = defineProps({
 })
 
 const { data: metrics } = useMetrics()
+const { data: globalSettings } = useGlobalSettings()
 
 const MAX = 150 // realtime points (~5m at 2s)
 const PERIODS = ['5m', '1h', '6h', '24h', '7d', '30d']
@@ -56,11 +57,26 @@ function currentValue(key) {
   const v = metricValue(metrics.value, key)
   if (v == null) return '—'
   if (key === 'cpu' || key === 'mem') return `${Math.round(v)}%`
-  if (isGatewayKey(key)) {
-    const s = Math.round(v)
-    return s >= 3 ? 'healthy' : s === 2 ? 'degraded' : s === 1 ? 'down' : 'admin'
-  }
   return Math.round(v).toString()
+}
+
+// Health % over the currently selected period, from the same bars the chart
+// renders (so the number and the chart are always showing the same window).
+// degraded counts as half-healthy; admin_down time is excluded entirely
+// (deliberately disabled ≠ a failure) from both numerator and denominator.
+function gatewayHealthPct(key) {
+  const bars = gatewayBars(key)
+  if (bars.length === 0) return null
+  let h = 0, d = 0, dn = 0
+  for (const b of bars) { h += b.healthy; d += b.degraded; dn += b.down }
+  const denom = h + d + dn
+  if (denom <= 0) return null
+  return (h + 0.5 * d) / denom * 100
+}
+
+function gatewayHealthLabel(key) {
+  const pct = gatewayHealthPct(key)
+  return pct == null ? '—' : `${Math.round(pct)}%`
 }
 
 // Bars for a gateway key in the current period. Each bar carries its unix
@@ -224,7 +240,10 @@ function toggleKey(key) {
         <div v-for="key in shownKeys" :key="key + period" style="margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:3px;">
             <span style="color:var(--text-muted);">{{ labelFor(key) }}</span>
-            <span style="font-family:ui-monospace,monospace;" :style="{ color: metricColor(key) }">{{ currentValue(key) }}</span>
+            <span v-if="isGatewayKey(key)" style="font-family:ui-monospace,monospace;" :style="{ color: healthColor(gatewayHealthPct(key), globalSettings.gatewayHealthyThreshold, globalSettings.gatewayDegradedThreshold) }">
+              Health = {{ gatewayHealthLabel(key) }}
+            </span>
+            <span v-else style="font-family:ui-monospace,monospace;" :style="{ color: metricColor(key) }">{{ currentValue(key) }}</span>
           </div>
           <GatewayChart v-if="isGatewayKey(key)" :bars="gatewayBars(key)" />
           <MiniChart v-else :times="(chartData[key] || {}).t || []" :values="(chartData[key] || {}).v || []" :color="metricChartColor(key)" :unit="unitFor(key)" />

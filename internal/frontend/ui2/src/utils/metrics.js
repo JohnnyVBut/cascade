@@ -85,3 +85,16 @@ export function metricChartColor(key) {
   if (key.endsWith(':tx')) return '#22c55e'
   return '#0ea5e9'
 }
+
+// Health percent → token color, using the same admin-configured thresholds
+// as the Gateway Monitor settings (gatewayHealthyThreshold/
+// gatewayDegradedThreshold — Settings → Gateway Monitor). Inverse of
+// usageColor's severity direction (here HIGH is good).
+// healthyAt/degradedAt default to the backend's defaults (95/90) so the UI
+// degrades gracefully before global settings have loaded.
+export function healthColor(pct, healthyAt = 95, degradedAt = 90) {
+  if (pct == null) return 'var(--text-muted)'
+  if (pct >= healthyAt) return 'var(--success-fg)'
+  if (pct >= degradedAt) return 'var(--warning-fg)'
+  return 'var(--danger-fg)'
+}

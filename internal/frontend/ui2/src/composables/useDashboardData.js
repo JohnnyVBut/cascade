@@ -35,6 +35,15 @@ export function useClientGroups() {
   }, 30000, [])
 }
 
+// Global Cascade settings (includes gatewayHealthyThreshold/gatewayDegradedThreshold,
+// admin-configured in Settings → Gateway Monitor). Rarely change, poll slowly.
+export function useGlobalSettings() {
+  return usePolling(async () => {
+    const res = await api.get('/settings')
+    return res.globalSettings || res
+  }, 60000, {})
+}
+
 // Historical metric series for a longer period. Returns { points: [[ts, val], ...] }.
 export function fetchMetricsHistory(key, period) {
   return api.get(`/metrics/history?key=${encodeURIComponent(key)}&period=${period}`)
