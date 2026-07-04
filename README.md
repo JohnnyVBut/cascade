@@ -27,7 +27,7 @@
 
 ---
 
-<img width="190" height="32" alt="image" src="https://github.com/user-attachments/assets/5fd42af6-2f61-4028-90ab-f90cfbd5578c" />
+<img width="1484" height="775" alt="image" src="https://github.com/user-attachments/assets/998b92b3-1a1e-41ce-9c33-83c6d2fa853f" />
 
 
 ## ✨ Features
