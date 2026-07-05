@@ -61,57 +61,42 @@ function soon() { push('Coming soon', 'warning') }
 </script>
 
 <template>
-  <div class="row">
-    <div class="iface-grid">
-      <span class="dot" :style="{ background: iface.enabled ? 'var(--success)' : 'var(--idle)' }" />
-      <span class="cell g-name name-tip-wrap">
-        {{ displayName }}
-        <span v-if="iface.name !== displayName" class="name-tip">{{ iface.name }}</span>
-      </span>
-      <span class="cell g-badge">
-        <span class="tag" :class="isAwg ? 'tag-awg' : 'tag-wg'">{{ protocolLabel }}</span>
-      </span>
-      <span class="cell g-addr"><CopyableText :value="iface.address" /></span>
-      <span class="cell g-port"><IconPlug :size="12" style="display:inline-block; vertical-align:-1px; margin-right:2px; flex-shrink:0;" />{{ iface.listenPort }}</span>
-      <span class="cell g-traffic">
-        <span style="color:var(--success-fg);">↑{{ fmtBytes(totals.tx) }}</span>
-      </span>
-
-      <span></span>
-      <span class="cell g-name g-muted" :title="iface.id">{{ iface.id }}</span>
-      <span></span>
-      <span class="cell g-addr">
-        <span class="tag" :class="iface.disableRoutes ? 'tag-s2s' : 'tag-server'">{{ roleLabel }}</span>
-      </span>
-      <span class="cell g-port g-muted">{{ peerCount }} peers</span>
-      <span class="cell g-traffic">
-        <span style="color:var(--danger-fg);">↓{{ fmtBytes(totals.rx) }}</span>
-      </span>
-    </div>
-    <div class="actions">
-      <button class="icon-btn" title="Add peer" @click="emit('add-peer', iface)"><IconPlus :size="19" /></button>
-      <button class="icon-btn" title="Restart" @click="restart"><IconRefresh :size="19" /></button>
-      <button class="icon-btn" title="Edit" @click="soon"><IconSettings :size="19" /></button>
-      <BaseToggle :model-value="iface.enabled" :disabled="busy" @update:model-value="toggle" />
-    </div>
+  <span class="dot" :style="{ background: iface.enabled ? 'var(--success)' : 'var(--idle)' }" />
+  <span class="cell g-name name-tip-wrap">
+    {{ displayName }}
+    <span v-if="iface.name !== displayName" class="name-tip">{{ iface.name }}</span>
+  </span>
+  <span class="cell g-badge">
+    <span class="tag" :class="isAwg ? 'tag-awg' : 'tag-wg'">{{ protocolLabel }}</span>
+  </span>
+  <span class="cell g-addr"><CopyableText :value="iface.address" /></span>
+  <span class="cell g-port"><IconPlug :size="12" style="display:inline-block; vertical-align:-1px; margin-right:2px; flex-shrink:0;" />{{ iface.listenPort }}</span>
+  <span class="cell g-traffic">
+    <span style="color:var(--success-fg);">↑{{ fmtBytes(totals.tx) }}</span>
+  </span>
+  <div class="actions">
+    <button class="icon-btn" title="Add peer" @click="emit('add-peer', iface)"><IconPlus :size="19" /></button>
+    <button class="icon-btn" title="Restart" @click="restart"><IconRefresh :size="19" /></button>
+    <button class="icon-btn" title="Edit" @click="soon"><IconSettings :size="19" /></button>
+    <BaseToggle :model-value="iface.enabled" :disabled="busy" @update:model-value="toggle" />
   </div>
+
+  <span></span>
+  <span class="cell g-name g-muted" :title="iface.id">{{ iface.id }}</span>
+  <span></span>
+  <span class="cell g-addr">
+    <span class="tag" :class="iface.disableRoutes ? 'tag-s2s' : 'tag-server'">{{ roleLabel }}</span>
+  </span>
+  <span class="cell g-port g-muted">{{ peerCount }} peers</span>
+  <span class="cell g-traffic">
+    <span style="color:var(--danger-fg);">↓{{ fmtBytes(totals.rx) }}</span>
+  </span>
+
+  <span class="divider"></span>
 </template>
 
 <style scoped>
-.row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 4px;
-  border-bottom: 1px solid var(--border);
-}
-.iface-grid {
-  display: grid;
-  grid-template-columns: auto auto auto auto auto 1fr;
-  column-gap: 10px; row-gap: 2px;
-  align-items: center;
-  min-width: 0; flex: 1; overflow: hidden;
-  font-size: 12px; font-family: ui-monospace, monospace;
-}
-.dot { width: 7px; height: 7px; border-radius: 50%; }
+.dot { width: 7px; height: 7px; border-radius: 50%; align-self: center; }
 .cell { text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .g-name { font-family: system-ui, sans-serif; font-size: 13px; font-weight: 500; }
 .g-muted { color: var(--text-muted); }
@@ -136,6 +121,7 @@ function soon() { push('Coming soon', 'warning') }
 .tag-awg { background: var(--accent-soft-bg); color: var(--accent-soft-fg); }
 .tag-server { background: var(--idle-bg); color: var(--text-secondary); }
 .tag-s2s { background: var(--accent-soft-bg); color: var(--accent-soft-fg); }
-.actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.actions { display: flex; align-items: center; gap: 4px; grid-row: span 2; justify-self: end; }
 .actions .icon-btn { width: 30px; height: 30px; }
+.divider { grid-column: 1 / -1; border-bottom: 1px solid var(--border); margin: 9px 0 0; }
 </style>

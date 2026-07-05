@@ -19,7 +19,7 @@ const emit = defineEmits(['changed', 'add-peer'])
     </div>
 
     <div class="list">
-      <div v-if="interfaces.length === 0" style="padding:20px 0; text-align:center; font-size:12px; color:var(--text-muted);">
+      <div v-if="interfaces.length === 0" style="grid-column:1/-1; padding:20px 0; text-align:center; font-size:12px; color:var(--text-muted);">
         No interfaces yet.
       </div>
       <InterfaceCompactRow
@@ -41,5 +41,12 @@ const emit = defineEmits(['changed', 'add-peer'])
   height: 100%;
 }
 .head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
-.list { flex: 1; overflow-y: auto; padding: 0 14px; max-height: 560px; }
+.list {
+  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 9px 14px; max-height: 560px;
+  display: grid;
+  grid-template-columns: auto auto auto auto auto 1fr auto;
+  column-gap: 10px; row-gap: 2px;
+  align-items: center;
+  font-size: 12px; font-family: ui-monospace, monospace;
+}
 </style>
