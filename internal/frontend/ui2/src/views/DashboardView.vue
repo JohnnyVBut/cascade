@@ -82,22 +82,28 @@ function onAddPeer() { push('Coming soon', 'warning') }
       <WidgetPanel v-if="gateways.length > 0" class="g-1" title="Gateways" icon-color="var(--warning)">
         <template #icon><IconRoute :size="16" /></template>
         <template #summary>{{ healthyGw }} / {{ gateways.length }} healthy</template>
-        <div style="display:flex; flex-direction:column;">
-          <div v-for="(gw, idx) in gateways" :key="gw.id" :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none', padding: '6px 0' }">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span class="dot" :style="{ background: gatewayStatusColor(gw.status) }" />
-              <span style="font-size:13px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ gw.name }}</span>
-              <span style="font-size:12px; color:var(--text-muted);">{{ gw.interface }}</span>
-              <span style="margin-left:auto; font-size:12px; font-family:ui-monospace,monospace; flex-shrink:0;" :style="{ color: gatewayStatusColor(gw.status) }">
-                <template v-if="gw.latency != null">{{ gw.latency }}ms</template>
-                <template v-else>—</template>
-              </span>
-            </div>
-            <div v-if="ifaceRate(gw.interface)" style="display:flex; justify-content:flex-end; gap:10px; padding-left:15px; font-size:11px; font-family:ui-monospace,monospace;">
-              <span style="color:var(--danger-fg);">↓ {{ fmtRate(ifaceRate(gw.interface).rxMbps).value }} {{ fmtRate(ifaceRate(gw.interface).rxMbps).unit }}</span>
-              <span style="color:var(--success-fg);">↑ {{ fmtRate(ifaceRate(gw.interface).txMbps).value }} {{ fmtRate(ifaceRate(gw.interface).txMbps).unit }}</span>
-            </div>
-          </div>
+        <div class="gw-grid">
+          <template v-for="(gw, idx) in gateways" :key="gw.id">
+            <span class="gw-divider" :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }"></span>
+            <span class="dot" :style="{ background: gatewayStatusColor(gw.status) }" />
+            <span class="gw-name">{{ gw.name }}</span>
+            <span class="gw-iface">{{ gw.interface }}</span>
+            <span class="gw-latency" :style="{ color: gatewayStatusColor(gw.status) }">
+              <template v-if="gw.latency != null">{{ gw.latency }}ms</template>
+              <template v-else>—</template>
+            </span>
+            <span class="gw-traffic" style="color:var(--success-fg);">
+              <template v-if="ifaceRate(gw.interface)">↑ {{ fmtRate(ifaceRate(gw.interface).txMbps).value }}{{ fmtRate(ifaceRate(gw.interface).txMbps).unit }}</template>
+            </span>
+
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span class="gw-traffic" style="color:var(--danger-fg);">
+              <template v-if="ifaceRate(gw.interface)">↓ {{ fmtRate(ifaceRate(gw.interface).rxMbps).value }}{{ fmtRate(ifaceRate(gw.interface).rxMbps).unit }}</template>
+            </span>
+          </template>
         </div>
       </WidgetPanel>
       <GridPlaceholder v-else :span="1" />
@@ -118,4 +124,16 @@ function onAddPeer() { push('Coming soon', 'warning') }
 .bar { height: 4px; border-radius: 3px; background: var(--border); overflow: hidden; }
 .bar-fill { height: 100%; background: var(--accent); }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.gw-grid {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  column-gap: 8px; row-gap: 2px;
+  align-items: center;
+  font-size: 12px; font-family: ui-monospace, monospace;
+}
+.gw-divider { grid-column: 1 / -1; }
+.gw-name { font-family: system-ui, sans-serif; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gw-iface { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gw-latency { text-align: right; white-space: nowrap; }
+.gw-traffic { text-align: right; white-space: nowrap; min-width: 6ch; }
 </style>

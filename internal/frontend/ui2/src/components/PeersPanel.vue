@@ -83,7 +83,7 @@ const filtered = computed(() => {
     </div>
 
     <div class="list">
-      <div v-if="filtered.length === 0" style="padding:20px 0; text-align:center; font-size:12px; color:var(--text-muted);">
+      <div v-if="filtered.length === 0" style="grid-column:1/-1; padding:20px 0; text-align:center; font-size:12px; color:var(--text-muted);">
         No peers
       </div>
       <PeerDenseRow
@@ -110,5 +110,11 @@ const filtered = computed(() => {
   border: 1px solid var(--border-strong); border-radius: 5px;
   background: var(--surface); color: var(--text); cursor: pointer;
 }
-.list { flex: 1; overflow-y: auto; padding: 0 14px; max-height: 560px; }
+.list {
+  flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 14px; max-height: 560px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  column-gap: 8px; row-gap: 2px;
+  align-items: center;
+}
 </style>

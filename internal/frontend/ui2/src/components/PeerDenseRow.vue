@@ -80,50 +80,47 @@ async function remove() {
 </script>
 
 <template>
-  <div class="peer-dense-row" :style="{ opacity: peer.enabled ? 1 : 0.55 }">
-    <span class="dot" :style="{ background: recentlySeen() ? 'var(--success)' : 'var(--idle)' }" />
-    <div style="min-width:0; flex:1;">
-      <div style="font-size:12px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-        {{ peer.name }}
-        <span class="tag">{{ peer.interfaceName }}</span>
-        <span v-if="peer.peerType === 'interconnect'" class="tag tag-s2s">S2S</span>
-        <span v-if="groupName" class="tag tag-group" :title="'Group: ' + groupName">{{ groupName }}</span>
-        <span v-if="rateLabel" class="tag" :class="rate.fromGroup ? 'tag-rate-group' : 'tag-rate-own'" :title="(rate.fromGroup ? 'Group limit: ' : 'Rate limit: ') + rateLabel">
-          <span v-if="rate.fromGroup" style="opacity:0.75;">G</span>{{ rateLabel }}
-        </span>
-        <span v-if="urgency" class="tag" :class="'tag-exp-' + urgency" :title="'Expires: ' + fmtDateShort(peer.expiredAt)">
-          {{ fmtDateShort(peer.expiredAt) }}
-        </span>
-      </div>
-      <div style="font-size:10.5px; color:var(--text-muted); font-family:ui-monospace,monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-        <CopyableText :value="(peer.address || '').split('/')[0]" />
-        <template v-if="publicAddr">· <CopyableText :value="publicAddr" /></template>
-        · {{ fmtAgo(peer.latestHandshakeAt) }}
-      </div>
-    </div>
-    <span v-if="peer.enabled" style="font-size:10.5px; font-family:ui-monospace,monospace; flex-shrink:0; text-align:right;">
-      <span style="color:var(--danger-fg);">↓{{ fmtBytes(peer.totalRx) }}</span>
-      <span style="color:var(--success-fg); margin-left:4px;">↑{{ fmtBytes(peer.totalTx) }}</span>
+  <span class="dot" :style="{ background: recentlySeen() ? 'var(--success)' : 'var(--idle)', opacity: peer.enabled ? 1 : 0.55 }" />
+  <div class="cell p-info" :style="{ opacity: peer.enabled ? 1 : 0.55 }">
+    {{ peer.name }}
+    <span class="tag">{{ peer.interfaceName }}</span>
+    <span v-if="peer.peerType === 'interconnect'" class="tag tag-s2s">S2S</span>
+    <span v-if="groupName" class="tag tag-group" :title="'Group: ' + groupName">{{ groupName }}</span>
+    <span v-if="rateLabel" class="tag" :class="rate.fromGroup ? 'tag-rate-group' : 'tag-rate-own'" :title="(rate.fromGroup ? 'Group limit: ' : 'Rate limit: ') + rateLabel">
+      <span v-if="rate.fromGroup" style="opacity:0.75;">G</span>{{ rateLabel }}
     </span>
-    <div class="actions">
-      <button class="icon-btn sm" :disabled="!peer.downloadableConfig" title="QR code" @click="showQr = true"><IconQrcode :size="14" /></button>
-      <a v-if="peer.downloadableConfig" class="icon-btn sm" :href="configUrl()" :download="peer.name + '.conf'" title="Download config"><IconDownload :size="14" /></a>
-      <button v-else class="icon-btn sm" disabled title="No private key"><IconDownload :size="14" /></button>
-      <button class="icon-btn sm" title="Delete" @click="remove"><IconTrash :size="14" /></button>
-      <BaseToggle :model-value="peer.enabled" :disabled="busy" @update:model-value="toggle" />
-    </div>
-
-    <QrModal v-if="showQr" :url="qrUrl()" :title="peer.name" @close="showQr = false" />
+    <span v-if="urgency" class="tag" :class="'tag-exp-' + urgency" :title="'Expires: ' + fmtDateShort(peer.expiredAt)">
+      {{ fmtDateShort(peer.expiredAt) }}
+    </span>
   </div>
+  <span class="p-traffic" style="color:var(--success-fg);" :style="{ opacity: peer.enabled ? 1 : 0.55 }">
+    <template v-if="peer.enabled">↑{{ fmtBytes(peer.totalTx) }}</template>
+  </span>
+  <div class="actions">
+    <button class="icon-btn sm" :disabled="!peer.downloadableConfig" title="QR code" @click="showQr = true"><IconQrcode :size="14" /></button>
+    <a v-if="peer.downloadableConfig" class="icon-btn sm" :href="configUrl()" :download="peer.name + '.conf'" title="Download config"><IconDownload :size="14" /></a>
+    <button v-else class="icon-btn sm" disabled title="No private key"><IconDownload :size="14" /></button>
+    <button class="icon-btn sm" title="Delete" @click="remove"><IconTrash :size="14" /></button>
+    <BaseToggle :model-value="peer.enabled" :disabled="busy" @update:model-value="toggle" />
+  </div>
+
+  <span></span>
+  <div class="cell p-meta" :style="{ opacity: peer.enabled ? 1 : 0.55 }">
+    <CopyableText :value="(peer.address || '').split('/')[0]" />
+    <template v-if="publicAddr">· <CopyableText :value="publicAddr" /></template>
+    · {{ fmtAgo(peer.latestHandshakeAt) }}
+  </div>
+  <span class="p-traffic" style="color:var(--danger-fg);" :style="{ opacity: peer.enabled ? 1 : 0.55 }">
+    <template v-if="peer.enabled">↓{{ fmtBytes(peer.totalRx) }}</template>
+  </span>
+
+  <span class="p-divider"></span>
+
+  <QrModal v-if="showQr" :url="qrUrl()" :title="peer.name" @close="showQr = false" />
 </template>
 
 <style scoped>
-.peer-dense-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 4px;
-  border-bottom: 1px solid var(--border);
-}
-.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot { width: 6px; height: 6px; border-radius: 50%; }
 .tag {
   font-size: 9.5px; font-weight: 600; padding: 1px 5px; border-radius: 3px; margin-left: 4px;
   background: var(--idle-bg); color: var(--text-secondary);
@@ -136,6 +133,11 @@ async function remove() {
 .tag-exp-expired { background: var(--danger-bg); color: var(--danger-fg); }
 .tag-exp-soon { background: var(--warning-bg); color: var(--warning-fg); }
 .tag-exp-far { background: var(--idle-bg); color: var(--text-secondary); }
-.actions { display: flex; align-items: center; gap: 1px; flex-shrink: 0; }
+.actions { display: flex; align-items: center; gap: 1px; grid-row: span 2; justify-self: end; }
 .icon-btn.sm { width: 22px; height: 22px; }
+.cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.p-info { font-size: 12px; font-weight: 500; font-family: system-ui, sans-serif; }
+.p-meta { font-size: 10.5px; color: var(--text-muted); font-family: ui-monospace, monospace; }
+.p-traffic { font-size: 10.5px; font-family: ui-monospace, monospace; text-align: right; white-space: nowrap; }
+.p-divider { grid-column: 1 / -1; border-bottom: 1px solid var(--border); }
 </style>
