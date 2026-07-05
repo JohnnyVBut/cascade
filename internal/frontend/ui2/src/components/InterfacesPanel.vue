@@ -4,7 +4,6 @@ import InterfaceCompactRow from './InterfaceCompactRow.vue'
 
 const props = defineProps({
   interfaces: { type: Array, required: true },
-  rateFor: { type: Function, required: true }, // (name) => { rxMbps, txMbps } | null
 })
 const emit = defineEmits(['changed', 'add-peer'])
 </script>
@@ -25,7 +24,7 @@ const emit = defineEmits(['changed', 'add-peer'])
       </div>
       <InterfaceCompactRow
         v-for="iface in interfaces" :key="iface.id"
-        :iface="iface" :rate="rateFor(iface.name)"
+        :iface="iface"
         @changed="emit('changed')"
         @add-peer="emit('add-peer', $event)"
       />

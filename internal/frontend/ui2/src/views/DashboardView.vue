@@ -106,7 +106,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
 
       <InterfacesPanel
         class="g-2"
-        :interfaces="interfaces" :rate-for="ifaceRate"
+        :interfaces="interfaces"
         @changed="refreshInterfaces" @add-peer="onAddPeer"
       />
       <PeersPanel class="g-2" :interfaces="interfaces" @changed="refreshInterfaces" />
