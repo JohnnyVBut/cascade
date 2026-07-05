@@ -82,8 +82,8 @@ function soon() { push('Coming soon', 'warning') }
   </div>
 
   <span></span>
-  <span class="cell g-name g-muted" :title="iface.id">{{ iface.id }}</span>
   <span></span>
+  <span class="cell g-badge g-muted" :title="iface.id">{{ iface.id }}</span>
   <span class="cell g-addr">
     <span class="tag" :class="iface.disableRoutes ? 'tag-s2s' : 'tag-server'">{{ roleLabel }}</span>
   </span>
