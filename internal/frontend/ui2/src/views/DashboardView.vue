@@ -25,6 +25,11 @@ const upCount = computed(() => interfaces.value.filter(i => i.enabled).length)
 const totalPeers = computed(() => interfaces.value.reduce((n, i) => n + ((i.peers && i.peers.length) || 0), 0))
 const healthyGw = computed(() => gateways.value.filter(g => g.status === 'healthy').length)
 
+function truncName(name, max = 15) {
+  name = name || ''
+  return name.length > max ? name.slice(0, max) + '…' : name
+}
+
 function onAddPeer() { push('Coming soon', 'warning') }
 </script>
 
@@ -86,7 +91,10 @@ function onAddPeer() { push('Coming soon', 'warning') }
           <template v-for="(gw, idx) in gateways" :key="gw.id">
             <span class="gw-divider" :style="{ borderTop: idx > 0 ? '1px solid var(--border)' : 'none' }"></span>
             <span class="dot" :style="{ background: gatewayStatusColor(gw.status) }" />
-            <span class="gw-name">{{ gw.name }}</span>
+            <span class="gw-name name-tip-wrap">
+              {{ truncName(gw.name) }}
+              <span v-if="gw.name && gw.name.length > 15" class="name-tip">{{ gw.name }}</span>
+            </span>
             <span class="gw-iface">{{ gw.interface }}</span>
             <span class="gw-latency" :style="{ color: gatewayStatusColor(gw.status) }">
               <template v-if="gw.latency != null">{{ gw.latency }}ms</template>
@@ -134,6 +142,16 @@ function onAddPeer() { push('Coming soon', 'warning') }
 }
 .gw-divider { grid-column: 1 / -1; }
 .gw-name { font-family: system-ui, sans-serif; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.name-tip-wrap { position: relative; }
+.name-tip-wrap:hover { overflow: visible; }
+.name-tip {
+  display: none;
+  position: absolute; left: 0; top: 100%; margin-top: 4px; z-index: 10;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text-primary); font-weight: 400; font-size: 12px;
+  padding: 4px 8px; border-radius: 4px; white-space: nowrap;
+}
+.name-tip-wrap:hover .name-tip { display: block; }
 .gw-iface { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gw-latency { text-align: right; white-space: nowrap; }
 .gw-traffic { text-align: right; white-space: nowrap; min-width: 6ch; }
