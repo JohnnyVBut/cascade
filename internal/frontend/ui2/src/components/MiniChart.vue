@@ -11,6 +11,8 @@ const props = defineProps({
   color: { type: String, required: true },  // hex stroke
   unit: { type: String, default: '' },      // tooltip suffix, e.g. '%' or ' Mbps'
   height: { type: Number, default: 42 },
+  values2: { type: Array, default: null },  // optional 2nd series (e.g. tx alongside rx)
+  color2: { type: String, default: null },
 })
 
 const el = ref(null)
@@ -37,11 +39,15 @@ function tooltipPlugin() {
         const idx = u.cursor.idx
         if (idx == null) { tip.style.display = 'none'; return }
         const v = u.data[1][idx]
-        if (v == null) { tip.style.display = 'none'; return }
+        const v2 = props.values2 ? u.data[2][idx] : null
+        if (v == null && v2 == null) { tip.style.display = 'none'; return }
         const t = u.data[0][idx]
         const time = t ? new Date(t * 1000).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''
-        const rounded = Math.round(v * 10) / 10
-        tip.textContent = time ? `${time}  ${rounded}${props.unit}` : `${rounded}${props.unit}`
+        const fmt = (n) => Math.round(n * 10) / 10
+        const parts = []
+        if (v != null) parts.push(props.values2 ? `↓${fmt(v)}` : `${fmt(v)}${props.unit}`)
+        if (v2 != null) parts.push(`↑${fmt(v2)}${props.unit}`)
+        tip.textContent = time ? `${time}  ${parts.join(' ')}` : parts.join(' ')
         tip.style.display = 'block'
         const left = u.cursor.left
         tip.style.left = left + 'px'
@@ -69,12 +75,18 @@ function build(width) {
       {
         stroke: props.color,
         width: 1.5,
-        fill: hexToRgba(props.color, 0.16),
+        fill: props.values2 ? undefined : hexToRgba(props.color, 0.16),
         points: { show: false },
       },
+      ...(props.values2 ? [{
+        stroke: props.color2,
+        width: 1.5,
+        points: { show: false },
+      }] : []),
     ],
   }
-  chart = new uPlot(opts, [props.times, props.values], el.value)
+  const data = props.values2 ? [props.times, props.values, props.values2] : [props.times, props.values]
+  chart = new uPlot(opts, data, el.value)
 }
 
 onMounted(() => {
@@ -91,8 +103,9 @@ onBeforeUnmount(() => {
   if (chart) chart.destroy()
 })
 
-watch(() => [props.times, props.values], () => {
-  if (chart) chart.setData([props.times, props.values])
+watch(() => [props.times, props.values, props.values2], () => {
+  if (!chart) return
+  chart.setData(props.values2 ? [props.times, props.values, props.values2] : [props.times, props.values])
 }, { deep: true })
 </script>
 

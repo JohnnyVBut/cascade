@@ -2,14 +2,17 @@
 // snapshot, how to extract their value, their label and semantic color.
 //
 // Key formats:
-//   'cpu'                 — CPU load percent
-//   'mem'                 — memory used percent
-//   'net:<ifaceName>:rx'  — interface download Mbps
-//   'net:<ifaceName>:tx'  — interface upload Mbps
+//   'cpu'            — CPU load percent
+//   'mem'            — memory used percent
+//   'net:<ifaceId>'  — interface traffic, both directions on one chart
+//                       (ifaceId = system/kernel name, e.g. "wg10")
 
 // Build the list of available metric keys from a snapshot + interface list.
-// Interfaces provide stable names/labels; net.* keys in the snapshot confirm
-// which are actually reporting.
+// net.* in the snapshot and metrics_history are keyed by the interface's
+// SYSTEM name (iface.id, e.g. "wg10" — from /proc/net/dev), not the display
+// name the user picked when creating it, so lookups must match on iface.id.
+// The label still shows both, since the display name is what the user
+// actually recognizes at a glance.
 export function availableMetrics(snapshot, interfaces, gateways) {
   const list = [
     { key: 'cpu', label: 'CPU %', group: 'System' },
@@ -17,9 +20,9 @@ export function availableMetrics(snapshot, interfaces, gateways) {
   ]
   const net = (snapshot && snapshot.net) || {}
   for (const iface of (interfaces || [])) {
-    if (!(iface.name in net)) continue
-    list.push({ key: `net:${iface.name}:rx`, label: `${iface.name} ↓ Mbps`, group: iface.name })
-    list.push({ key: `net:${iface.name}:tx`, label: `${iface.name} ↑ Mbps`, group: iface.name })
+    if (!(iface.id in net)) continue
+    const label = `${iface.name} (${iface.id})`
+    list.push({ key: `net:${iface.id}`, label: `${label} traffic`, group: label })
   }
   for (const gw of (gateways || [])) {
     list.push({ key: `gateway:${gw.id}`, label: `${gw.name} status`, group: 'Gateways' })
@@ -32,23 +35,32 @@ export function isGatewayKey(key) {
   return key.startsWith('gateway:')
 }
 
+// True if the key is an interface traffic metric (rendered as a two-line
+// rx/tx chart via netValues() below, rather than a single metricValue()).
+export function isNetKey(key) {
+  return key.startsWith('net:')
+}
+
 // Extract a numeric value for a key from a snapshot; null if unavailable.
 // Gateway values are a status code: >=3 healthy, 2 degraded, 1 down, <=0 admin/unknown.
+// Not used for net: keys — see netValues(), which returns both directions.
 export function metricValue(snapshot, key) {
   if (!snapshot) return null
   if (key === 'cpu') return snapshot.cpu ?? null
   if (key === 'mem') return snapshot.mem ?? null
-  if (key.startsWith('net:')) {
-    const [, name, dir] = key.split(':')
-    const ns = snapshot.net && snapshot.net[name]
-    if (!ns) return null
-    return (dir === 'rx' ? ns.rxMbps : ns.txMbps) ?? null
-  }
   if (key.startsWith('gateway:')) {
     const id = key.slice(8)
     return (snapshot.gateways && snapshot.gateways[id]) ?? null
   }
   return null
+}
+
+// { rx, tx } Mbps for an interface traffic key; { rx: null, tx: null } if
+// the interface isn't reporting in this snapshot.
+export function netValues(snapshot, key) {
+  const id = key.slice(4)
+  const ns = snapshot && snapshot.net && snapshot.net[id]
+  return { rx: ns ? ns.rxMbps ?? null : null, tx: ns ? ns.txMbps ?? null : null }
 }
 
 // Stacked gateway status colors (healthy → admin_down), fixed hex for both themes.
@@ -59,31 +71,26 @@ export const GATEWAY_STACK_COLORS = {
   adminDown: '#9ca3af',
 }
 
-// Human label for a key (falls back to the key itself).
-export function metricLabel(key, interfaces) {
-  if (key === 'cpu') return 'CPU %'
-  if (key === 'mem') return 'RAM %'
-  if (key.startsWith('net:')) {
-    const [, name, dir] = key.split(':')
-    return `${name} ${dir === 'rx' ? '↓' : '↑'} Mbps`
-  }
-  return key
-}
-
-// Semantic color CSS var for a key's TEXT (adapts to theme via tokens):
-// download red, upload green, system blue.
+// Semantic color CSS var for a key's TEXT (adapts to theme via tokens).
 export function metricColor(key) {
-  if (key.endsWith(':rx')) return 'var(--danger-fg)'
-  if (key.endsWith(':tx')) return 'var(--success-fg)'
   return '#38bdf8'
 }
 
 // Fixed hex for the CHART stroke/fill (uPlot canvas can't read CSS vars).
 // Chosen to read acceptably on both light and dark backgrounds.
 export function metricChartColor(key) {
-  if (key.endsWith(':rx')) return '#ef4444'
-  if (key.endsWith(':tx')) return '#22c55e'
   return '#0ea5e9'
+}
+
+// rx/tx stroke colors for a net: chart — must match --danger-fg/--success-fg
+// exactly (the colors used for the ↓/↑ current-value text) since uPlot's
+// canvas can't read CSS vars, so the values are mirrored here per theme.
+const NET_COLORS = {
+  light: { rx: '#dc2626', tx: '#15803d' },
+  dark: { rx: '#f87171', tx: '#4ade80' },
+}
+export function netChartColors(theme) {
+  return NET_COLORS[theme] || NET_COLORS.light
 }
 
 // Health percent → token color, using the same admin-configured thresholds

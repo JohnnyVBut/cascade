@@ -4,8 +4,10 @@ import { IconChartLine, IconAdjustments } from '@tabler/icons-vue'
 import MiniChart from './MiniChart.vue'
 import GatewayChart from './GatewayChart.vue'
 import { useMetrics, fetchMetricsHistory, fetchGatewayDist, useGlobalSettings } from '../composables/useDashboardData.js'
+import { useTheme } from '../composables/useTheme.js'
 import {
   availableMetrics, metricValue, metricColor, metricChartColor, isGatewayKey, healthColor,
+  isNetKey, netValues, netChartColors,
 } from '../utils/metrics.js'
 
 const props = defineProps({
@@ -15,6 +17,8 @@ const props = defineProps({
 
 const { data: metrics } = useMetrics()
 const { data: globalSettings } = useGlobalSettings()
+const { resolved: resolvedTheme } = useTheme()
+const netColors = computed(() => netChartColors(resolvedTheme()))
 
 const MAX = 150 // realtime points (~5m at 2s)
 const PERIODS = ['5m', '1h', '6h', '24h', '7d', '30d']
@@ -54,6 +58,11 @@ function unitFor(key) {
 }
 
 function currentValue(key) {
+  if (isNetKey(key)) {
+    const { rx, tx } = netValues(metrics.value, key)
+    if (rx == null && tx == null) return '—'
+    return `↓${Math.round(rx ?? 0)} ↑${Math.round(tx ?? 0)}`
+  }
   const v = metricValue(metrics.value, key)
   if (v == null) return '—'
   if (key === 'cpu' || key === 'mem') return `${Math.round(v)}%`
@@ -157,6 +166,15 @@ watch(metrics, (snap) => {
   const t = Date.now() / 1000
   for (const m of available.value) {
     const key = m.key
+    if (isNetKey(key)) {
+      const cd = chartData[key] || { t: [], v: [], v2: [] }
+      const { rx, tx } = netValues(snap, key)
+      cd.t = [...cd.t, t].slice(-MAX)
+      cd.v = [...cd.v, rx].slice(-MAX)
+      cd.v2 = [...cd.v2, tx].slice(-MAX)
+      chartData[key] = cd
+      continue
+    }
     const cd = chartData[key] || { t: [], v: [] }
     cd.t = [...cd.t, t].slice(-MAX)
     cd.v = [...cd.v, metricValue(snap, key)].slice(-MAX)
@@ -174,6 +192,20 @@ async function loadHistory() {
       if (isGatewayKey(key)) {
         const res = await fetchGatewayDist(key, period.value)
         gwBuckets[key] = res.buckets || []
+      } else if (isNetKey(key)) {
+        // Backend history keys still carry the :rx/:tx suffix (unchanged
+        // storage format) even though the UI now selects both as one entry.
+        const [rxRes, txRes] = await Promise.all([
+          fetchMetricsHistory(`${key}:rx`, period.value),
+          fetchMetricsHistory(`${key}:tx`, period.value),
+        ])
+        const rxPts = rxRes.points || []
+        const txPts = txRes.points || []
+        chartData[key] = {
+          t: rxPts.map(p => p[0] / 1000),
+          v: rxPts.map(p => Math.round(p[1] * 100) / 100),
+          v2: txPts.map(p => Math.round(p[1] * 100) / 100),
+        }
       } else {
         const res = await fetchMetricsHistory(key, period.value)
         const pts = res.points || []
@@ -243,10 +275,23 @@ function toggleKey(key) {
             <span v-if="isGatewayKey(key)" style="font-family:ui-monospace,monospace;" :style="{ color: healthColor(gatewayHealthPct(key), globalSettings.gatewayHealthyThreshold, globalSettings.gatewayDegradedThreshold) }">
               Health = {{ gatewayHealthLabel(key) }}
             </span>
+            <span v-else-if="isNetKey(key)" style="font-family:ui-monospace,monospace;">
+              <span style="color:var(--danger-fg);">↓{{ Math.round(netValues(metrics, key).rx ?? 0) }}</span>
+              <span style="color:var(--success-fg); margin-left:6px;">↑{{ Math.round(netValues(metrics, key).tx ?? 0) }}</span>
+              <span style="color:var(--text-muted);"> Mbps</span>
+            </span>
             <span v-else style="font-family:ui-monospace,monospace;" :style="{ color: metricColor(key) }">{{ currentValue(key) }}</span>
           </div>
           <GatewayChart v-if="isGatewayKey(key)" :bars="gatewayBars(key)" />
-          <MiniChart v-else :times="(chartData[key] || {}).t || []" :values="(chartData[key] || {}).v || []" :color="metricChartColor(key)" :unit="unitFor(key)" />
+          <MiniChart
+            v-else
+            :times="(chartData[key] || {}).t || []"
+            :values="(chartData[key] || {}).v || []"
+            :values2="isNetKey(key) ? ((chartData[key] || {}).v2 || []) : null"
+            :color="isNetKey(key) ? netColors.rx : metricChartColor(key)"
+            :color2="isNetKey(key) ? netColors.tx : null"
+            :unit="unitFor(key)"
+          />
         </div>
 
         <div class="time-axis">
