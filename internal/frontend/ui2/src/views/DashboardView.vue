@@ -110,6 +110,14 @@ function onAddPeer() { push('Coming soon', 'warning') }
           <span style="color:var(--text-muted);">Load {{ (sys.load1||0).toFixed(2) }} · {{ (sys.load5||0).toFixed(2) }} · {{ (sys.load15||0).toFixed(2) }}</span>
           <span style="color:var(--text-muted); font-family:ui-monospace,monospace;">up {{ sys.uptime || '—' }}</span>
         </div>
+        <div v-if="sys.physicalInterfaces && sys.physicalInterfaces.length" class="phys-ifaces">
+          <div v-for="pi in sys.physicalInterfaces" :key="pi.name" class="phys-iface" :style="{ opacity: pi.up ? 1 : 0.5 }">
+            <span class="dot" :style="{ background: pi.up ? 'var(--success)' : 'var(--idle)' }" />
+            <span style="font-family:ui-monospace,monospace;">{{ pi.name }}</span>
+            <span style="color:var(--text-muted);">{{ pi.up ? 'up' : 'down' }}</span>
+            <span style="margin-left:auto; font-family:ui-monospace,monospace; color:var(--text-muted);">{{ pi.speedMbps > 0 ? pi.speedMbps + ' Mbps' : '—' }}</span>
+          </div>
+        </div>
       </WidgetPanel>
 
       <WidgetPanel v-if="gateways.length > 0" class="g-1" title="Gateways" icon-color="var(--warning)">
@@ -160,6 +168,8 @@ function onAddPeer() { push('Coming soon', 'warning') }
 .bar { height: 4px; border-radius: 3px; background: var(--border); overflow: hidden; }
 .bar-fill { height: 100%; background: var(--accent); }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.phys-ifaces { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.phys-iface { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
 .gw-grid {
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;

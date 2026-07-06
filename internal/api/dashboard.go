@@ -107,6 +107,16 @@ type SystemInfo struct {
 	DiskFree  int64   `json:"diskFree"`  // bytes
 	DiskUsed  int64   `json:"diskUsed"`  // bytes
 	DiskPct   int     `json:"diskPct"`   // 0-100
+
+	PhysicalInterfaces []PhysIface `json:"physicalInterfaces"`
+}
+
+// PhysIface is one physical (non-WG/loopback/docker) network interface's
+// link state, for the System card's interface list.
+type PhysIface struct {
+	Name      string `json:"name"`
+	Up        bool   `json:"up"`
+	SpeedMbps int    `json:"speedMbps"` // -1 if unknown (down, or driver doesn't report it)
 }
 
 func getSystemInfo(c *fiber.Ctx) error {
@@ -115,6 +125,7 @@ func getSystemInfo(c *fiber.Ctx) error {
 	info.Hostname, _ = os.Hostname()
 	info.CPUCores = runtime.NumCPU()
 	info.CPUModel = readCPUModel()
+	info.PhysicalInterfaces = readPhysicalIfaces()
 
 	// /proc/uptime: "12345.67 23456.78"
 	if data, err := os.ReadFile("/proc/uptime"); err == nil {
@@ -219,4 +230,41 @@ func parseCPUModel(r io.Reader) string {
 		return strings.TrimSpace(parts[1])
 	}
 	return ""
+}
+
+// readPhysicalIfaces reports link state and speed for each interface
+// currentPhysicalIfaces() considers physical (i.e. not lo/wg*/awg*/docker*).
+// Always returns a non-nil slice (FIX-GO-1: nil slice serializes as JSON null).
+func readPhysicalIfaces() []PhysIface {
+	names := currentPhysicalIfaces()
+	out := make([]PhysIface, 0, len(names))
+	for _, name := range names {
+		iface := PhysIface{Name: name, SpeedMbps: -1}
+		if data, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/operstate", name)); err == nil {
+			iface.Up = parseOperstateUp(string(data))
+		}
+		if data, err := os.ReadFile(fmt.Sprintf("/sys/class/net/%s/speed", name)); err == nil {
+			iface.SpeedMbps = parseSpeedMbps(string(data))
+		}
+		out = append(out, iface)
+	}
+	return out
+}
+
+// parseOperstateUp reports whether /sys/class/net/<iface>/operstate content
+// indicates the link is up.
+func parseOperstateUp(operstate string) bool {
+	return strings.TrimSpace(operstate) == "up"
+}
+
+// parseSpeedMbps parses /sys/class/net/<iface>/speed content. That file
+// reports -1 (or fails to read) for down/virtual interfaces that don't know
+// their link speed — both cases should surface as "unknown", not a negative
+// number.
+func parseSpeedMbps(speed string) int {
+	v, err := strconv.Atoi(strings.TrimSpace(speed))
+	if err != nil || v <= 0 {
+		return -1
+	}
+	return v
 }
