@@ -340,7 +340,7 @@ If Cascade is useful to you, consider supporting its development:
 | Method | Address |
 |--------|---------|
 | TRC20  | `TDm1VvwoLaRdjpp7149QNacBzQtXnGresW` |
- | Yoomoney RU | https://yoomoney.ru/to/4100119568549598 |
+| Yoomoney RU | https://yoomoney.ru/to/4100119568549598 |
 
 ---
 
