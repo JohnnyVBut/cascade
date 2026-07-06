@@ -13,6 +13,7 @@ const { data: groups } = useClientGroups()
 
 const ifaceFilter = ref('')
 const sortBy = ref('name')
+const search = ref('')
 
 // Flatten peers across all interfaces, tagging each with interface context.
 const allPeers = computed(() => {
@@ -31,6 +32,13 @@ const connectedCount = computed(() =>
   allPeers.value.filter(p => p.latestHandshakeAt && (Date.now() - new Date(p.latestHandshakeAt).getTime()) < 3 * 60 * 1000).length
 )
 
+// Group name lookup used both for the tag and for search matching.
+function groupNameFor(p) {
+  if (!p.groupId) return ''
+  const g = groups.value.find(g => g.id === p.groupId)
+  return g ? g.name : ''
+}
+
 const filtered = computed(() => {
   let peers = allPeers.value
   if (ifaceFilter.value === '__clients__') {
@@ -39,6 +47,13 @@ const filtered = computed(() => {
     peers = peers.filter(p => p.peerType === 'interconnect')
   } else if (ifaceFilter.value) {
     peers = peers.filter(p => p.interfaceId === ifaceFilter.value)
+  }
+
+  const q = search.value.trim().toLowerCase()
+  if (q) {
+    peers = peers.filter(p => [
+      p.name, p.address, p.interfaceName, p.runtimeEndpoint, groupNameFor(p),
+    ].filter(Boolean).some(field => field.toLowerCase().includes(q)))
   }
 
   const sorted = [...peers]
@@ -80,6 +95,7 @@ const filtered = computed(() => {
         <option value="traffic">Sort: Traffic</option>
         <option value="seen">Sort: Last seen</option>
       </select>
+      <input v-model="search" type="text" class="search" placeholder="Search…" />
     </div>
 
     <div class="list">
@@ -110,10 +126,16 @@ const filtered = computed(() => {
   border: 1px solid var(--border-strong); border-radius: 5px;
   background: var(--surface); color: var(--text); cursor: pointer;
 }
+.search {
+  flex: 1; font-size: 11.5px; padding: 4px 6px;
+  border: 1px solid var(--border-strong); border-radius: 5px;
+  background: var(--surface); color: var(--text);
+}
 .list {
   flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 14px; max-height: 560px;
   display: grid;
   grid-template-columns: auto 1fr auto auto;
+  align-content: start;
   column-gap: 8px; row-gap: 2px;
   align-items: center;
 }

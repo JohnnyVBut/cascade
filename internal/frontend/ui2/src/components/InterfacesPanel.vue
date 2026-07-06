@@ -45,6 +45,7 @@ const emit = defineEmits(['changed', 'add-peer'])
   flex: 1; overflow-y: auto; overflow-x: hidden; padding: 9px 14px; max-height: 560px;
   display: grid;
   grid-template-columns: auto auto auto auto auto 1fr auto;
+  align-content: start;
   column-gap: 10px; row-gap: 2px;
   align-items: center;
   font-size: 12px; font-family: ui-monospace, monospace;

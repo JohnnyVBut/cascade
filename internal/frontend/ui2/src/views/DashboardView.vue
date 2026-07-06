@@ -127,6 +127,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
 .gw-grid {
   display: grid;
   grid-template-columns: auto auto 1fr auto auto;
+  align-content: start;
   column-gap: 8px; row-gap: 2px;
   align-items: center;
   font-size: 12px; font-family: ui-monospace, monospace;
