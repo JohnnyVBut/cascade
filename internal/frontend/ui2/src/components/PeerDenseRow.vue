@@ -136,7 +136,7 @@ async function remove() {
 .actions { display: flex; align-items: center; gap: 1px; grid-row: span 2; justify-self: end; }
 .icon-btn.sm { width: 22px; height: 22px; }
 .cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.p-info { font-size: 12px; font-weight: 500; font-family: system-ui, sans-serif; }
+.p-info { font-size: 13px; font-weight: 500; font-family: system-ui, sans-serif; }
 .p-meta { font-size: 12px; color: var(--text-muted); font-family: ui-monospace, monospace; }
 .p-traffic { font-size: 12px; font-family: ui-monospace, monospace; text-align: right; white-space: nowrap; }
 .p-divider { grid-column: 1 / -1; border-bottom: 1px solid var(--border); }

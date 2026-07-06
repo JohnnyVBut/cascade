@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -95,6 +97,8 @@ type SystemInfo struct {
 	Load1     float64 `json:"load1"`
 	Load5     float64 `json:"load5"`
 	Load15    float64 `json:"load15"`
+	CPUCores  int     `json:"cpuCores"`
+	CPUModel  string  `json:"cpuModel"`
 	MemTotal  int64   `json:"memTotal"`  // kB
 	MemFree   int64   `json:"memFree"`   // kB (MemAvailable)
 	MemUsed   int64   `json:"memUsed"`   // kB
@@ -109,6 +113,8 @@ func getSystemInfo(c *fiber.Ctx) error {
 	info := SystemInfo{}
 
 	info.Hostname, _ = os.Hostname()
+	info.CPUCores = runtime.NumCPU()
+	info.CPUModel = readCPUModel()
 
 	// /proc/uptime: "12345.67 23456.78"
 	if data, err := os.ReadFile("/proc/uptime"); err == nil {
@@ -184,4 +190,33 @@ func formatUptime(secs int64) string {
 		return fmt.Sprintf("%dh %dm", hours, mins)
 	}
 	return fmt.Sprintf("%dm", mins)
+}
+
+// readCPUModel reads the "model name" field from /proc/cpuinfo (first
+// occurrence — all cores report the same model on typical hardware).
+// Returns "" if unavailable (e.g. non-x86 or restricted container).
+func readCPUModel() string {
+	f, err := os.Open("/proc/cpuinfo")
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	return parseCPUModel(f)
+}
+
+// parseCPUModel extracts the "model name" field from /proc/cpuinfo content.
+func parseCPUModel(r io.Reader) string {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "model name") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 {
+			return ""
+		}
+		return strings.TrimSpace(parts[1])
+	}
+	return ""
 }

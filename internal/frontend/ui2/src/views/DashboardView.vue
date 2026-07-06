@@ -30,6 +30,19 @@ function truncName(name, max = 15) {
   return name.length > max ? name.slice(0, max) + '…' : name
 }
 
+// "4 cores · Intel(R) Xeon..." shown next to the CPU label; hidden entirely
+// if the backend couldn't determine core count (cpuCores defaults to 0).
+const cpuInfo = computed(() => {
+  if (!sys.value.cpuCores) return ''
+  const cores = `${sys.value.cpuCores} core${sys.value.cpuCores === 1 ? '' : 's'}`
+  return sys.value.cpuModel ? `${cores} · ${sys.value.cpuModel}` : cores
+})
+const cpuInfoShort = computed(() => {
+  if (!sys.value.cpuModel) return cpuInfo.value
+  const cores = `${sys.value.cpuCores} core${sys.value.cpuCores === 1 ? '' : 's'}`
+  return `${cores} · ${truncName(sys.value.cpuModel, 20)}`
+})
+
 function onAddPeer() { push('Coming soon', 'warning') }
 </script>
 
@@ -57,9 +70,13 @@ function onAddPeer() { push('Coming soon', 'warning') }
         <template #summary><span style="font-family:ui-monospace,monospace;">{{ sys.hostname || '—' }}</span></template>
         <div style="display:flex; flex-direction:column; gap:11px;">
           <div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
-              <span style="color:var(--text-muted);">CPU</span>
-              <span style="font-family:ui-monospace,monospace;">{{ fmtPct(metrics.cpu) }}</span>
+            <div style="display:flex; align-items:baseline; gap:6px; font-size:12px; margin-bottom:4px;">
+              <span style="color:var(--text-muted); flex-shrink:0;">CPU</span>
+              <span v-if="cpuInfo" class="name-tip-wrap" style="color:var(--text-muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                {{ cpuInfoShort }}
+                <span v-if="cpuInfo !== cpuInfoShort" class="name-tip">{{ cpuInfo }}</span>
+              </span>
+              <span style="margin-left:auto; font-family:ui-monospace,monospace; flex-shrink:0;">{{ fmtPct(metrics.cpu) }}</span>
             </div>
             <div class="bar"><div class="bar-fill" :style="{ width: (metrics.cpu || 0) + '%', background: usageColor(metrics.cpu) }" /></div>
           </div>
