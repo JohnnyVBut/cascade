@@ -30,17 +30,28 @@ function truncName(name, max = 15) {
   return name.length > max ? name.slice(0, max) + '…' : name
 }
 
-// "4 cores · Intel(R) Xeon..." shown next to the CPU label; hidden entirely
-// if the backend couldn't determine core count (cpuCores defaults to 0).
+// "4 cores @ 2.50GHz Intel(R) Xeon..." shown next to the CPU label; hidden
+// entirely if the backend couldn't determine core count (cpuCores defaults
+// to 0). The clock speed is pulled out of the model string (which reports it
+// as a trailing "@ X.XXGHz") and moved to the front, ahead of the vendor text.
+function splitCpuModel(model) {
+  const match = model.match(/@\s*([\d.]+\s*[GM]Hz)/i)
+  if (!match) return { freq: '', rest: model }
+  return { freq: match[1].replace(/\s+/, ''), rest: (model.slice(0, match.index) + model.slice(match.index + match[0].length)).trim() }
+}
 const cpuInfo = computed(() => {
   if (!sys.value.cpuCores) return ''
   const cores = `${sys.value.cpuCores} core${sys.value.cpuCores === 1 ? '' : 's'}`
-  return sys.value.cpuModel ? `${cores} · ${sys.value.cpuModel}` : cores
+  if (!sys.value.cpuModel) return cores
+  const { freq, rest } = splitCpuModel(sys.value.cpuModel)
+  return freq ? `${cores} @ ${freq} ${rest}` : `${cores} · ${sys.value.cpuModel}`
 })
 const cpuInfoShort = computed(() => {
   if (!sys.value.cpuModel) return cpuInfo.value
   const cores = `${sys.value.cpuCores} core${sys.value.cpuCores === 1 ? '' : 's'}`
-  return `${cores} · ${truncName(sys.value.cpuModel, 20)}`
+  const { freq, rest } = splitCpuModel(sys.value.cpuModel)
+  const prefix = freq ? `${cores} @ ${freq}` : cores
+  return `${prefix} ${truncName(rest, 20)}`
 })
 
 function onAddPeer() { push('Coming soon', 'warning') }
@@ -72,7 +83,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
           <div>
             <div style="display:flex; align-items:baseline; gap:6px; font-size:12px; margin-bottom:4px;">
               <span style="color:var(--text-muted); flex-shrink:0;">CPU</span>
-              <span v-if="cpuInfo" class="name-tip-wrap" style="color:var(--text-muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              <span v-if="cpuInfo" class="name-tip-wrap cpu-info" style="color:var(--text-muted); font-size:11px;">
                 {{ cpuInfoShort }}
                 <span v-if="cpuInfo !== cpuInfoShort" class="name-tip">{{ cpuInfo }}</span>
               </span>
@@ -159,6 +170,7 @@ function onAddPeer() { push('Coming soon', 'warning') }
 }
 .gw-divider { grid-column: 1 / -1; }
 .gw-name { font-family: system-ui, sans-serif; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpu-info { display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .name-tip-wrap { position: relative; }
 .name-tip-wrap:hover { overflow: visible; }
 .name-tip {
