@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -288,6 +289,79 @@ func (m *Manager) GetGroup(id string) (*GatewayGroup, error) {
 		return nil, nil
 	}
 	return grp, err
+}
+
+// ResolveGroupGateway picks the active gateway for a group: the lowest-tier
+// member whose live monitor status is not "down"/"admin_down". A member
+// reporting "unknown" (no probe results yet, e.g. freshly added) is treated
+// as available/optimistic-by-default, not skipped. Falls back to the tier-1
+// gateway (gateway of last resort) if every member is down.
+// Shared by internal/routing and internal/firewall so both PBR rules and
+// static routes fail over identically — do not duplicate this logic.
+func (m *Manager) ResolveGroupGateway(groupID string) (gatewayIP, iface string, err error) {
+	grp, err := m.GetGroup(groupID)
+	if err != nil || grp == nil || len(grp.Gateways) == 0 {
+		return "", "", fmt.Errorf("gateway group %s not found or empty", groupID)
+	}
+
+	sorted := make([]GatewayGroupMember, len(grp.Gateways))
+	copy(sorted, grp.Gateways)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Tier < sorted[j].Tier })
+
+	type tierEntry struct {
+		tier    int
+		members []GatewayGroupMember
+	}
+	var tiers []tierEntry
+	for _, mem := range sorted {
+		if len(tiers) == 0 || tiers[len(tiers)-1].tier != mem.Tier {
+			tiers = append(tiers, tierEntry{tier: mem.Tier})
+		}
+		tiers[len(tiers)-1].members = append(tiers[len(tiers)-1].members, mem)
+	}
+
+	var fallbackGW *Gateway // tier1 gateway, used if all tiers down
+
+	for _, te := range tiers {
+		for _, mem := range te.members {
+			gw, gerr := m.GetGateway(mem.GatewayID)
+			if gerr != nil || gw == nil {
+				continue
+			}
+			if fallbackGW == nil {
+				fallbackGW = gw // remember tier1 as last resort
+			}
+			st := m.monitor.GetStatus(mem.GatewayID)
+			// Use this gateway unless it is explicitly "down" or "admin_down".
+			// "unknown" = not enough probes yet → treat as available.
+			if st.Status != "down" && st.Status != "admin_down" {
+				return gw.GatewayIP, gw.Interface, nil
+			}
+		}
+	}
+
+	// All gateways are "down" — route via tier1 as gateway of last resort.
+	if fallbackGW != nil {
+		return fallbackGW.GatewayIP, fallbackGW.Interface, nil
+	}
+	return "", "", fmt.Errorf("no usable gateway in group %s", groupID)
+}
+
+// GroupContainsGateway reports whether gatewayID is a member of groupID.
+// Shared by internal/routing and internal/firewall — both need this exact
+// membership check to decide whether a gateway status change affects one of
+// their gateway-group-referencing rules/routes.
+func (m *Manager) GroupContainsGateway(groupID, gatewayID string) bool {
+	grp, err := m.GetGroup(groupID)
+	if err != nil || grp == nil {
+		return false
+	}
+	for _, mem := range grp.Gateways {
+		if mem.GatewayID == gatewayID {
+			return true
+		}
+	}
+	return false
 }
 
 // GatewayGroupInput is the create/update request payload.
