@@ -51,14 +51,14 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # ============================================================
 # Stage 2: Runtime image
 # Base: amneziawg-go (has awg-quick, awg, wg-quick, wg tools)
-# Pinned to v0.2.19: the :latest tag jumped to a 3.0.x line with a changed
+# Pinned to 0.2.19: the :latest tag jumped to a 3.0.x line with a changed
 # UAPI wire format (H1-H4/Jc/Jmin/Jmax/S1-S4/keepalive framing). The amneziawg
 # kernel module installed by deploy/setup.sh (ppa:amnezia/ppa) still speaks the
 # old format, so 3.0's `awg` CLI fails "setconf" against it with
 # "Unable to modify interface: Invalid argument" in Kernel module run mode.
 # Do not bump past 0.2.x until the PPA kernel module also ships 3.0 support.
 # ============================================================
-FROM amneziavpn/amneziawg-go:v0.2.19
+FROM amneziavpn/amneziawg-go:0.2.19
 
 HEALTHCHECK --interval=1m --timeout=5s --retries=3 \
     CMD /usr/bin/timeout 5s /bin/sh -c "/usr/bin/wg show | /bin/grep -q interface || exit 1"
