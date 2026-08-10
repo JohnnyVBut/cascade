@@ -286,30 +286,7 @@ func pruneDashboardWidgetsForGateway(tx *sql.Tx, id string) {
 			log.Printf("gateway-manager: prune widgets: unmarshal failed for user %s/%s: %v", r.userID, r.page, err)
 			continue
 		}
-		changed := false
-		for _, w := range widgets {
-			if graphs, ok := w["graphs"].([]interface{}); ok {
-				// Filter into a fresh slice — never reuse graphs' backing
-				// array in place, since it's decoded fresh per row here but
-				// a future caller passing in a shared/aliased slice would
-				// otherwise silently corrupt it.
-				filtered := make([]interface{}, 0, len(graphs))
-				for _, g := range graphs {
-					if gs, ok := g.(string); ok && gs == graphKey {
-						changed = true
-						continue
-					}
-					filtered = append(filtered, g)
-				}
-				w["graphs"] = filtered
-			}
-			if colors, ok := w["graphColors"].(map[string]interface{}); ok {
-				if _, exists := colors[graphKey]; exists {
-					delete(colors, graphKey)
-					changed = true
-				}
-			}
-		}
+		changed := FilterGraphRefs(widgets, func(key string) bool { return key == graphKey })
 		if !changed {
 			continue
 		}

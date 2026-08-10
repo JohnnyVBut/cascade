@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/gateway"
 )
 
 // RegisterDashboard registers /api/dashboard/* routes.
@@ -43,8 +45,79 @@ func getDashboardWidgets(c *fiber.Ctx) error {
 		widgetsJSON = "[]"
 	}
 
+	// Self-heal: DeleteGateway prunes "gateway:<id>" refs from saved widgets
+	// going forward, but rows written before that fix (or ones that slip
+	// through some other path) can still carry stale refs to gateways that
+	// no longer exist. Cross-check against the live gateway list on every
+	// read and persist the cleanup, so this converges to clean state on
+	// its own without a one-off migration.
+	//
+	// This deliberately makes GET mutate stored state — a departure from
+	// "GET should be safe" — but the mutation is idempotent, scoped to the
+	// requesting user's own row, and best-effort (failures just skip
+	// healing for this request, retried on the next load). Don't "fix" this
+	// back to read-only without an alternative cleanup path in its place.
+	//
+	// The UPDATE is a compare-and-swap against the exact JSON just read
+	// (`AND widgets = ?`), so a concurrent PUT saving a fresh layout for the
+	// same user/page between our read and write makes this a no-op instead
+	// of clobbering it.
+	if cleaned, changed := pruneStaleGatewayRefsFromWidgetsJSON(widgetsJSON); changed {
+		if _, err := db.DB().Exec(`UPDATE dashboard_widgets SET widgets = ? WHERE user_id = ? AND page = ? AND widgets = ?`,
+			cleaned, uid, page, widgetsJSON); err != nil {
+			log.Printf("dashboard: self-heal widgets: update failed for user %s/%s: %v", uid, page, err)
+		}
+		widgetsJSON = cleaned
+	}
+
 	c.Set("Content-Type", "application/json")
 	return c.SendString(`{"widgets":` + widgetsJSON + `}`)
+}
+
+// pruneStaleGatewayRefsFromWidgetsJSON strips "gateway:<id>" entries from
+// widgets' graphs/graphColors whose gateway no longer exists. Returns the
+// (possibly unchanged) JSON and whether anything was removed. Malformed or
+// empty input is returned as-is with changed=false — this is best-effort
+// self-healing, not a source of truth.
+func pruneStaleGatewayRefsFromWidgetsJSON(widgetsJSON string) (string, bool) {
+	if widgetsJSON == "" || widgetsJSON == "[]" || widgetsJSON == "null" {
+		return widgetsJSON, false
+	}
+	// Cheap short-circuit before paying for a gateway-table query + JSON
+	// decode: nothing to prune if there's no "gateway:" ref in this row at
+	// all (mirrors the LIKE prefilter in gateway.pruneDashboardWidgetsForGateway).
+	if !strings.Contains(widgetsJSON, "gateway:") {
+		return widgetsJSON, false
+	}
+
+	var widgets []map[string]interface{}
+	if err := json.Unmarshal([]byte(widgetsJSON), &widgets); err != nil {
+		return widgetsJSON, false
+	}
+
+	gws, err := gateway.Get().GetGateways()
+	if err != nil {
+		log.Printf("dashboard: self-heal widgets: fetch gateways failed: %v", err)
+		return widgetsJSON, false
+	}
+	live := make(map[string]bool, len(gws))
+	for _, gw := range gws {
+		live["gateway:"+gw.ID] = true
+	}
+
+	changed := gateway.FilterGraphRefs(widgets, func(key string) bool {
+		return strings.HasPrefix(key, "gateway:") && !live[key]
+	})
+	if !changed {
+		return widgetsJSON, false
+	}
+
+	out, err := json.Marshal(widgets)
+	if err != nil {
+		log.Printf("dashboard: self-heal widgets: marshal failed: %v", err)
+		return widgetsJSON, false
+	}
+	return string(out), true
 }
 
 // putDashboardWidgets saves the widget layout for the current user.
@@ -89,15 +162,15 @@ func putDashboardWidgets(c *fiber.Ctx) error {
 // SystemInfo holds server metrics for the dashboard system-info card.
 type SystemInfo struct {
 	Hostname  string  `json:"hostname"`
-	Uptime    string  `json:"uptime"`    // human-readable: "3d 4h 12m"
+	Uptime    string  `json:"uptime"` // human-readable: "3d 4h 12m"
 	UptimeSec int64   `json:"uptimeSec"`
 	Load1     float64 `json:"load1"`
 	Load5     float64 `json:"load5"`
 	Load15    float64 `json:"load15"`
-	MemTotal  int64   `json:"memTotal"`  // kB
-	MemFree   int64   `json:"memFree"`   // kB (MemAvailable)
-	MemUsed   int64   `json:"memUsed"`   // kB
-	MemPct    int     `json:"memPct"`    // 0-100
+	MemTotal  int64   `json:"memTotal"` // kB
+	MemFree   int64   `json:"memFree"`  // kB (MemAvailable)
+	MemUsed   int64   `json:"memUsed"`  // kB
+	MemPct    int     `json:"memPct"`   // 0-100
 }
 
 func getSystemInfo(c *fiber.Ctx) error {
