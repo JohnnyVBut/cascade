@@ -29,6 +29,12 @@
 
 <img width="1484" height="775" alt="image" src="https://github.com/user-attachments/assets/01be9f90-afc5-452c-ad5e-25bfa586ba2b" />
 
+> ⚠️ **Kernel module mode users:** always update the host kernel module
+> (`sudo bash deploy/switch-mode.sh --kernel`) whenever you update the
+> Cascade container, or interfaces will fail to start. This mainly affects
+> installs from **before the AmneziaWG 3.0 protocol jump (2026-07-30)** — the
+> Docker image now tracks `:latest`, but an old host kernel module doesn't
+> update itself, so the two drift out of sync. See [Updating](#-updating).
 
 ## ✨ Features
 
@@ -95,6 +101,11 @@ sudo bash deploy/setup.sh --yes
 
 Maximum throughput, but the AmneziaWG kernel module has **[known deadlock issues](https://github.com/amnezia-vpn/amneziawg-linux-kernel-module/issues/146)**
 that can freeze tunnel operations. Only recommended if you need peak performance and can tolerate occasional interface restarts.
+
+> ⚠️ Remember to re-sync the kernel module (`deploy/switch-mode.sh --kernel`) every
+> time you update Cascade — mainly matters if you installed **before the
+> AmneziaWG 3.0 protocol jump (2026-07-30)**, since the module doesn't update
+> on its own and can drift out of sync with the Docker image. See [Updating](#-updating).
 
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
@@ -229,6 +240,19 @@ Additional settings (WireGuard defaults, DNS, etc.) are configurable in the Web 
 Full threat model: [docs/SECURITY.md](docs/SECURITY.md)
 
 ## 🔄 Updating
+
+> ⚠️ **Running in Kernel module mode?** The Docker image tracks the AmneziaWG
+> protocol's `:latest` line, but your host's kernel module does not update on
+> its own. This mainly affects installs from **before the AmneziaWG 3.0
+> protocol jump (2026-07-30)** — the module stayed on the pre-3.0 line while
+> the image moved to 3.0.x, so `awg setconf`'s netlink format no longer
+> matches what the old module expects. If they drift apart, interfaces will
+> fail to start with `Unable to modify interface: Invalid argument`. Always
+> re-sync the kernel module alongside a container update:
+> ```bash
+> sudo bash deploy/switch-mode.sh --kernel
+> ```
+> Userspace mode is unaffected — it doesn't depend on a host kernel module.
 
 ### Host network mode (default)
 
