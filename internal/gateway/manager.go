@@ -205,7 +205,10 @@ func (m *Manager) UpdateGateway(id string, inp GatewayInput) (*Gateway, error) {
 	return &gw, nil
 }
 
-// DeleteGateway stops the monitor, removes the gateway from SQLite.
+// DeleteGateway stops the monitor, removes the gateway from SQLite, and
+// prunes any saved dashboard/diagnostics widgets referencing it — both in
+// the same transaction, so a crash between the two can't leave widgets
+// pointing at an already-deleted gateway forever (see #96).
 func (m *Manager) DeleteGateway(id string) error {
 	gw, err := m.GetGateway(id)
 	if err != nil {
@@ -217,12 +220,109 @@ func (m *Manager) DeleteGateway(id string) error {
 
 	m.monitor.Stop(id)
 
-	if _, err := db.DB().Exec(`DELETE FROM gateways WHERE id = ?`, id); err != nil {
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op once committed
+
+	if _, err := tx.Exec(`DELETE FROM gateways WHERE id = ?`, id); err != nil {
+		return err
+	}
+
+	pruneDashboardWidgetsForGateway(tx, id)
+
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
 	log.Printf("gateway-manager: deleted gateway %q (%s)", gw.Name, id)
 	return nil
+}
+
+// pruneDashboardWidgetsForGateway removes references to a deleted gateway's
+// "gateway:<id>" metric key from every user's saved dashboard/diagnostics
+// widgets. Without this, a stale widget keeps its dead gateway ID forever —
+// dashboard_widgets is persisted in SQLite, so it survives process restarts
+// and reboots, unlike the live gateway list.
+//
+// Runs inside the caller's transaction (see DeleteGateway) so the gateway
+// row delete and the widget cleanup commit atomically. Per-row failures
+// (bad JSON, a failed UPDATE) are logged and skipped rather than aborting
+// the whole batch — this is best-effort cleanup, not something that should
+// block the gateway deletion itself from succeeding.
+func pruneDashboardWidgetsForGateway(tx *sql.Tx, id string) {
+	graphKey := "gateway:" + id
+
+	// Prefilter with LIKE before paying for a JSON decode per row — on an
+	// install with many users/pages, most dashboard_widgets rows won't
+	// mention this gateway at all.
+	rows, err := tx.Query(`SELECT user_id, page, widgets FROM dashboard_widgets WHERE widgets LIKE '%' || ? || '%'`, graphKey)
+	if err != nil {
+		log.Printf("gateway-manager: prune widgets: query failed: %v", err)
+		return
+	}
+	type widgetRow struct{ userID, page, widgetsJSON string }
+	var candidates []widgetRow
+	for rows.Next() {
+		var r widgetRow
+		if err := rows.Scan(&r.userID, &r.page, &r.widgetsJSON); err != nil {
+			log.Printf("gateway-manager: prune widgets: scan failed: %v", err)
+			continue
+		}
+		candidates = append(candidates, r)
+	}
+	// Must fully drain and close rows before issuing further statements on
+	// this same transaction/connection — modernc.org/sqlite (like most Go
+	// SQL drivers) can't interleave an open *sql.Rows with further tx.Exec
+	// calls, and this project also runs with a single shared DB connection
+	// (db.SetMaxOpenConns(1)), so there's no second connection to fall back
+	// on. Buffer into candidates first, then close, then iterate+update.
+	rows.Close()
+
+	for _, r := range candidates {
+		var widgets []map[string]interface{}
+		if err := json.Unmarshal([]byte(r.widgetsJSON), &widgets); err != nil {
+			log.Printf("gateway-manager: prune widgets: unmarshal failed for user %s/%s: %v", r.userID, r.page, err)
+			continue
+		}
+		changed := false
+		for _, w := range widgets {
+			if graphs, ok := w["graphs"].([]interface{}); ok {
+				// Filter into a fresh slice — never reuse graphs' backing
+				// array in place, since it's decoded fresh per row here but
+				// a future caller passing in a shared/aliased slice would
+				// otherwise silently corrupt it.
+				filtered := make([]interface{}, 0, len(graphs))
+				for _, g := range graphs {
+					if gs, ok := g.(string); ok && gs == graphKey {
+						changed = true
+						continue
+					}
+					filtered = append(filtered, g)
+				}
+				w["graphs"] = filtered
+			}
+			if colors, ok := w["graphColors"].(map[string]interface{}); ok {
+				if _, exists := colors[graphKey]; exists {
+					delete(colors, graphKey)
+					changed = true
+				}
+			}
+		}
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(widgets)
+		if err != nil {
+			log.Printf("gateway-manager: prune widgets: marshal failed for user %s/%s: %v", r.userID, r.page, err)
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE dashboard_widgets SET widgets = ? WHERE user_id = ? AND page = ?`,
+			string(out), r.userID, r.page); err != nil {
+			log.Printf("gateway-manager: prune widgets: update failed for user %s/%s: %v", r.userID, r.page, err)
+		}
+	}
 }
 
 // GetGatewayWithStatus combines gateway data with live monitoring status.
