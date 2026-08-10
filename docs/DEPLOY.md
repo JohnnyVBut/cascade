@@ -330,6 +330,18 @@ from GHCR without compiling anything on the server.
 
 Caddy does not need to be restarted for Cascade updates.
 
+> ⚠️ **Kernel module mode:** the Docker image tracks AmneziaWG's `:latest`
+> protocol line, but the host's kernel module does not update itself. This
+> mainly affects installs from **before the AmneziaWG 3.0 protocol jump
+> (2026-07-30)** — the module stayed on the pre-3.0 line while the image
+> moved to 3.0.x. If the two drift apart, interfaces fail to start with
+> `Unable to modify interface: Invalid argument`. Re-sync the kernel module
+> whenever you update the container in this mode:
+> ```bash
+> sudo bash deploy/switch-mode.sh --kernel
+> ```
+> Userspace mode is unaffected — it has no host kernel-module dependency.
+
 ---
 
 ## Clean Reinstall
