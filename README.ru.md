@@ -77,6 +77,10 @@
 - Root-доступ
 - Публичный IP-адрес или доменное имя
 - Открытые порты: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
+- `git` (на минимальных/урезанных образах VPS его часто нет — поставь заранее, если `git clone` ниже выдаст "command not found"):
+  ```bash
+  apt-get update && apt-get install -y git
+  ```
 
 ---
 

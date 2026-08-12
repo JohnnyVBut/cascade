@@ -80,6 +80,10 @@
 - Root access
 - Public IP address or domain name
 - Ports: `443/tcp` (HTTPS), `51820+/udp` (WireGuard)
+- `git` (minimal/stripped-down VPS images often don't ship it — install first if `git clone` below fails with "command not found"):
+  ```bash
+  apt-get update && apt-get install -y git
+  ```
 
 ---
 

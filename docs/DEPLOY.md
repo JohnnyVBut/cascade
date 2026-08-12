@@ -87,6 +87,13 @@ sysctl --system
 
 ## Step 5 — Clone repository
 
+Minimal/stripped-down VPS images often don't ship `git` — install it first
+if the clone below fails with "command not found":
+
+```bash
+apt-get update && apt-get install -y git
+```
+
 ```bash
 git clone https://github.com/JohnnyVBut/cascade.git
 cd cascade
