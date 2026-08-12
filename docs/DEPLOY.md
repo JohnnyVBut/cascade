@@ -492,6 +492,74 @@ failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 
 This is a warning, not an error. HTTP/3 works but with a smaller buffer.
 To silence it, apply the sysctl settings from Step 4 and restart Caddy.
 
+### Disk filling up over time
+
+On small VPS disks (e.g. 10 GB), repeated manual `./build.sh` runs and normal
+container operation can accumulate disk usage outside of anything Cascade
+itself stores. Check where the space actually went before deleting anything:
+
+```bash
+df -h /
+du -xh --max-depth=1 / 2>/dev/null | sort -rh | head -20
+```
+
+Then drill into whichever top-level directory is largest
+(`du -xh --max-depth=1 /usr`, `/var`, etc.) until you find the actual offender.
+Common culprits, safest-first:
+
+**1. Docker build cache** — grows with every manual `docker build`/`./build.sh`
+run; a `--filter "until=..."` prune often leaves cache entries marked
+`shared: true` behind. Confirm with `docker system df -v` (look at "Build
+cache usage"), then clear it fully — this never touches running containers or
+volumes, only cached intermediate build layers, so the next build is just
+slower (no cache), not lossy:
+
+```bash
+docker system df -v
+docker builder prune -a -f
+```
+
+**2. Dangling images** — left behind when a rebuild reassigns the
+`cascade:latest` tag to a new image, orphaning the old one:
+
+```bash
+docker image prune -f
+```
+
+**3. Docker container logs** — the `cascade` service has no log size limit by
+default (`json-file` driver), so long-running installs can accumulate a large
+log file:
+
+```bash
+docker inspect --format='{{.LogPath}}' cascade | xargs du -h
+# safe to truncate live, without touching the running container:
+truncate -s 0 $(docker inspect --format='{{.LogPath}}' cascade)
+```
+
+**4. systemd journal / apt cache** — not Cascade-related, but common on small
+VPS images:
+
+```bash
+journalctl --vacuum-size=200M
+apt-get clean
+```
+
+**5. Old kernel packages** — `setup.sh` upgrades Ubuntu 22.04 to the HWE 6.x
+kernel; leftover previous kernel versions in `/usr/lib/modules` and
+`/usr/src` add up. Confirm the currently **running** kernel first
+(`uname -r`), then remove only the others via `apt-get autoremove` — never
+remove the kernel that's currently booted.
+
+**6. Old `pre-restore-*.tar.gz` backups** — created automatically before every
+restore-from-backup operation, in `/etc/wireguard/data/`; there's currently no
+automatic pruning, so old ones accumulate if you restore from backup
+repeatedly:
+
+```bash
+ls -lh /etc/wireguard/data/pre-restore-*.tar.gz
+rm /etc/wireguard/data/pre-restore-<old-timestamp>.tar.gz
+```
+
 ---
 
 ## acme.sh auto-renewal
