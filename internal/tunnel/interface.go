@@ -1030,6 +1030,37 @@ func (t *TunnelInterface) RegenerateConfig() error {
 	return nil
 }
 
+// writeAWG3Fields appends the AWG 3.0 Transport Protection block to an
+// [Interface] section, if any of its fields are set. All fields are
+// optional/independent (see internal/awgparams.Options) — each is only
+// written if non-empty, matching the existing I1-I5 pattern. Shared between
+// generateWgConfig (full config, wg-quick) and generateSyncConfig (stripped
+// config, `awg syncconf`) so the two config builders can't drift apart on
+// which fields they emit.
+func writeAWG3Fields(sb *strings.Builder, a *peer.AWG2Settings) {
+	if a.HeaderProtectionKey != "" {
+		sb.WriteString(fmt.Sprintf("HeaderProtectionKey = %s\n", a.HeaderProtectionKey))
+	}
+	if a.ContentPaddingAddition != "" {
+		sb.WriteString(fmt.Sprintf("ContentPaddingAddition = %s\n", a.ContentPaddingAddition))
+	}
+	if a.RekeyAfterTime != "" {
+		sb.WriteString(fmt.Sprintf("RekeyAfterTime = %s\n", a.RekeyAfterTime))
+	}
+	if a.RekeyTimeout != "" {
+		sb.WriteString(fmt.Sprintf("RekeyTimeout = %s\n", a.RekeyTimeout))
+	}
+	if a.RejectAfterTime != "" {
+		sb.WriteString(fmt.Sprintf("RejectAfterTime = %s\n", a.RejectAfterTime))
+	}
+	if a.KeepaliveTimeout != "" {
+		sb.WriteString(fmt.Sprintf("KeepaliveTimeout = %s\n", a.KeepaliveTimeout))
+	}
+	if a.MaxHandshakeAttempts != "" {
+		sb.WriteString(fmt.Sprintf("MaxHandshakeAttempts = %s\n", a.MaxHandshakeAttempts))
+	}
+}
+
 // generateWgConfig builds the full wg-quick config string including PostUp/PostDown.
 //
 // FIX-1 rules for PostUp/PostDown:
@@ -1150,6 +1181,7 @@ func (t *TunnelInterface) generateWgConfig() string {
 		if a.I5 != "" {
 			sb.WriteString(fmt.Sprintf("I5 = %s\n", a.I5))
 		}
+		writeAWG3Fields(&sb, a)
 	}
 
 	// [Peer] sections. Disabled peers return "" from ToWgConfig().
@@ -1200,6 +1232,7 @@ func (t *TunnelInterface) generateSyncConfig() string {
 		if a.I5 != "" {
 			sb.WriteString("I5 = " + a.I5 + "\n")
 		}
+		writeAWG3Fields(&sb, a)
 	}
 
 	t.peersMu.RLock()

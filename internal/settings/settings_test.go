@@ -638,6 +638,8 @@ func TestCreateTemplate_AWG3FieldsRoundTrip(t *testing.T) {
 
 	tmpl, err := CreateTemplate(Template{
 		Name:                   "AWG3-Full",
+		S3:                     12,
+		S4:                     12,
 		HeaderProtectionKey:    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		ContentPaddingAddition: "0-1",
 		RekeyAfterTime:         "1h-2h",
@@ -750,7 +752,7 @@ func TestCreateTemplate_AWG3FieldsEmpty_StoredAsNullRoundTripsEmpty(t *testing.T
 func TestUpdateTemplate_AWG3Fields_SetThenClear(t *testing.T) {
 	initTestDB(t)
 
-	tmpl, err := CreateTemplate(Template{Name: "Update-AWG3"})
+	tmpl, err := CreateTemplate(Template{Name: "Update-AWG3", S3: 12, S4: 12})
 	if err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
 	}
@@ -803,6 +805,8 @@ func TestTemplateToParams_CarriesAWG3Fields(t *testing.T) {
 	tmpl, err := CreateTemplate(Template{
 		Name:                 "ApplyAWG3",
 		Jc:                   9,
+		S3:                   12,
+		S4:                   12,
 		HeaderProtectionKey:  "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		RejectAfterTime:      "3h",
 		MaxHandshakeAttempts: "20",

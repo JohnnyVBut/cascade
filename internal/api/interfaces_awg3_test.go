@@ -11,6 +11,8 @@ import (
 func TestMapToAWG2_AWG3FieldsExtracted(t *testing.T) {
 	body := map[string]any{
 		"jc":                     float64(5),
+		"s3":                     float64(12),
+		"s4":                     float64(12),
 		"headerProtectionKey":    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
 		"contentPaddingAddition": "0-1",
 		"rekeyAfterTime":         "1h-2h",

@@ -810,6 +810,17 @@ func mapToAWG2(v any) (*peer.AWG2Settings, error) {
 		if err := validate.WGKey(a.HeaderProtectionKey); err != nil {
 			return nil, fiber.NewError(fiber.StatusBadRequest, "invalid headerProtectionKey: "+err.Error())
 		}
+		// The header-protection cipher's nonce comes from the first 12 bytes
+		// of the S3/S4 padding buffer — amneziawg-go and the kernel module
+		// both refuse to bring the interface up otherwise ("S%d must be more
+		// then 12 to use headerProtection"). Catch it here rather than let a
+		// mismatched S3/S4 (e.g. from an older AWG2-only template applied
+		// before headerProtectionKey was added in a later edit) silently
+		// generate a config that fails far from this actual cause.
+		if a.S3 < 12 || a.S4 < 12 {
+			return nil, fiber.NewError(fiber.StatusBadRequest,
+				"headerProtectionKey requires S3 and S4 to both be at least 12")
+		}
 	}
 	a.ContentPaddingAddition = strField("contentPaddingAddition")
 	a.RekeyAfterTime = strField("rekeyAfterTime")

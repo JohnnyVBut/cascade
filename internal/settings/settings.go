@@ -307,6 +307,9 @@ func CreateTemplate(data Template) (*Template, error) {
 	}
 
 	// Unique name check (case-insensitive, mirrors Node.js behaviour).
+	// (S3/S4 >= 12 requirement for headerProtectionKey is checked below,
+	// after defaults are applied — S4's default of 4 would otherwise
+	// silently violate it for a template that didn't specify S4 explicitly.)
 	var count int
 	if err := db.DB().QueryRow(
 		`SELECT COUNT(*) FROM templates WHERE name = ? COLLATE NOCASE`, data.Name,
@@ -353,6 +356,16 @@ func CreateTemplate(data Template) (*Template, error) {
 	}
 	if data.S4 == 0 {
 		data.S4 = 4
+	}
+
+	// See interface.go's writeAWG3Fields / plans/awg3-protocol-notes.md: the
+	// header-protection cipher's nonce comes from the first 12 bytes of the
+	// S3/S4 padding buffer — amneziawg-go and the kernel module both refuse
+	// to bring an interface up otherwise. Checked here (after defaults) so a
+	// template that didn't explicitly set S3/S4 can't slip through with the
+	// plain-AWG2 defaults (S4 defaults to 4).
+	if data.HeaderProtectionKey != "" && (data.S3 < 12 || data.S4 < 12) {
+		return nil, fmt.Errorf("headerProtectionKey requires S3 and S4 to both be at least 12")
 	}
 
 	data.ID = uuid.NewString()
@@ -493,6 +506,9 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	if t.HeaderProtectionKey != "" {
 		if err := validate.WGKey(t.HeaderProtectionKey); err != nil {
 			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
+		}
+		if t.S3 < 12 || t.S4 < 12 {
+			return nil, fmt.Errorf("headerProtectionKey requires S3 and S4 to both be at least 12")
 		}
 	}
 
