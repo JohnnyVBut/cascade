@@ -51,12 +51,13 @@ services:
       - DEBUG=false
 
       # ── AWG userspace mode ─────────────────────────────────────────────────
-      # The amneziavpn/amneziawg-go image provides /usr/bin/amneziawg-go.
-      # Without this variable wg-quick/awg-quick falls back to kernel module
-      # detection and reports "kernel" mode even when no module is loaded.
-      # Setting it explicitly: correct mode badge in UI + correct KernelSetPeer
-      # / KernelRemovePeer logic (syncconf instead of full restart).
-      - WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go
+      # WG_QUICK_USERSPACE_IMPLEMENTATION is NOT set here — it comes from
+      # deploy/.env via env_file above, same as host mode (docker-compose.yml).
+      # deploy/switch-mode.sh writes it there ("amneziawg-go" for userspace,
+      # empty for kernel). A hardcoded value here would silently override
+      # whatever switch-mode.sh set, permanently forcing userspace mode
+      # regardless of --kernel — this previously made Kernel mode
+      # unswitchable in isolated/OVS deployments.
 
       # ── Isolated-mode flags ────────────────────────────────────────────────
       # Tell entrypoint.sh to wait for OVS to attach the network interface
