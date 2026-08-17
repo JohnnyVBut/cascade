@@ -966,6 +966,14 @@ func awg2ParamsFromTemplate(p *settings.AWG2Params) *peer.AWG2Settings {
 		I3:   p.I3,
 		I4:   p.I4,
 		I5:   p.I5,
+
+		HeaderProtectionKey:    p.HeaderProtectionKey,
+		ContentPaddingAddition: p.ContentPaddingAddition,
+		RekeyAfterTime:         p.RekeyAfterTime,
+		RekeyTimeout:           p.RekeyTimeout,
+		RejectAfterTime:        p.RejectAfterTime,
+		KeepaliveTimeout:       p.KeepaliveTimeout,
+		MaxHandshakeAttempts:   p.MaxHandshakeAttempts,
 	}
 }
 
@@ -988,6 +996,14 @@ func awg2ParamsFromGenerated(p *awgparams.Params) *peer.AWG2Settings {
 		I3:   p.I3,
 		I4:   p.I4,
 		I5:   p.I5,
+
+		HeaderProtectionKey:    p.HeaderProtectionKey,
+		ContentPaddingAddition: p.ContentPaddingAddition,
+		RekeyAfterTime:         p.RekeyAfterTime,
+		RekeyTimeout:           p.RekeyTimeout,
+		RejectAfterTime:        p.RejectAfterTime,
+		KeepaliveTimeout:       p.KeepaliveTimeout,
+		MaxHandshakeAttempts:   p.MaxHandshakeAttempts,
 	}
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ type Template struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault"`
-	Host      string `json:"host"`  // self-stealing SNI host (empty = not set)
+	Host      string `json:"host"` // self-stealing SNI host (empty = not set)
 	Jc        int    `json:"jc"`
 	Jmin      int    `json:"jmin"`
 	Jmax      int    `json:"jmax"`
@@ -73,7 +74,7 @@ type Template struct {
 	S2        int    `json:"s2"`
 	S3        int    `json:"s3"`
 	S4        int    `json:"s4"`
-	H1        string `json:"h1"`  // "start-end" range string (FIX-4)
+	H1        string `json:"h1"` // "start-end" range string (FIX-4)
 	H2        string `json:"h2"`
 	H3        string `json:"h3"`
 	H4        string `json:"h4"`
@@ -83,9 +84,19 @@ type Template struct {
 	I4        string `json:"i4"`
 	I5        string `json:"i5"`
 	CreatedAt string `json:"createdAt"`
+
+	// AWG 3.0 Transport Protection — empty string = not set (template stays
+	// AWG 2.0-only). See internal/awgparams.Params and plans/awg3-protocol-notes.md.
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
 }
 
-// AWG2Params is a flat set of AWG2 params returned by ApplyTemplate.
+// AWG2Params is a flat set of AWG2/AWG3 params returned by ApplyTemplate.
 type AWG2Params struct {
 	Jc   int    `json:"jc"`
 	Jmin int    `json:"jmin"`
@@ -103,13 +114,22 @@ type AWG2Params struct {
 	I3   string `json:"i3"`
 	I4   string `json:"i4"`
 	I5   string `json:"i5"`
+
+	// AWG 3.0 Transport Protection — empty string = not set.
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
 }
 
 // PeerDefaults are passed to InterfaceManager when creating a new peer.
 type PeerDefaults struct {
-	DNS                string `json:"dns"`
-	PersistentKeepalive int   `json:"persistentKeepalive"`
-	ClientAllowedIPs   string `json:"clientAllowedIPs"`
+	DNS                 string `json:"dns"`
+	PersistentKeepalive int    `json:"persistentKeepalive"`
+	ClientAllowedIPs    string `json:"clientAllowedIPs"`
 }
 
 // defaults mirrors DEFAULTS in Settings.js.
@@ -121,7 +141,7 @@ var defaults = GlobalSettings{
 	GatewayHealthyThreshold:    95,
 	GatewayDegradedThreshold:   90,
 	PublicIPMode:               "auto",
-	ChartType:                  2,              // area by default
+	ChartType:                  2, // area by default
 	Lang:                       "en",
 	SubnetPool:                 "192.168.0.0/16",
 	PortPool:                   "51831-65535",
@@ -212,13 +232,41 @@ func GetPeerDefaults() (*PeerDefaults, error) {
 // ── Templates ─────────────────────────────────────────────────────────────────
 
 // GetTemplates returns all templates ordered by created_at.
+const templateColumns = `id, name, is_default, host,
+	       jc, jmin, jmax, s1, s2, s3, s4,
+	       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
+	       header_protection_key, content_padding_addition,
+	       rekey_after_time, rekey_timeout, reject_after_time,
+	       keepalive_timeout, max_handshake_attempts`
+
+// scanTemplate scans one row's worth of templateColumns into t.
+func scanTemplate(t *Template, scan func(...any) error) error {
+	var isDefault int
+	var hpk, cpa, rat, rt, rejat, kt, mha sql.NullString
+	if err := scan(
+		&t.ID, &t.Name, &isDefault, &t.Host,
+		&t.Jc, &t.Jmin, &t.Jmax,
+		&t.S1, &t.S2, &t.S3, &t.S4,
+		&t.H1, &t.H2, &t.H3, &t.H4,
+		&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
+		&t.CreatedAt,
+		&hpk, &cpa, &rat, &rt, &rejat, &kt, &mha,
+	); err != nil {
+		return err
+	}
+	t.IsDefault = isDefault == 1
+	t.HeaderProtectionKey = hpk.String
+	t.ContentPaddingAddition = cpa.String
+	t.RekeyAfterTime = rat.String
+	t.RekeyTimeout = rt.String
+	t.RejectAfterTime = rejat.String
+	t.KeepaliveTimeout = kt.String
+	t.MaxHandshakeAttempts = mha.String
+	return nil
+}
+
 func GetTemplates() ([]Template, error) {
-	rows, err := db.DB().Query(`
-		SELECT id, name, is_default, host,
-		       jc, jmin, jmax, s1, s2, s3, s4,
-		       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at
-		FROM templates ORDER BY created_at ASC
-	`)
+	rows, err := db.DB().Query(`SELECT ` + templateColumns + ` FROM templates ORDER BY created_at ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("templates query: %w", err)
 	}
@@ -227,18 +275,9 @@ func GetTemplates() ([]Template, error) {
 	var out []Template
 	for rows.Next() {
 		var t Template
-		var isDefault int
-		if err := rows.Scan(
-			&t.ID, &t.Name, &isDefault, &t.Host,
-			&t.Jc, &t.Jmin, &t.Jmax,
-			&t.S1, &t.S2, &t.S3, &t.S4,
-			&t.H1, &t.H2, &t.H3, &t.H4,
-			&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
-			&t.CreatedAt,
-		); err != nil {
+		if err := scanTemplate(&t, rows.Scan); err != nil {
 			return nil, fmt.Errorf("template scan: %w", err)
 		}
-		t.IsDefault = isDefault == 1
 		out = append(out, t)
 	}
 
@@ -261,6 +300,11 @@ func CreateTemplate(data Template) (*Template, error) {
 	if data.Name == "" {
 		return nil, fmt.Errorf("template name is required")
 	}
+	if data.HeaderProtectionKey != "" {
+		if err := validate.WGKey(data.HeaderProtectionKey); err != nil {
+			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
+		}
+	}
 
 	// Unique name check (case-insensitive, mirrors Node.js behaviour).
 	var count int
@@ -275,19 +319,41 @@ func CreateTemplate(data Template) (*Template, error) {
 
 	// Generate H1-H4 if not provided (FIX-4: non-overlapping zones).
 	hr := generateRandomHRanges()
-	if data.H1 == "" { data.H1 = hr.H1 }
-	if data.H2 == "" { data.H2 = hr.H2 }
-	if data.H3 == "" { data.H3 = hr.H3 }
-	if data.H4 == "" { data.H4 = hr.H4 }
+	if data.H1 == "" {
+		data.H1 = hr.H1
+	}
+	if data.H2 == "" {
+		data.H2 = hr.H2
+	}
+	if data.H3 == "" {
+		data.H3 = hr.H3
+	}
+	if data.H4 == "" {
+		data.H4 = hr.H4
+	}
 
 	// Apply defaults for numeric fields.
-	if data.Jc == 0   { data.Jc = 6 }
-	if data.Jmin == 0 { data.Jmin = 10 }
-	if data.Jmax == 0 { data.Jmax = 50 }
-	if data.S1 == 0   { data.S1 = 64 }
-	if data.S2 == 0   { data.S2 = 67 }
-	if data.S3 == 0   { data.S3 = 64 }
-	if data.S4 == 0   { data.S4 = 4 }
+	if data.Jc == 0 {
+		data.Jc = 6
+	}
+	if data.Jmin == 0 {
+		data.Jmin = 10
+	}
+	if data.Jmax == 0 {
+		data.Jmax = 50
+	}
+	if data.S1 == 0 {
+		data.S1 = 64
+	}
+	if data.S2 == 0 {
+		data.S2 = 67
+	}
+	if data.S3 == 0 {
+		data.S3 = 64
+	}
+	if data.S4 == 0 {
+		data.S4 = 4
+	}
 
 	data.ID = uuid.NewString()
 	data.CreatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -308,14 +374,20 @@ func CreateTemplate(data Template) (*Template, error) {
 	_, err = tx.Exec(`
 		INSERT INTO templates
 		    (id, name, is_default, host, jc, jmin, jmax, s1, s2, s3, s4,
-		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
+		     header_protection_key, content_padding_addition,
+		     rekey_after_time, rekey_timeout, reject_after_time,
+		     keepalive_timeout, max_handshake_attempts)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		data.ID, data.Name, boolInt(data.IsDefault), data.Host,
 		data.Jc, data.Jmin, data.Jmax,
 		data.S1, data.S2, data.S3, data.S4,
 		data.H1, data.H2, data.H3, data.H4,
 		data.I1, data.I2, data.I3, data.I4, data.I5,
 		data.CreatedAt,
+		db.NullIfEmpty(data.HeaderProtectionKey), db.NullIfEmpty(data.ContentPaddingAddition),
+		db.NullIfEmpty(data.RekeyAfterTime), db.NullIfEmpty(data.RekeyTimeout), db.NullIfEmpty(data.RejectAfterTime),
+		db.NullIfEmpty(data.KeepaliveTimeout), db.NullIfEmpty(data.MaxHandshakeAttempts),
 	)
 	if err != nil {
 		tx.Rollback()
@@ -340,25 +412,89 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	}
 
 	// Apply updates to the struct.
-	if v, ok := updates["name"].(string); ok         { t.Name = v }
-	if v, ok := updates["isDefault"].(bool); ok      { t.IsDefault = v }
-	if v, ok := updates["jc"].(float64); ok          { t.Jc = int(v) }
-	if v, ok := updates["jmin"].(float64); ok        { t.Jmin = int(v) }
-	if v, ok := updates["jmax"].(float64); ok        { t.Jmax = int(v) }
-	if v, ok := updates["s1"].(float64); ok          { t.S1 = int(v) }
-	if v, ok := updates["s2"].(float64); ok          { t.S2 = int(v) }
-	if v, ok := updates["s3"].(float64); ok          { t.S3 = int(v) }
-	if v, ok := updates["s4"].(float64); ok          { t.S4 = int(v) }
-	if v, ok := updates["h1"].(string); ok           { t.H1 = v }
-	if v, ok := updates["h2"].(string); ok           { t.H2 = v }
-	if v, ok := updates["h3"].(string); ok           { t.H3 = v }
-	if v, ok := updates["h4"].(string); ok           { t.H4 = v }
-	if v, ok := updates["i1"].(string); ok           { t.I1 = v }
-	if v, ok := updates["i2"].(string); ok           { t.I2 = v }
-	if v, ok := updates["i3"].(string); ok           { t.I3 = v }
-	if v, ok := updates["i4"].(string); ok           { t.I4 = v }
-	if v, ok := updates["i5"].(string); ok           { t.I5 = v }
-	if v, ok := updates["host"].(string); ok         { t.Host = v }
+	if v, ok := updates["name"].(string); ok {
+		t.Name = v
+	}
+	if v, ok := updates["isDefault"].(bool); ok {
+		t.IsDefault = v
+	}
+	if v, ok := updates["jc"].(float64); ok {
+		t.Jc = int(v)
+	}
+	if v, ok := updates["jmin"].(float64); ok {
+		t.Jmin = int(v)
+	}
+	if v, ok := updates["jmax"].(float64); ok {
+		t.Jmax = int(v)
+	}
+	if v, ok := updates["s1"].(float64); ok {
+		t.S1 = int(v)
+	}
+	if v, ok := updates["s2"].(float64); ok {
+		t.S2 = int(v)
+	}
+	if v, ok := updates["s3"].(float64); ok {
+		t.S3 = int(v)
+	}
+	if v, ok := updates["s4"].(float64); ok {
+		t.S4 = int(v)
+	}
+	if v, ok := updates["h1"].(string); ok {
+		t.H1 = v
+	}
+	if v, ok := updates["h2"].(string); ok {
+		t.H2 = v
+	}
+	if v, ok := updates["h3"].(string); ok {
+		t.H3 = v
+	}
+	if v, ok := updates["h4"].(string); ok {
+		t.H4 = v
+	}
+	if v, ok := updates["i1"].(string); ok {
+		t.I1 = v
+	}
+	if v, ok := updates["i2"].(string); ok {
+		t.I2 = v
+	}
+	if v, ok := updates["i3"].(string); ok {
+		t.I3 = v
+	}
+	if v, ok := updates["i4"].(string); ok {
+		t.I4 = v
+	}
+	if v, ok := updates["i5"].(string); ok {
+		t.I5 = v
+	}
+	if v, ok := updates["host"].(string); ok {
+		t.Host = v
+	}
+	if v, ok := updates["headerProtectionKey"].(string); ok {
+		t.HeaderProtectionKey = v
+	}
+	if v, ok := updates["contentPaddingAddition"].(string); ok {
+		t.ContentPaddingAddition = v
+	}
+	if v, ok := updates["rekeyAfterTime"].(string); ok {
+		t.RekeyAfterTime = v
+	}
+	if v, ok := updates["rekeyTimeout"].(string); ok {
+		t.RekeyTimeout = v
+	}
+	if v, ok := updates["rejectAfterTime"].(string); ok {
+		t.RejectAfterTime = v
+	}
+	if v, ok := updates["keepaliveTimeout"].(string); ok {
+		t.KeepaliveTimeout = v
+	}
+	if v, ok := updates["maxHandshakeAttempts"].(string); ok {
+		t.MaxHandshakeAttempts = v
+	}
+	if t.HeaderProtectionKey != "" {
+		if err := validate.WGKey(t.HeaderProtectionKey); err != nil {
+			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
+		}
+	}
 
 	tx, err := db.DB().Begin()
 	if err != nil {
@@ -377,13 +513,19 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		    name=?, is_default=?, host=?, jc=?, jmin=?, jmax=?,
 		    s1=?, s2=?, s3=?, s4=?,
 		    h1=?, h2=?, h3=?, h4=?,
-		    i1=?, i2=?, i3=?, i4=?, i5=?
+		    i1=?, i2=?, i3=?, i4=?, i5=?,
+		    header_protection_key=?, content_padding_addition=?,
+		    rekey_after_time=?, rekey_timeout=?, reject_after_time=?,
+		    keepalive_timeout=?, max_handshake_attempts=?
 		WHERE id=?`,
 		t.Name, boolInt(t.IsDefault), t.Host,
 		t.Jc, t.Jmin, t.Jmax,
 		t.S1, t.S2, t.S3, t.S4,
 		t.H1, t.H2, t.H3, t.H4,
 		t.I1, t.I2, t.I3, t.I4, t.I5,
+		db.NullIfEmpty(t.HeaderProtectionKey), db.NullIfEmpty(t.ContentPaddingAddition),
+		db.NullIfEmpty(t.RekeyAfterTime), db.NullIfEmpty(t.RekeyTimeout), db.NullIfEmpty(t.RejectAfterTime),
+		db.NullIfEmpty(t.KeepaliveTimeout), db.NullIfEmpty(t.MaxHandshakeAttempts),
 		id,
 	)
 	if err != nil {
@@ -469,29 +611,16 @@ func ApplyDefaultTemplate() (*AWG2Params, error) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func queryTemplate(where string, args ...any) (*Template, error) {
-	row := db.DB().QueryRow(`
-		SELECT id, name, is_default, host,
-		       jc, jmin, jmax, s1, s2, s3, s4,
-		       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at
-		FROM templates `+where, args...)
+	row := db.DB().QueryRow(`SELECT `+templateColumns+` FROM templates `+where, args...)
 
 	var t Template
-	var isDefault int
-	err := row.Scan(
-		&t.ID, &t.Name, &isDefault, &t.Host,
-		&t.Jc, &t.Jmin, &t.Jmax,
-		&t.S1, &t.S2, &t.S3, &t.S4,
-		&t.H1, &t.H2, &t.H3, &t.H4,
-		&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
-		&t.CreatedAt,
-	)
+	err := scanTemplate(&t, row.Scan)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("template scan: %w", err)
 	}
-	t.IsDefault = isDefault == 1
 	return &t, nil
 }
 
@@ -501,6 +630,13 @@ func templateToParams(t *Template) *AWG2Params {
 		S1: t.S1, S2: t.S2, S3: t.S3, S4: t.S4,
 		H1: t.H1, H2: t.H2, H3: t.H3, H4: t.H4,
 		I1: t.I1, I2: t.I2, I3: t.I3, I4: t.I4, I5: t.I5,
+		HeaderProtectionKey:    t.HeaderProtectionKey,
+		ContentPaddingAddition: t.ContentPaddingAddition,
+		RekeyAfterTime:         t.RekeyAfterTime,
+		RekeyTimeout:           t.RekeyTimeout,
+		RejectAfterTime:        t.RejectAfterTime,
+		KeepaliveTimeout:       t.KeepaliveTimeout,
+		MaxHandshakeAttempts:   t.MaxHandshakeAttempts,
 	}
 }
 
@@ -633,21 +769,29 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 	case "defaultPersistentKeepalive":
 		var n int
 		fmt.Sscanf(v, "%d", &n)
-		if n > 0 { s.DefaultPersistentKeepalive = n }
+		if n > 0 {
+			s.DefaultPersistentKeepalive = n
+		}
 	case "defaultClientAllowedIPs":
 		s.DefaultClientAllowedIPs = v
 	case "gatewayWindowSeconds":
 		var n int
 		fmt.Sscanf(v, "%d", &n)
-		if n > 0 { s.GatewayWindowSeconds = n }
+		if n > 0 {
+			s.GatewayWindowSeconds = n
+		}
 	case "gatewayHealthyThreshold":
 		var f float64
 		fmt.Sscanf(v, "%f", &f)
-		if f > 0 { s.GatewayHealthyThreshold = f }
+		if f > 0 {
+			s.GatewayHealthyThreshold = f
+		}
 	case "gatewayDegradedThreshold":
 		var f float64
 		fmt.Sscanf(v, "%f", &f)
-		if f > 0 { s.GatewayDegradedThreshold = f }
+		if f > 0 {
+			s.GatewayDegradedThreshold = f
+		}
 	case "routerName":
 		s.RouterName = v
 	case "publicIPMode":
@@ -706,6 +850,8 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 }
 
 func boolInt(b bool) int {
-	if b { return 1 }
+	if b {
+		return 1
+	}
 	return 0
 }

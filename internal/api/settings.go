@@ -202,6 +202,11 @@ func RegisterSettings(api fiber.Router) {
 			IterCount int    `json:"iterCount"`
 			Jc        int    `json:"jc"`
 			SaveName  string `json:"saveName"`
+
+			// AWG 3.0 Transport Protection toggles — see awgparams.Options.
+			HeaderProtection bool `json:"headerProtection"`
+			ContentPadding   bool `json:"contentPadding"`
+			RandomizeTimers  bool `json:"randomizeTimers"`
 		}
 		// Body is optional — ignore parse errors, use zero values → defaults
 		_ = c.BodyParser(&body)
@@ -213,6 +218,10 @@ func RegisterSettings(api fiber.Router) {
 			Browser:   body.Browser,
 			IterCount: body.IterCount,
 			Jc:        body.Jc,
+
+			HeaderProtection: body.HeaderProtection,
+			ContentPadding:   body.ContentPadding,
+			RandomizeTimers:  body.RandomizeTimers,
 		})
 
 		if body.SaveName != "" {
@@ -223,6 +232,13 @@ func RegisterSettings(api fiber.Router) {
 				S1: params.S1, S2: params.S2, S3: params.S3, S4: params.S4,
 				H1: params.H1, H2: params.H2, H3: params.H3, H4: params.H4,
 				I1: params.I1, I2: params.I2, I3: params.I3, I4: params.I4, I5: params.I5,
+				HeaderProtectionKey:    params.HeaderProtectionKey,
+				ContentPaddingAddition: params.ContentPaddingAddition,
+				RekeyAfterTime:         params.RekeyAfterTime,
+				RekeyTimeout:           params.RekeyTimeout,
+				RejectAfterTime:        params.RejectAfterTime,
+				KeepaliveTimeout:       params.KeepaliveTimeout,
+				MaxHandshakeAttempts:   params.MaxHandshakeAttempts,
 			})
 			if err != nil {
 				return fiber.NewError(fiber.StatusBadRequest, err.Error())

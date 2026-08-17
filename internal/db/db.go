@@ -1,8 +1,9 @@
 // Package db manages the SQLite database lifecycle.
 //
 // Two files:
-//   <dataDir>/cascade.db — config, users, peers, rules (included in backups)
-//   <dataDir>/metrics.db — metrics_history only (large, exclude from backups)
+//
+//	<dataDir>/cascade.db — config, users, peers, rules (included in backups)
+//	<dataDir>/metrics.db — metrics_history only (large, exclude from backups)
 //
 // Design decisions:
 //   - modernc.org/sqlite: pure Go, no CGO → static binary (CGO_ENABLED=0)
@@ -70,10 +71,10 @@ func Init(dataDir string) error {
 
 	// Performance and safety pragmas.
 	pragmas := []string{
-		`PRAGMA journal_mode=WAL`,      // concurrent reads, faster writes
-		`PRAGMA foreign_keys=ON`,       // enforce FK constraints
-		`PRAGMA busy_timeout=5000`,     // wait up to 5s on lock instead of SQLITE_BUSY
-		`PRAGMA synchronous=NORMAL`,    // safe with WAL, faster than FULL
+		`PRAGMA journal_mode=WAL`,   // concurrent reads, faster writes
+		`PRAGMA foreign_keys=ON`,    // enforce FK constraints
+		`PRAGMA busy_timeout=5000`,  // wait up to 5s on lock instead of SQLITE_BUSY
+		`PRAGMA synchronous=NORMAL`, // safe with WAL, faster than FULL
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {
@@ -802,6 +803,29 @@ ALTER TABLE peers ADD COLUMN latest_handshake_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE interfaces ADD COLUMN dns TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 41,
+		sql: `
+-- AWG 3.0 Transport Protection fields. All nullable — NULL means "not
+-- requested" (interface/template stays AWG 2.0-only), matching how the
+-- existing AWG2 columns (jc, jmin, jmax, ...) use NULL for WireGuard 1.0.
+ALTER TABLE templates ADD COLUMN header_protection_key    TEXT;
+ALTER TABLE templates ADD COLUMN content_padding_addition TEXT;
+ALTER TABLE templates ADD COLUMN rekey_after_time         TEXT;
+ALTER TABLE templates ADD COLUMN rekey_timeout            TEXT;
+ALTER TABLE templates ADD COLUMN reject_after_time        TEXT;
+ALTER TABLE templates ADD COLUMN keepalive_timeout        TEXT;
+ALTER TABLE templates ADD COLUMN max_handshake_attempts   TEXT;
+
+ALTER TABLE interfaces ADD COLUMN header_protection_key    TEXT;
+ALTER TABLE interfaces ADD COLUMN content_padding_addition TEXT;
+ALTER TABLE interfaces ADD COLUMN rekey_after_time         TEXT;
+ALTER TABLE interfaces ADD COLUMN rekey_timeout            TEXT;
+ALTER TABLE interfaces ADD COLUMN reject_after_time        TEXT;
+ALTER TABLE interfaces ADD COLUMN keepalive_timeout        TEXT;
+ALTER TABLE interfaces ADD COLUMN max_handshake_attempts   TEXT;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
@@ -855,4 +879,17 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// NullIfEmpty maps an empty string to SQL NULL, for optional TEXT columns
+// where NULL means "not set" — e.g. the AWG 3.0 Transport Protection
+// columns on templates/interfaces (migration v41), which follow the same
+// NULL-means-not-applicable convention as the existing AWG2 columns.
+// Shared so callers (internal/settings, internal/tunnel, ...) don't each
+// carry their own copy that could silently drift apart.
+func NullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

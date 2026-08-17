@@ -1,6 +1,7 @@
 package db
 
 import (
+	"database/sql"
 	"os"
 	"testing"
 )
@@ -301,5 +302,124 @@ func TestMigration_v11_TrafficColumnsExist(t *testing.T) {
 	}
 	if totalRx != 1024 || totalTx != 2048 {
 		t.Errorf("updated values: got rx=%d tx=%d, want 1024/2048", totalRx, totalTx)
+	}
+}
+
+// ── Migration v41: AWG 3.0 Transport Protection columns ───────────────────────
+
+// awg3Columns are the 7 nullable TEXT columns added by migration v41 to both
+// the templates and interfaces tables.
+var awg3Columns = []string{
+	"header_protection_key",
+	"content_padding_addition",
+	"rekey_after_time",
+	"rekey_timeout",
+	"reject_after_time",
+	"keepalive_timeout",
+	"max_handshake_attempts",
+}
+
+// TestMigration_v41_TemplatesColumnsExist verifies migration v41 adds the AWG
+// 3.0 Transport Protection columns to the templates table, nullable, and NULL
+// by default for a template inserted without them.
+func TestMigration_v41_TemplatesColumnsExist(t *testing.T) {
+	dir, err := os.MkdirTemp("", "cascade-db-v41-templates-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	defer Close()
+
+	d := DB()
+
+	// Insert a minimal template row (mirrors the columns present before v41).
+	if _, err := d.Exec(`
+		INSERT INTO templates (id, name, is_default, host, jc, jmin, jmax,
+		                       s1, s2, s3, s4, h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at)
+		VALUES ('t1','MyTemplate',0,'',7,50,1000,20,25,30,35,'1-3','40-70','9-9','10-15','','','','','',datetime('now'))
+	`); err != nil {
+		t.Fatalf("insert template: %v", err)
+	}
+
+	for _, col := range awg3Columns {
+		t.Run(col, func(t *testing.T) {
+			var val sql.NullString
+			q := `SELECT ` + col + ` FROM templates WHERE id='t1'`
+			if err := d.QueryRow(q).Scan(&val); err != nil {
+				t.Fatalf("query %s (column may be missing): %v", col, err)
+			}
+			if val.Valid {
+				t.Errorf("%s: expected NULL by default, got %q", col, val.String)
+			}
+		})
+	}
+
+	// Verify the columns accept values.
+	if _, err := d.Exec(`UPDATE templates SET header_protection_key='abc==', rekey_after_time='2h' WHERE id='t1'`); err != nil {
+		t.Fatalf("update awg3 columns: %v", err)
+	}
+	var hpk, rat sql.NullString
+	if err := d.QueryRow(`SELECT header_protection_key, rekey_after_time FROM templates WHERE id='t1'`).Scan(&hpk, &rat); err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if !hpk.Valid || hpk.String != "abc==" {
+		t.Errorf("header_protection_key = %+v, want 'abc=='", hpk)
+	}
+	if !rat.Valid || rat.String != "2h" {
+		t.Errorf("rekey_after_time = %+v, want '2h'", rat)
+	}
+}
+
+// TestMigration_v41_InterfacesColumnsExist verifies migration v41 adds the
+// same AWG 3.0 Transport Protection columns to the interfaces table.
+func TestMigration_v41_InterfacesColumnsExist(t *testing.T) {
+	dir, err := os.MkdirTemp("", "cascade-db-v41-interfaces-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	if err := Init(dir); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+	defer Close()
+
+	d := DB()
+
+	if _, err := d.Exec(`
+		INSERT INTO interfaces (id, name, address, listen_port, protocol, enabled,
+		                        disable_routes, private_key, public_key, created_at)
+		VALUES ('wg10','test','10.8.0.1/24',51830,'amneziawg-2.0',0,0,'priv','pub',datetime('now'))
+	`); err != nil {
+		t.Fatalf("insert interface: %v", err)
+	}
+
+	for _, col := range awg3Columns {
+		t.Run(col, func(t *testing.T) {
+			var val sql.NullString
+			q := `SELECT ` + col + ` FROM interfaces WHERE id='wg10'`
+			if err := d.QueryRow(q).Scan(&val); err != nil {
+				t.Fatalf("query %s (column may be missing): %v", col, err)
+			}
+			if val.Valid {
+				t.Errorf("%s: expected NULL by default, got %q", col, val.String)
+			}
+		})
+	}
+
+	if _, err := d.Exec(`UPDATE interfaces SET content_padding_addition='0-1', max_handshake_attempts='5' WHERE id='wg10'`); err != nil {
+		t.Fatalf("update awg3 columns: %v", err)
+	}
+	var cpa, mha sql.NullString
+	if err := d.QueryRow(`SELECT content_padding_addition, max_handshake_attempts FROM interfaces WHERE id='wg10'`).Scan(&cpa, &mha); err != nil {
+		t.Fatalf("re-query: %v", err)
+	}
+	if !cpa.Valid || cpa.String != "0-1" {
+		t.Errorf("content_padding_addition = %+v, want '0-1'", cpa)
+	}
+	if !mha.Valid || mha.String != "5" {
+		t.Errorf("max_handshake_attempts = %+v, want '5'", mha)
 	}
 }

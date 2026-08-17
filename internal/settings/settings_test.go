@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"testing"
@@ -55,9 +56,9 @@ func TestUpdateSettings_RoundTrip(t *testing.T) {
 	initTestDB(t)
 
 	updates := map[string]any{
-		"dns":                     "8.8.8.8, 8.8.4.4",
+		"dns":                        "8.8.8.8, 8.8.4.4",
 		"defaultPersistentKeepalive": 30,
-		"routerName":              "Moscow-01",
+		"routerName":                 "Moscow-01",
 	}
 	s, err := UpdateSettings(updates)
 	if err != nil {
@@ -627,5 +628,200 @@ func TestGenerateRandomHRanges_NonOverlapping(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// ── AWG 3.0 Transport Protection fields ────────────────────────────────────────
+
+func TestCreateTemplate_AWG3FieldsRoundTrip(t *testing.T) {
+	initTestDB(t)
+
+	tmpl, err := CreateTemplate(Template{
+		Name:                   "AWG3-Full",
+		HeaderProtectionKey:    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		ContentPaddingAddition: "0-1",
+		RekeyAfterTime:         "1h-2h",
+		RekeyTimeout:           "5-10",
+		RejectAfterTime:        "3h",
+		KeepaliveTimeout:       "15-25",
+		MaxHandshakeAttempts:   "20",
+	})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+	if tmpl.HeaderProtectionKey != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" {
+		t.Errorf("HeaderProtectionKey = %q, want 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='", tmpl.HeaderProtectionKey)
+	}
+	if tmpl.ContentPaddingAddition != "0-1" {
+		t.Errorf("ContentPaddingAddition = %q, want '0-1'", tmpl.ContentPaddingAddition)
+	}
+	if tmpl.RekeyAfterTime != "1h-2h" {
+		t.Errorf("RekeyAfterTime = %q, want '1h-2h'", tmpl.RekeyAfterTime)
+	}
+	if tmpl.RekeyTimeout != "5-10" {
+		t.Errorf("RekeyTimeout = %q, want '5-10'", tmpl.RekeyTimeout)
+	}
+	if tmpl.RejectAfterTime != "3h" {
+		t.Errorf("RejectAfterTime = %q, want '3h'", tmpl.RejectAfterTime)
+	}
+	if tmpl.KeepaliveTimeout != "15-25" {
+		t.Errorf("KeepaliveTimeout = %q, want '15-25'", tmpl.KeepaliveTimeout)
+	}
+	if tmpl.MaxHandshakeAttempts != "20" {
+		t.Errorf("MaxHandshakeAttempts = %q, want '20'", tmpl.MaxHandshakeAttempts)
+	}
+
+	// Round-trip through GetTemplate (queryTemplate → scanTemplate).
+	got, err := GetTemplate(tmpl.ID)
+	if err != nil {
+		t.Fatalf("GetTemplate: %v", err)
+	}
+	if got.HeaderProtectionKey != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" {
+		t.Errorf("GetTemplate HeaderProtectionKey = %q, want 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='", got.HeaderProtectionKey)
+	}
+	if got.MaxHandshakeAttempts != "20" {
+		t.Errorf("GetTemplate MaxHandshakeAttempts = %q, want '20'", got.MaxHandshakeAttempts)
+	}
+
+	// Round-trip through GetTemplates (list query → scanTemplate).
+	list, err := GetTemplates()
+	if err != nil {
+		t.Fatalf("GetTemplates: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 template, got %d", len(list))
+	}
+	if list[0].RejectAfterTime != "3h" {
+		t.Errorf("GetTemplates RejectAfterTime = %q, want '3h'", list[0].RejectAfterTime)
+	}
+}
+
+// TestCreateTemplate_AWG3FieldsEmpty_StoredAsNullRoundTripsEmpty verifies that
+// omitting the AWG 3.0 fields stores NULL in SQLite (not "NULL" the literal
+// string) and that GetTemplate/GetTemplates surface them back as "" (not any
+// Go zero-value surprise like "0" or "<nil>").
+func TestCreateTemplate_AWG3FieldsEmpty_StoredAsNullRoundTripsEmpty(t *testing.T) {
+	initTestDB(t)
+
+	tmpl, err := CreateTemplate(Template{Name: "AWG2-Only"})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+	if tmpl.HeaderProtectionKey != "" {
+		t.Errorf("HeaderProtectionKey = %q, want empty", tmpl.HeaderProtectionKey)
+	}
+
+	// Confirm the underlying column is actually NULL, not the literal "NULL"
+	// or an empty string stored via a bug that bypasses nullIfEmpty.
+	var raw sql.NullString
+	if err := db.DB().QueryRow(`SELECT header_protection_key FROM templates WHERE id=?`, tmpl.ID).Scan(&raw); err != nil {
+		t.Fatalf("query raw column: %v", err)
+	}
+	if raw.Valid {
+		t.Errorf("header_protection_key should be SQL NULL for an empty field, got Valid=true value=%q", raw.String)
+	}
+
+	got, err := GetTemplate(tmpl.ID)
+	if err != nil {
+		t.Fatalf("GetTemplate: %v", err)
+	}
+	if got.HeaderProtectionKey != "" {
+		t.Errorf("GetTemplate HeaderProtectionKey = %q, want empty string", got.HeaderProtectionKey)
+	}
+	if got.RekeyAfterTime != "" {
+		t.Errorf("GetTemplate RekeyAfterTime = %q, want empty string", got.RekeyAfterTime)
+	}
+
+	list, err := GetTemplates()
+	if err != nil {
+		t.Fatalf("GetTemplates: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected 1 template, got %d", len(list))
+	}
+	if list[0].MaxHandshakeAttempts != "" {
+		t.Errorf("GetTemplates MaxHandshakeAttempts = %q, want empty string", list[0].MaxHandshakeAttempts)
+	}
+}
+
+// TestUpdateTemplate_AWG3Fields_SetThenClear verifies UpdateTemplate can set a
+// previously-empty AWG 3.0 field to a value, and later clear it back to empty
+// (confirming nullIfEmpty is applied on the UPDATE path too, not just CREATE).
+func TestUpdateTemplate_AWG3Fields_SetThenClear(t *testing.T) {
+	initTestDB(t)
+
+	tmpl, err := CreateTemplate(Template{Name: "Update-AWG3"})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+	if tmpl.HeaderProtectionKey != "" {
+		t.Fatalf("precondition failed: HeaderProtectionKey should start empty, got %q", tmpl.HeaderProtectionKey)
+	}
+
+	// Set it.
+	updated, err := UpdateTemplate(tmpl.ID, map[string]any{"headerProtectionKey": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="})
+	if err != nil {
+		t.Fatalf("UpdateTemplate set: %v", err)
+	}
+	if updated.HeaderProtectionKey != "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=" {
+		t.Errorf("after set: HeaderProtectionKey = %q, want 'AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA='", updated.HeaderProtectionKey)
+	}
+
+	// Confirm the raw column is non-NULL after set.
+	var raw sql.NullString
+	if err := db.DB().QueryRow(`SELECT header_protection_key FROM templates WHERE id=?`, tmpl.ID).Scan(&raw); err != nil {
+		t.Fatalf("query raw column: %v", err)
+	}
+	if !raw.Valid || raw.String != "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=" {
+		t.Errorf("raw header_protection_key after set = %+v, want Valid 'AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA='", raw)
+	}
+
+	// Clear it back to empty.
+	cleared, err := UpdateTemplate(tmpl.ID, map[string]any{"headerProtectionKey": ""})
+	if err != nil {
+		t.Fatalf("UpdateTemplate clear: %v", err)
+	}
+	if cleared.HeaderProtectionKey != "" {
+		t.Errorf("after clear: HeaderProtectionKey = %q, want empty", cleared.HeaderProtectionKey)
+	}
+
+	// Confirm the raw column is NULL again after clearing — this is the part
+	// that would break if UpdateTemplate stopped applying nullIfEmpty.
+	if err := db.DB().QueryRow(`SELECT header_protection_key FROM templates WHERE id=?`, tmpl.ID).Scan(&raw); err != nil {
+		t.Fatalf("query raw column after clear: %v", err)
+	}
+	if raw.Valid {
+		t.Errorf("header_protection_key should be NULL after clearing, got Valid=true value=%q", raw.String)
+	}
+}
+
+// TestTemplateToParams_CarriesAWG3Fields verifies ApplyTemplate (via
+// templateToParams) copies the AWG 3.0 fields through to AWG2Params.
+func TestTemplateToParams_CarriesAWG3Fields(t *testing.T) {
+	initTestDB(t)
+
+	tmpl, err := CreateTemplate(Template{
+		Name:                 "ApplyAWG3",
+		Jc:                   9,
+		HeaderProtectionKey:  "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		RejectAfterTime:      "3h",
+		MaxHandshakeAttempts: "20",
+	})
+	if err != nil {
+		t.Fatalf("CreateTemplate: %v", err)
+	}
+
+	params, err := ApplyTemplate(tmpl.ID)
+	if err != nil {
+		t.Fatalf("ApplyTemplate: %v", err)
+	}
+	if params.HeaderProtectionKey != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" {
+		t.Errorf("HeaderProtectionKey = %q, want AWG3 test key", params.HeaderProtectionKey)
+	}
+	if params.RejectAfterTime != "3h" {
+		t.Errorf("RejectAfterTime = %q, want '3h'", params.RejectAfterTime)
+	}
+	if params.MaxHandshakeAttempts != "20" {
+		t.Errorf("MaxHandshakeAttempts = %q, want '20'", params.MaxHandshakeAttempts)
 	}
 }

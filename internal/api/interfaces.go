@@ -170,13 +170,13 @@ func getInterface(c *fiber.Ctx) error {
 // Body: { name, protocol?, address?, listenPort?, disableRoutes?, settings? }
 func createInterface(c *fiber.Ctx) error {
 	var body struct {
-		Name          string              `json:"name"`
-		Protocol      string              `json:"protocol"`
-		Address       string              `json:"address"`
-		ListenPort    int                 `json:"listenPort"`
-		DisableRoutes bool                `json:"disableRoutes"`
-		DNS           string              `json:"dns"`
-		AWG2          *peer.AWG2Settings  `json:"settings"`
+		Name          string             `json:"name"`
+		Protocol      string             `json:"protocol"`
+		Address       string             `json:"address"`
+		ListenPort    int                `json:"listenPort"`
+		DisableRoutes bool               `json:"disableRoutes"`
+		DNS           string             `json:"dns"`
+		AWG2          *peer.AWG2Settings `json:"settings"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
@@ -800,6 +800,23 @@ func mapToAWG2(v any) (*peer.AWG2Settings, error) {
 	a.I3 = strField("i3")
 	a.I4 = strField("i4")
 	a.I5 = strField("i5")
+	a.HeaderProtectionKey = strField("headerProtectionKey")
+	// Same format as any other WireGuard key (32 random bytes, base64) — see
+	// awgparams.genHeaderProtectionKey(). Validate eagerly: this is a real
+	// cipher key, not cosmetic padding, and it's cheap to catch a malformed
+	// value here rather than let it silently save and break the tunnel once
+	// it's wired into config generation.
+	if a.HeaderProtectionKey != "" {
+		if err := validate.WGKey(a.HeaderProtectionKey); err != nil {
+			return nil, fiber.NewError(fiber.StatusBadRequest, "invalid headerProtectionKey: "+err.Error())
+		}
+	}
+	a.ContentPaddingAddition = strField("contentPaddingAddition")
+	a.RekeyAfterTime = strField("rekeyAfterTime")
+	a.RekeyTimeout = strField("rekeyTimeout")
+	a.RejectAfterTime = strField("rejectAfterTime")
+	a.KeepaliveTimeout = strField("keepaliveTimeout")
+	a.MaxHandshakeAttempts = strField("maxHandshakeAttempts")
 	return a, nil
 }
 

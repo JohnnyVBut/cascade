@@ -141,7 +141,10 @@ type InterfaceData struct {
 	MTU                     int           // 0 = omit MTU line; >0 = write "MTU = N"
 }
 
-// AWG2Settings holds AmneziaWG 2.0 obfuscation parameters for config generation.
+// AWG2Settings holds AmneziaWG 2.0 obfuscation parameters for config
+// generation, plus the optional AWG 3.0 Transport Protection fields (empty
+// string = not set — interface stays AWG 2.0-only). See
+// internal/awgparams.Params and plans/awg3-protocol-notes.md.
 type AWG2Settings struct {
 	Jc   int    `json:"jc"`
 	Jmin int    `json:"jmin"`
@@ -159,6 +162,14 @@ type AWG2Settings struct {
 	I3   string `json:"i3"`
 	I4   string `json:"i4"`
 	I5   string `json:"i5"`
+
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
