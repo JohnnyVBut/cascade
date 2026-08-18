@@ -460,6 +460,27 @@ func TestGenerateWgConfig_AWG3FieldsPartialPopulation(t *testing.T) {
 			t.Errorf("generateWgConfig must not contain unset AWG3 field %q", key)
 		}
 	}
+	// RandomTrailers/DisableCookies are 3.0-only static flags with no
+	// "unset" state to gate on individually — must never leak onto a 2.0
+	// interface's config even when other AWG3 fields (like
+	// HeaderProtectionKey above) are present.
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Error("generateWgConfig must not write RandomTrailers/DisableCookies for an amneziawg-2.0 interface")
+	}
+}
+
+func TestGenerateWgConfig_AWG3StaticFieldsOnlyForV3(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-3.0"
+	iface.AWG2 = baseAWG2SettingsNoAWG3()
+	cfg := iface.generateWgConfig()
+
+	if !strings.Contains(cfg, "RandomTrailers = off") {
+		t.Errorf("generateWgConfig missing RandomTrailers for amneziawg-3.0, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = off") {
+		t.Errorf("generateWgConfig missing DisableCookies for amneziawg-3.0, got:\n%s", cfg)
+	}
 }
 
 func TestGenerateSyncConfig_AWG3FieldsAllSet(t *testing.T) {
@@ -480,6 +501,23 @@ func TestGenerateSyncConfig_AWG3FieldsAllSet(t *testing.T) {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("generateSyncConfig missing AWG3 field %q", want)
 		}
+	}
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Error("generateSyncConfig must not write RandomTrailers/DisableCookies for an amneziawg-2.0 interface")
+	}
+}
+
+func TestGenerateSyncConfig_AWG3StaticFieldsOnlyForV3(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-3.0"
+	iface.AWG2 = baseAWG2SettingsNoAWG3()
+	cfg := iface.generateSyncConfig()
+
+	if !strings.Contains(cfg, "RandomTrailers = off") {
+		t.Errorf("generateSyncConfig missing RandomTrailers for amneziawg-3.0, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = off") {
+		t.Errorf("generateSyncConfig missing DisableCookies for amneziawg-3.0, got:\n%s", cfg)
 	}
 }
 

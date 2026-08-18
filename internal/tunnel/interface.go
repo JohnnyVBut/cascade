@@ -1066,6 +1066,25 @@ func writeAWG3Fields(sb *strings.Builder, a *peer.AWG2Settings) {
 	}
 }
 
+// writeAWG3StaticFields appends AWG-3.0-only static flags that are not part
+// of peer.AWG2Settings (no per-interface value to store — always "off" for
+// now). Unlike writeAWG3Fields above, this must only be called for a real
+// amneziawg-3.0 interface: unlike the other 7 fields (each individually
+// gated by non-emptiness, safe to call for any AmneziaWG version),
+// RandomTrailers/DisableCookies have no "empty" state to gate on, so an
+// unconditional call here would leak them onto amneziawg-2.0 configs too.
+//
+// amneziawg-go 0.0.20250522 defaults both to off when absent (confirmed via
+// `awg show` on a live interface), so this is a no-op today — written
+// explicitly only so the field is present in the config text for
+// clients/tooling that key off its presence rather than its value. No
+// generator toggle yet since neither field's "on" behavior has been
+// verified against our shipped daemon.
+func writeAWG3StaticFields(sb *strings.Builder) {
+	sb.WriteString("RandomTrailers = off\n")
+	sb.WriteString("DisableCookies = off\n")
+}
+
 // generateWgConfig builds the full wg-quick config string including PostUp/PostDown.
 //
 // FIX-1 rules for PostUp/PostDown:
@@ -1187,6 +1206,9 @@ func (t *TunnelInterface) generateWgConfig() string {
 			sb.WriteString(fmt.Sprintf("I5 = %s\n", a.I5))
 		}
 		writeAWG3Fields(&sb, a)
+		if t.Protocol == awgparams.ProtocolAmneziaWG3 {
+			writeAWG3StaticFields(&sb)
+		}
 	}
 
 	// [Peer] sections. Disabled peers return "" from ToWgConfig().
@@ -1238,6 +1260,9 @@ func (t *TunnelInterface) generateSyncConfig() string {
 			sb.WriteString("I5 = " + a.I5 + "\n")
 		}
 		writeAWG3Fields(&sb, a)
+		if t.Protocol == awgparams.ProtocolAmneziaWG3 {
+			writeAWG3StaticFields(&sb)
+		}
 	}
 
 	t.peersMu.RLock()

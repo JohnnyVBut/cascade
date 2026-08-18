@@ -768,6 +768,13 @@ func writeAWG3Fields(sb *strings.Builder, s *AWG2Settings) {
 	if s.MaxHandshakeAttempts != "" {
 		fmt.Fprintf(sb, "MaxHandshakeAttempts = %s\n", s.MaxHandshakeAttempts)
 	}
+	// RandomTrailers/DisableCookies: amneziawg-go defaults both to off when
+	// absent, so this is a no-op today — written explicitly only so the
+	// field is present in the client config for tooling that keys off its
+	// presence rather than its value. Keep in sync with the server-side
+	// writeAWG3Fields above.
+	fmt.Fprintf(sb, "RandomTrailers = off\n")
+	fmt.Fprintf(sb, "DisableCookies = off\n")
 }
 
 // ── QR code ───────────────────────────────────────────────────────────────────

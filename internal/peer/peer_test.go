@@ -276,6 +276,9 @@ func TestGenerateCompleteConfig_AWG2WithSettings(t *testing.T) {
 	if !strings.Contains(cfg, "I1 = <r 100>") {
 		t.Error("expected I1 line in AWG2 config")
 	}
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Error("expected AWG 2.0 config to omit RandomTrailers/DisableCookies (AWG3-only)")
+	}
 }
 
 func TestGenerateCompleteConfig_AWG3WritesTransportProtectionFields(t *testing.T) {
@@ -316,6 +319,8 @@ func TestGenerateCompleteConfig_AWG3WritesTransportProtectionFields(t *testing.T
 		"RejectAfterTime = 140-165",
 		"KeepaliveTimeout = 8-12",
 		"MaxHandshakeAttempts = 15-25",
+		"RandomTrailers = off",
+		"DisableCookies = off",
 	} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("expected client config to contain %q, got:\n%s", want, cfg)
@@ -386,6 +391,9 @@ func TestGenerateTemplateConfig_AWG3LabelAndFields(t *testing.T) {
 	}
 	if !strings.Contains(cfg, "RejectAfterTime = 140-165") {
 		t.Errorf("expected template config to contain RejectAfterTime, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "RandomTrailers = off") || !strings.Contains(cfg, "DisableCookies = off") {
+		t.Errorf("expected template config to contain RandomTrailers/DisableCookies, got:\n%s", cfg)
 	}
 }
 
