@@ -10,9 +10,11 @@
 // in SQLite — they come from periodic polling of `wg/awg show dump` in TunnelInterface.
 //
 // Key generation:
-//   wg genkey                 → private key
-//   echo <priv> | wg pubkey   → public key
-//   wg genpsk                 → pre-shared key
+//
+//	wg genkey                 → private key
+//	echo <priv> | wg pubkey   → public key
+//	wg genpsk                 → pre-shared key
+//
 // For amneziawg-2.0 use "awg" binary, which accepts the same subcommands.
 //
 // QR code: SVG generated from config text using rsc.io/qr (pure Go).
@@ -31,6 +33,7 @@ import (
 	"github.com/google/uuid"
 	"rsc.io/qr"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/util"
 )
@@ -44,14 +47,14 @@ type Peer struct {
 	InterfaceID         string `json:"interfaceId"`
 	Name                string `json:"name"`
 	PublicKey           string `json:"publicKey"`
-	PrivateKey          string `json:"privateKey"`          // "" for interconnect peers
+	PrivateKey          string `json:"privateKey"` // "" for interconnect peers
 	PresharedKey        string `json:"presharedKey"`
-	Endpoint            string `json:"endpoint"`            // remote endpoint host:port
-	AllowedIPs          string `json:"allowedIPs"`          // hub-side routing (e.g. "10.8.0.2/32")
-	Address             string `json:"address"`             // tunnel IP with iface mask ("10.8.0.2/24")
-	ClientAllowedIPs    string `json:"clientAllowedIPs"`    // used in the client config [Peer] section
-	PeerType            string `json:"peerType"`            // client | interconnect
-	GroupID             string `json:"groupId"`             // client-group alias ID; "" for interconnect peers
+	Endpoint            string `json:"endpoint"`         // remote endpoint host:port
+	AllowedIPs          string `json:"allowedIPs"`       // hub-side routing (e.g. "10.8.0.2/32")
+	Address             string `json:"address"`          // tunnel IP with iface mask ("10.8.0.2/24")
+	ClientAllowedIPs    string `json:"clientAllowedIPs"` // used in the client config [Peer] section
+	PeerType            string `json:"peerType"`         // client | interconnect
+	GroupID             string `json:"groupId"`          // client-group alias ID; "" for interconnect peers
 	PersistentKeepalive int    `json:"persistentKeepalive"`
 	Enabled             bool   `json:"enabled"`
 	CreatedAt           string `json:"createdAt"`
@@ -99,13 +102,13 @@ type PeerInput struct {
 	Address             string `json:"address"`
 	ClientAllowedIPs    string `json:"clientAllowedIPs"`
 	PeerType            string `json:"peerType"`
-	GroupID             string `json:"groupId"`  // client-group alias ID (for client peers)
+	GroupID             string `json:"groupId"` // client-group alias ID (for client peers)
 	PersistentKeepalive int    `json:"persistentKeepalive"`
 	ExpiredAt           string `json:"expiredAt"` // RFC3339 or YYYY-MM-DD; "" = no expiry
 	// Special flags (not stored directly)
 	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
 	AutoAllocateIP bool   `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
-	CreatedAt      string `json:"createdAt"`       // if non-empty, overrides the auto-generated timestamp (e.g. backup import)
+	CreatedAt      string `json:"createdAt"`      // if non-empty, overrides the auto-generated timestamp (e.g. backup import)
 }
 
 // PeerUpdate contains the fields that can be changed via PATCH.
@@ -121,8 +124,8 @@ type PeerUpdate struct {
 	OneTimeLink         *string `json:"oneTimeLink"`
 	RateDown            *int    `json:"rateDown"`
 	RateUp              *int    `json:"rateUp"`
-	GroupID             *string `json:"groupId"`          // client-group alias ID
-	PreviousGroupId     *string `json:"previousGroupId"`  // set internally by expiry policy; not exposed via API
+	GroupID             *string `json:"groupId"`         // client-group alias ID
+	PreviousGroupId     *string `json:"previousGroupId"` // set internally by expiry policy; not exposed via API
 }
 
 // InterfaceData carries the interface fields needed for config/QR generation.
@@ -130,7 +133,7 @@ type PeerUpdate struct {
 type InterfaceData struct {
 	ID                      string
 	Name                    string
-	Protocol                string // "wireguard-1.0" or "amneziawg-2.0"
+	Protocol                string // "wireguard-1.0", "amneziawg-2.0", or "amneziawg-3.0"
 	PublicKey               string
 	Address                 string // CIDR e.g. "10.8.0.1/24"
 	ListenPort              int
@@ -170,6 +173,18 @@ type AWG2Settings struct {
 	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
 	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
 	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+}
+
+// HasAWG3Fields reports whether any AWG 3.0 Transport Protection field is
+// set — used to reject these fields on a non-"amneziawg-3.0" interface
+// (mirrors settings.Template.hasAWG3Fields for the same reason: templates).
+func (a *AWG2Settings) HasAWG3Fields() bool {
+	if a == nil {
+		return false
+	}
+	return a.HeaderProtectionKey != "" || a.ContentPaddingAddition != "" ||
+		a.RekeyAfterTime != "" || a.RekeyTimeout != "" || a.RejectAfterTime != "" ||
+		a.KeepaliveTimeout != "" || a.MaxHandshakeAttempts != ""
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -558,7 +573,7 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 	}
 
 	// AmneziaWG 2.0 obfuscation parameters (must match exactly on both sides).
-	if iface.Protocol == "amneziawg-2.0" && iface.Settings != nil {
+	if awgparams.IsAmneziaWG(iface.Protocol) && iface.Settings != nil {
 		s := iface.Settings
 		fmt.Fprintf(&sb, "Jc = %d\n", s.Jc)
 		fmt.Fprintf(&sb, "Jmin = %d\n", s.Jmin)
@@ -571,11 +586,21 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		fmt.Fprintf(&sb, "H2 = %s\n", s.H2)
 		fmt.Fprintf(&sb, "H3 = %s\n", s.H3)
 		fmt.Fprintf(&sb, "H4 = %s\n", s.H4)
-		if s.I1 != "" { fmt.Fprintf(&sb, "I1 = %s\n", s.I1) }
-		if s.I2 != "" { fmt.Fprintf(&sb, "I2 = %s\n", s.I2) }
-		if s.I3 != "" { fmt.Fprintf(&sb, "I3 = %s\n", s.I3) }
-		if s.I4 != "" { fmt.Fprintf(&sb, "I4 = %s\n", s.I4) }
-		if s.I5 != "" { fmt.Fprintf(&sb, "I5 = %s\n", s.I5) }
+		if s.I1 != "" {
+			fmt.Fprintf(&sb, "I1 = %s\n", s.I1)
+		}
+		if s.I2 != "" {
+			fmt.Fprintf(&sb, "I2 = %s\n", s.I2)
+		}
+		if s.I3 != "" {
+			fmt.Fprintf(&sb, "I3 = %s\n", s.I3)
+		}
+		if s.I4 != "" {
+			fmt.Fprintf(&sb, "I4 = %s\n", s.I4)
+		}
+		if s.I5 != "" {
+			fmt.Fprintf(&sb, "I5 = %s\n", s.I5)
+		}
 	}
 
 	sb.WriteString("\n[Peer]\n")
@@ -606,7 +631,7 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	proto := "WireGuard 1.0"
 	bin := "wg-quick"
-	if iface.Protocol == "amneziawg-2.0" {
+	if awgparams.IsAmneziaWG(iface.Protocol) {
 		proto = "AmneziaWG 2.0"
 		bin = "awg-quick"
 	}
@@ -647,17 +672,27 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	}
 	fmt.Fprintf(&sb, "DNS = %s\n\n", dns)
 
-	if iface.Protocol == "amneziawg-2.0" && iface.Settings != nil {
+	if awgparams.IsAmneziaWG(iface.Protocol) && iface.Settings != nil {
 		s := iface.Settings
 		sb.WriteString("# AmneziaWG 2.0 Parameters (MUST match EXACTLY on both sides!)\n")
 		fmt.Fprintf(&sb, "Jc = %d\nJmin = %d\nJmax = %d\n", s.Jc, s.Jmin, s.Jmax)
 		fmt.Fprintf(&sb, "S1 = %d\nS2 = %d\nS3 = %d\nS4 = %d\n", s.S1, s.S2, s.S3, s.S4)
 		fmt.Fprintf(&sb, "H1 = %s\nH2 = %s\nH3 = %s\nH4 = %s\n", s.H1, s.H2, s.H3, s.H4)
-		if s.I1 != "" { fmt.Fprintf(&sb, "I1 = %s\n", s.I1) }
-		if s.I2 != "" { fmt.Fprintf(&sb, "I2 = %s\n", s.I2) }
-		if s.I3 != "" { fmt.Fprintf(&sb, "I3 = %s\n", s.I3) }
-		if s.I4 != "" { fmt.Fprintf(&sb, "I4 = %s\n", s.I4) }
-		if s.I5 != "" { fmt.Fprintf(&sb, "I5 = %s\n", s.I5) }
+		if s.I1 != "" {
+			fmt.Fprintf(&sb, "I1 = %s\n", s.I1)
+		}
+		if s.I2 != "" {
+			fmt.Fprintf(&sb, "I2 = %s\n", s.I2)
+		}
+		if s.I3 != "" {
+			fmt.Fprintf(&sb, "I3 = %s\n", s.I3)
+		}
+		if s.I4 != "" {
+			fmt.Fprintf(&sb, "I4 = %s\n", s.I4)
+		}
+		if s.I5 != "" {
+			fmt.Fprintf(&sb, "I5 = %s\n", s.I5)
+		}
 		sb.WriteString("\n")
 	}
 

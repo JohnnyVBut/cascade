@@ -26,6 +26,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/routing"
@@ -190,11 +191,16 @@ func createInterface(c *fiber.Ctx) error {
 	}
 
 	awg2 := body.AWG2
-	if body.Protocol == "amneziawg-2.0" && awg2 == nil {
+	if awgparams.IsAmneziaWG(body.Protocol) && awg2 == nil {
 		var awg2Err error
-		awg2, awg2Err = mgr().BuildAWG2Params()
+		awg2, awg2Err = mgr().BuildAWG2Params(body.Protocol)
 		if awg2Err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "build AWG2 params: "+awg2Err.Error())
+		}
+	}
+	if awg2 != nil {
+		if err := requireAWG3ProtocolForFields(body.Protocol, awg2); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 	}
 	t, err := mgr().CreateInterface(tunnel.CreateInput{
@@ -311,6 +317,15 @@ func updateInterface(c *fiber.Ctx) error {
 		a, err := mapToAWG2(v)
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid settings: "+err.Error())
+		}
+		// AWG 3.0 fields are only valid on this interface's own protocol —
+		// PATCH doesn't change protocol, so check against its current value.
+		existing := mgr().GetInterface(id)
+		if existing == nil {
+			return fiber.NewError(fiber.StatusNotFound, "interface not found")
+		}
+		if err := requireAWG3ProtocolForFields(existing.Protocol, a); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 		upd.AWG2 = a
 	}
@@ -829,6 +844,20 @@ func mapToAWG2(v any) (*peer.AWG2Settings, error) {
 	a.KeepaliveTimeout = strField("keepaliveTimeout")
 	a.MaxHandshakeAttempts = strField("maxHandshakeAttempts")
 	return a, nil
+}
+
+// requireAWG3ProtocolForFields rejects AWG 3.0 Transport Protection fields
+// on any interface whose protocol isn't "amneziawg-3.0" — mirrors the same
+// rule enforced for templates (settings.CreateTemplate/UpdateTemplate).
+// Without this, a "2.0" interface could get a headerProtectionKey (etc.)
+// written into its config purely because mapToAWG2/the request body parser
+// don't know or care about the target interface's declared protocol.
+func requireAWG3ProtocolForFields(protocol string, a *peer.AWG2Settings) error {
+	if a.HasAWG3Fields() && protocol != awgparams.ProtocolAmneziaWG3 {
+		return fmt.Errorf("AWG 3.0 Transport Protection fields require protocol %q, got %q",
+			awgparams.ProtocolAmneziaWG3, protocol)
+	}
+	return nil
 }
 
 // peerDefaults returns global peer defaults from settings (DNS, clientAllowedIPs, keepalive).

@@ -31,6 +31,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/JohnnyVBut/cascade/internal/aliases"
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/tunnel"
 )
@@ -279,7 +280,7 @@ func importClientConfigs(c *fiber.Ctx) error {
 	}
 
 	bin := "wg"
-	if t.Protocol == "amneziawg-2.0" {
+	if awgparams.IsAmneziaWG(t.Protocol) {
 		bin = "awg"
 	}
 
@@ -665,7 +666,7 @@ func exportPeerJSON(c *fiber.Ctx) error {
 		"presharedKey":        p.PresharedKey,
 		"endpoint":            endpoint,
 		"persistentKeepalive": p.PersistentKeepalive,
-		"allowedIPs":          p.AllowedIPs,       // this side's tunnel IP /32
-		"clientAllowedIPs":    clientAllowedIPs,   // what remote will route through us
+		"allowedIPs":          p.AllowedIPs,     // this side's tunnel IP /32
+		"clientAllowedIPs":    clientAllowedIPs, // what remote will route through us
 	})
 }

@@ -4,6 +4,7 @@
 package api
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -175,9 +176,9 @@ func RegisterSettings(api fiber.Router) {
 
 	// ── AWG2 Templates ────────────────────────────────────────────────────────
 
-	// GET /api/templates — list all templates
+	// GET /api/templates — list templates, optionally ?version=2.0|3.0
 	api.Get("/templates", func(c *fiber.Ctx) error {
-		list, err := settings.GetTemplates()
+		list, err := settings.GetTemplates(c.Query("version"))
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
@@ -225,10 +226,15 @@ func RegisterSettings(api fiber.Router) {
 		})
 
 		if body.SaveName != "" {
+			version := "2.0"
+			if body.HeaderProtection || body.ContentPadding || body.RandomizeTimers {
+				version = "3.0"
+			}
 			tmpl, err := settings.CreateTemplate(settings.Template{
-				Name: body.SaveName,
-				Host: body.Host,
-				Jc: params.Jc, Jmin: params.Jmin, Jmax: params.Jmax,
+				Name:    body.SaveName,
+				Version: version,
+				Host:    body.Host,
+				Jc:      params.Jc, Jmin: params.Jmin, Jmax: params.Jmax,
 				S1: params.S1, S2: params.S2, S3: params.S3, S4: params.S4,
 				H1: params.H1, H2: params.H2, H3: params.H3, H4: params.H4,
 				I1: params.I1, I2: params.I2, I3: params.I3, I4: params.I4, I5: params.I5,
@@ -343,8 +349,29 @@ func RegisterSettings(api fiber.Router) {
 	})
 
 	// POST /api/templates/:id/apply — get AWG2 params from template (H1-H4 as-is, FIX-4)
+	// Optional query param ?protocol=amneziawg-2.0|amneziawg-3.0 — if given,
+	// rejects applying a template whose version doesn't match the target
+	// interface's protocol (a "2.0" template can't back a "3.0" interface and
+	// vice versa — silently dropping the mismatch would be worse than erroring).
 	api.Post("/templates/:id/apply", func(c *fiber.Ctx) error {
 		id := c.Params("id")
+		if protocol := c.Query("protocol"); protocol != "" {
+			tmpl, err := settings.GetTemplate(id)
+			if err != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+			}
+			if tmpl == nil {
+				return fiber.NewError(fiber.StatusNotFound, "template not found")
+			}
+			wantVersion := "2.0"
+			if protocol == awgparams.ProtocolAmneziaWG3 {
+				wantVersion = "3.0"
+			}
+			if tmpl.Version != wantVersion {
+				return fiber.NewError(fiber.StatusBadRequest,
+					fmt.Sprintf("template %q is version %s, cannot apply to a %s interface", tmpl.Name, tmpl.Version, protocol))
+			}
+		}
 		params, err := settings.ApplyTemplate(id)
 		if err != nil {
 			if err.Error() == "template not found" {

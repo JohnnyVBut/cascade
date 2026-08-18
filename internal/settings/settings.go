@@ -66,7 +66,8 @@ type Template struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault"`
-	Host      string `json:"host"` // self-stealing SNI host (empty = not set)
+	Version   string `json:"version"` // "2.0" (default) | "3.0" — scopes which AWG3 fields may be set
+	Host      string `json:"host"`    // self-stealing SNI host (empty = not set)
 	Jc        int    `json:"jc"`
 	Jmin      int    `json:"jmin"`
 	Jmax      int    `json:"jmax"`
@@ -237,7 +238,7 @@ const templateColumns = `id, name, is_default, host,
 	       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
 	       header_protection_key, content_padding_addition,
 	       rekey_after_time, rekey_timeout, reject_after_time,
-	       keepalive_timeout, max_handshake_attempts`
+	       keepalive_timeout, max_handshake_attempts, version`
 
 // scanTemplate scans one row's worth of templateColumns into t.
 func scanTemplate(t *Template, scan func(...any) error) error {
@@ -251,6 +252,7 @@ func scanTemplate(t *Template, scan func(...any) error) error {
 		&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
 		&t.CreatedAt,
 		&hpk, &cpa, &rat, &rt, &rejat, &kt, &mha,
+		&t.Version,
 	); err != nil {
 		return err
 	}
@@ -265,8 +267,18 @@ func scanTemplate(t *Template, scan func(...any) error) error {
 	return nil
 }
 
-func GetTemplates() ([]Template, error) {
-	rows, err := db.DB().Query(`SELECT ` + templateColumns + ` FROM templates ORDER BY created_at ASC`)
+// GetTemplates returns all templates, optionally filtered to one version
+// ("2.0" or "3.0"). Empty version returns all templates regardless of version.
+func GetTemplates(version string) ([]Template, error) {
+	query := `SELECT ` + templateColumns + ` FROM templates`
+	var args []any
+	if version != "" {
+		query += ` WHERE version = ?`
+		args = append(args, version)
+	}
+	query += ` ORDER BY created_at ASC`
+
+	rows, err := db.DB().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("templates query: %w", err)
 	}
@@ -289,9 +301,11 @@ func GetTemplate(id string) (*Template, error) {
 	return queryTemplate(`WHERE id = ?`, id)
 }
 
-// GetDefaultTemplate returns the template marked as default, or nil.
-func GetDefaultTemplate() (*Template, error) {
-	return queryTemplate(`WHERE is_default = 1`)
+// GetDefaultTemplate returns the default template for the given version
+// ("2.0" or "3.0"), or nil if that version has no default set. Default is
+// scoped per-version — see CreateTemplate's comment for why.
+func GetDefaultTemplate(version string) (*Template, error) {
+	return queryTemplate(`WHERE is_default = 1 AND version = ?`, version)
 }
 
 // CreateTemplate creates a new template with random H1-H4 ranges if not provided.
@@ -299,6 +313,15 @@ func GetDefaultTemplate() (*Template, error) {
 func CreateTemplate(data Template) (*Template, error) {
 	if data.Name == "" {
 		return nil, fmt.Errorf("template name is required")
+	}
+	if data.Version == "" {
+		data.Version = "2.0"
+	}
+	if data.Version != "2.0" && data.Version != "3.0" {
+		return nil, fmt.Errorf("invalid template version %q — must be \"2.0\" or \"3.0\"", data.Version)
+	}
+	if data.Version != "3.0" && data.hasAWG3Fields() {
+		return nil, fmt.Errorf("AWG 3.0 Transport Protection fields require version=\"3.0\"")
 	}
 	if data.HeaderProtectionKey != "" {
 		if err := validate.WGKey(data.HeaderProtectionKey); err != nil {
@@ -376,9 +399,14 @@ func CreateTemplate(data Template) (*Template, error) {
 		return nil, err
 	}
 
-	// If this is default — unset all others first.
+	// If this is default — unset other defaults of the SAME version only.
+	// "Default" is scoped per-version (2.0/3.0 each have their own default),
+	// not global — otherwise setting a v3 default would silently steal the
+	// v2 default's slot, and buildAWG2Params's fallback-to-random path for
+	// whichever version lost its default would trigger on every quick-create
+	// even though the admin never intended to give that version up.
 	if data.IsDefault {
-		if _, err := tx.Exec(`UPDATE templates SET is_default = 0`); err != nil {
+		if _, err := tx.Exec(`UPDATE templates SET is_default = 0 WHERE version = ?`, data.Version); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
@@ -390,8 +418,8 @@ func CreateTemplate(data Template) (*Template, error) {
 		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
 		     header_protection_key, content_padding_addition,
 		     rekey_after_time, rekey_timeout, reject_after_time,
-		     keepalive_timeout, max_handshake_attempts)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		     keepalive_timeout, max_handshake_attempts, version)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		data.ID, data.Name, boolInt(data.IsDefault), data.Host,
 		data.Jc, data.Jmin, data.Jmax,
 		data.S1, data.S2, data.S3, data.S4,
@@ -401,6 +429,7 @@ func CreateTemplate(data Template) (*Template, error) {
 		db.NullIfEmpty(data.HeaderProtectionKey), db.NullIfEmpty(data.ContentPaddingAddition),
 		db.NullIfEmpty(data.RekeyAfterTime), db.NullIfEmpty(data.RekeyTimeout), db.NullIfEmpty(data.RejectAfterTime),
 		db.NullIfEmpty(data.KeepaliveTimeout), db.NullIfEmpty(data.MaxHandshakeAttempts),
+		data.Version,
 	)
 	if err != nil {
 		tx.Rollback()
@@ -482,6 +511,9 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	if v, ok := updates["host"].(string); ok {
 		t.Host = v
 	}
+	if v, ok := updates["version"].(string); ok {
+		t.Version = v
+	}
 	if v, ok := updates["headerProtectionKey"].(string); ok {
 		t.HeaderProtectionKey = v
 	}
@@ -503,6 +535,12 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	if v, ok := updates["maxHandshakeAttempts"].(string); ok {
 		t.MaxHandshakeAttempts = v
 	}
+	if t.Version != "2.0" && t.Version != "3.0" {
+		return nil, fmt.Errorf("invalid template version %q — must be \"2.0\" or \"3.0\"", t.Version)
+	}
+	if t.Version != "3.0" && t.hasAWG3Fields() {
+		return nil, fmt.Errorf("AWG 3.0 Transport Protection fields require version=\"3.0\"")
+	}
 	if t.HeaderProtectionKey != "" {
 		if err := validate.WGKey(t.HeaderProtectionKey); err != nil {
 			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
@@ -518,7 +556,9 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	}
 
 	if t.IsDefault {
-		if _, err := tx.Exec(`UPDATE templates SET is_default = 0`); err != nil {
+		// Scoped to t.Version — see CreateTemplate's comment on why default
+		// isn't global across both versions.
+		if _, err := tx.Exec(`UPDATE templates SET is_default = 0 WHERE version = ?`, t.Version); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
@@ -532,7 +572,7 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		    i1=?, i2=?, i3=?, i4=?, i5=?,
 		    header_protection_key=?, content_padding_addition=?,
 		    rekey_after_time=?, rekey_timeout=?, reject_after_time=?,
-		    keepalive_timeout=?, max_handshake_attempts=?
+		    keepalive_timeout=?, max_handshake_attempts=?, version=?
 		WHERE id=?`,
 		t.Name, boolInt(t.IsDefault), t.Host,
 		t.Jc, t.Jmin, t.Jmax,
@@ -542,6 +582,7 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		db.NullIfEmpty(t.HeaderProtectionKey), db.NullIfEmpty(t.ContentPaddingAddition),
 		db.NullIfEmpty(t.RekeyAfterTime), db.NullIfEmpty(t.RekeyTimeout), db.NullIfEmpty(t.RejectAfterTime),
 		db.NullIfEmpty(t.KeepaliveTimeout), db.NullIfEmpty(t.MaxHandshakeAttempts),
+		t.Version,
 		id,
 	)
 	if err != nil {
@@ -569,14 +610,25 @@ func DeleteTemplate(id string) error {
 	return nil
 }
 
-// SetDefaultTemplate marks one template as default, unsets all others.
+// SetDefaultTemplate marks one template as default, unsets other defaults of
+// the same version only — see CreateTemplate's comment for why default is
+// scoped per-version rather than global.
 func SetDefaultTemplate(id string) (*Template, error) {
 	tx, err := db.DB().Begin()
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := tx.Exec(`UPDATE templates SET is_default = 0`); err != nil {
+	var version string
+	if err := tx.QueryRow(`SELECT version FROM templates WHERE id = ?`, id).Scan(&version); err != nil {
+		tx.Rollback()
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("template not found")
+		}
+		return nil, err
+	}
+
+	if _, err := tx.Exec(`UPDATE templates SET is_default = 0 WHERE version = ?`, version); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
@@ -612,9 +664,12 @@ func ApplyTemplate(id string) (*AWG2Params, error) {
 	return templateToParams(t), nil
 }
 
-// ApplyDefaultTemplate returns params from the default template, or nil if none set.
-func ApplyDefaultTemplate() (*AWG2Params, error) {
-	t, err := GetDefaultTemplate()
+// ApplyDefaultTemplate returns params from the default template for
+// wantVersion ("2.0" or "3.0"). Returns nil (not an error) if that version
+// has no default template set — the caller (tunnel.Manager.buildAWG2Params)
+// is expected to fall back to a freshly-generated random profile.
+func ApplyDefaultTemplate(wantVersion string) (*AWG2Params, error) {
+	t, err := GetDefaultTemplate(wantVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -870,4 +925,12 @@ func boolInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// hasAWG3Fields reports whether any AWG 3.0 Transport Protection field is
+// set — used to reject a "2.0" template that carries 3.0-only fields.
+func (t Template) hasAWG3Fields() bool {
+	return t.HeaderProtectionKey != "" || t.ContentPaddingAddition != "" ||
+		t.RekeyAfterTime != "" || t.RekeyTimeout != "" || t.RejectAfterTime != "" ||
+		t.KeepaliveTimeout != "" || t.MaxHandshakeAttempts != ""
 }

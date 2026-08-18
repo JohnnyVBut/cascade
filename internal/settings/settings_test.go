@@ -269,7 +269,7 @@ func TestGetTemplates_OrderedByCreatedAt(t *testing.T) {
 	CreateTemplate(Template{Name: "Beta"})
 	CreateTemplate(Template{Name: "Gamma"})
 
-	list, err := GetTemplates()
+	list, err := GetTemplates("")
 	if err != nil {
 		t.Fatalf("GetTemplates: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestSetDefaultTemplate(t *testing.T) {
 		t.Fatalf("SetDefaultTemplate T1: %v", err)
 	}
 
-	def, err := GetDefaultTemplate()
+	def, err := GetDefaultTemplate("2.0")
 	if err != nil {
 		t.Fatalf("GetDefaultTemplate: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestSetDefaultTemplate(t *testing.T) {
 
 	// Switch default to T2.
 	SetDefaultTemplate(t2.ID)
-	def, _ = GetDefaultTemplate()
+	def, _ = GetDefaultTemplate("2.0")
 	if def == nil || def.ID != t2.ID {
 		t.Errorf("expected default to be T2 (%s), got %v", t2.ID, def)
 	}
@@ -638,6 +638,7 @@ func TestCreateTemplate_AWG3FieldsRoundTrip(t *testing.T) {
 
 	tmpl, err := CreateTemplate(Template{
 		Name:                   "AWG3-Full",
+		Version:                "3.0",
 		S3:                     12,
 		S4:                     12,
 		HeaderProtectionKey:    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
@@ -686,7 +687,7 @@ func TestCreateTemplate_AWG3FieldsRoundTrip(t *testing.T) {
 	}
 
 	// Round-trip through GetTemplates (list query → scanTemplate).
-	list, err := GetTemplates()
+	list, err := GetTemplates("")
 	if err != nil {
 		t.Fatalf("GetTemplates: %v", err)
 	}
@@ -734,7 +735,7 @@ func TestCreateTemplate_AWG3FieldsEmpty_StoredAsNullRoundTripsEmpty(t *testing.T
 		t.Errorf("GetTemplate RekeyAfterTime = %q, want empty string", got.RekeyAfterTime)
 	}
 
-	list, err := GetTemplates()
+	list, err := GetTemplates("")
 	if err != nil {
 		t.Fatalf("GetTemplates: %v", err)
 	}
@@ -761,7 +762,10 @@ func TestUpdateTemplate_AWG3Fields_SetThenClear(t *testing.T) {
 	}
 
 	// Set it.
-	updated, err := UpdateTemplate(tmpl.ID, map[string]any{"headerProtectionKey": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA="})
+	updated, err := UpdateTemplate(tmpl.ID, map[string]any{
+		"version":             "3.0",
+		"headerProtectionKey": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+	})
 	if err != nil {
 		t.Fatalf("UpdateTemplate set: %v", err)
 	}
@@ -804,6 +808,7 @@ func TestTemplateToParams_CarriesAWG3Fields(t *testing.T) {
 
 	tmpl, err := CreateTemplate(Template{
 		Name:                 "ApplyAWG3",
+		Version:              "3.0",
 		Jc:                   9,
 		S3:                   12,
 		S4:                   12,

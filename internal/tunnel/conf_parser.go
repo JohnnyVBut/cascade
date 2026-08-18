@@ -225,6 +225,13 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 	}
 
 	if hasAWG {
+		// Always imports as 2.0, never 3.0: the .conf format has no way to
+		// express AWG 3.0 Transport Protection fields (HeaderProtectionKey,
+		// ContentPaddingAddition, timer overrides — see writeAWG3Fields in
+		// interface.go, which only ever writes them into the server-side
+		// wg-quick config, not into peer .conf exports). If .conf export for
+		// those fields is ever added, this hardcoded assignment must be
+		// revisited so re-imported configs aren't silently downgraded to 2.0.
 		c.Protocol = "amneziawg-2.0"
 		c.AWG2 = awg
 	}

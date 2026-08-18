@@ -218,7 +218,7 @@ CREATE TABLE IF NOT EXISTS interfaces (
     name         TEXT NOT NULL DEFAULT '',
     address      TEXT NOT NULL DEFAULT '',    -- CIDR e.g. "10.8.0.1/24"
     listen_port  INTEGER NOT NULL DEFAULT 555,
-    protocol     TEXT NOT NULL DEFAULT 'wireguard-1.0',  -- or "amneziawg-2.0"
+    protocol     TEXT NOT NULL DEFAULT 'wireguard-1.0',  -- or "amneziawg-2.0" / "amneziawg-3.0"
     enabled      INTEGER NOT NULL DEFAULT 0,
     disable_routes INTEGER NOT NULL DEFAULT 0,
     private_key  TEXT NOT NULL DEFAULT '',
@@ -824,6 +824,17 @@ ALTER TABLE interfaces ADD COLUMN rekey_timeout            TEXT;
 ALTER TABLE interfaces ADD COLUMN reject_after_time        TEXT;
 ALTER TABLE interfaces ADD COLUMN keepalive_timeout        TEXT;
 ALTER TABLE interfaces ADD COLUMN max_handshake_attempts   TEXT;
+`,
+	},
+	{
+		version: 42,
+		sql: `
+-- Templates are scoped to an AWG obfuscation-param version ("2.0" or
+-- "3.0"). A "2.0" template must not have any AWG 3.0 Transport Protection
+-- field set (enforced in application code, not a CHECK constraint here —
+-- SQLite's ALTER TABLE can't add one retroactively without a table rebuild).
+-- Existing rows default to "2.0" — they predate AWG 3.0 support entirely.
+ALTER TABLE templates ADD COLUMN version TEXT NOT NULL DEFAULT '2.0';
 `,
 	},
 }
