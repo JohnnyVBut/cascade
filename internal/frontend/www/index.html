@@ -2738,6 +2738,7 @@
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
                     <option value="wireguard-1.0">WireGuard 1.0</option>
                     <option value="amneziawg-2.0">AmneziaWG 2.0</option>
+                    <option value="amneziawg-3.0">AmneziaWG 3.0</option>
                   </select>
                 </div>
 
@@ -2763,6 +2764,7 @@
                     class="w-full px-3 py-2 border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
                     <option value="wireguard-1.0">WireGuard 1.0</option>
                     <option value="amneziawg-2.0">AmneziaWG 2.0</option>
+                    <option value="amneziawg-3.0">AmneziaWG 3.0</option>
                   </select>
                 </div>
 
@@ -2812,14 +2814,14 @@
                   </p>
                 </div>
 
-                <!-- AWG 2.0 settings -->
-                <div v-if="interfaceCreate.protocol === 'amneziawg-2.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
+                <!-- AWG obfuscation settings (base params, shared by 2.0 and 3.0) -->
+                <div v-if="isAmneziaWG(interfaceCreate.protocol)" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
                   <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-                    <h3 class="font-medium dark:text-neutral-200">AmneziaWG 2.0 Parameters</h3>
+                    <h3 class="font-medium dark:text-neutral-200">AmneziaWG {{ awgVersion(interfaceCreate.protocol) }} Parameters</h3>
                     <button @click="generateAndFillInterfaceParams()"
                       class="text-sm font-medium text-purple-600 dark:text-purple-400 rounded"
                       style="padding:3px 10px; border:1px solid #9333ea;"
-                      title="Generate random AWG2 params and fill fields">
+                      title="Generate random AWG params and fill fields">
                       Generate ⚡
                     </button>
                   </div>
@@ -2831,7 +2833,7 @@
                       @change="onInterfaceTemplateSelect(interfaceCreate.selectedTemplateId)"
                       class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
                       <option value="">— Manual entry —</option>
-                      <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                      <option v-for="t in templatesForVersion(awgVersion(interfaceCreate.protocol))" :key="t.id" :value="t.id">{{ t.name }}</option>
                     </select>
                     <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
                       Select a saved profile to fill parameters automatically, or enter manually below.
@@ -2935,6 +2937,68 @@
                       </div>
                     </div>
                   </div>
+                </div>
+
+                <!-- AWG 3.0 Transport Protection -->
+                <div v-if="interfaceCreate.protocol === 'amneziawg-3.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+                    <h3 class="font-medium dark:text-neutral-200">AmneziaWG 3.0 Transport Protection</h3>
+                  </div>
+                  <p class="text-xs text-gray-400 dark:text-neutral-500" style="margin-bottom:12px;">
+                    Filled automatically from the Obfuscation Profile selected above (if it's a 3.0 profile),
+                    or leave empty and use "Quick" create to fall back to a fully randomized profile.
+                  </p>
+
+                  <div style="margin-bottom:12px;">
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Header Protection Key <span class="text-gray-400 font-normal">(optional, base64 32 bytes)</span></label>
+                    <input v-model="interfaceCreate.awg3.headerProtectionKey" type="text"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                    <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                      Requires S3 and S4 both ≥ 12 in the base AWG obfuscation params.
+                    </p>
+                  </div>
+
+                  <div style="margin-bottom:12px;">
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Content Padding Addition <span class="text-gray-400 font-normal">(optional, e.g. "50-100")</span></label>
+                    <input v-model="interfaceCreate.awg3.contentPaddingAddition" type="text" placeholder="e.g. 50-100"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+
+                  <p class="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
+                    Timer overrides <span class="font-normal opacity-75">(optional, ranges e.g. "90-110")</span>
+                  </p>
+                  <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; margin-bottom:12px;">
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Rekey After Time</label>
+                      <input v-model="interfaceCreate.awg3.rekeyAfterTime" type="text" placeholder="e.g. 100-115"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Rekey Timeout</label>
+                      <input v-model="interfaceCreate.awg3.rekeyTimeout" type="text" placeholder="e.g. 4-6"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Reject After Time</label>
+                      <input v-model="interfaceCreate.awg3.rejectAfterTime" type="text" placeholder="e.g. 140-165"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Keepalive Timeout</label>
+                      <input v-model="interfaceCreate.awg3.keepaliveTimeout" type="text" placeholder="e.g. 8-12"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Max Handshake Attempts</label>
+                      <input v-model="interfaceCreate.awg3.maxHandshakeAttempts" type="text" placeholder="e.g. 15-25"
+                        class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                    </div>
+                  </div>
+                  <p class="text-xs text-gray-400 dark:text-neutral-500">
+                    Leave all fields empty to skip Transport Protection for this interface (plain AWG 3.0 params
+                    still apply). Randomized timers must satisfy Reject After Time &gt; Keepalive Timeout + Rekey
+                    Timeout — prefer a saved profile or the random fallback over hand-entering these.
+                  </p>
                 </div>
               </div><!-- end manual form -->
 
@@ -3177,10 +3241,10 @@
               <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">
                 {{ interfaceEdit.id }}
                 <span class="ml-2 px-2 py-0.5 text-xs rounded"
-                  :class="interfaceEdit.protocol === 'amneziawg-2.0'
+                  :class="isAmneziaWG(interfaceEdit.protocol)
                     ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
                     : 'bg-gray-100 text-gray-600 dark:bg-neutral-600 dark:text-neutral-300'">
-                  {{ interfaceEdit.protocol === 'amneziawg-2.0' ? 'AWG 2.0' : 'WG 1.0' }}
+                  {{ dashProtoLabel(interfaceEdit.protocol) }}
                 </span>
               </p>
             </div>
@@ -3321,9 +3385,9 @@
                 </p>
               </div>
 
-              <!-- AWG2 Settings (only for AWG 2.0 interfaces) -->
-              <div v-if="interfaceEdit.protocol === 'amneziawg-2.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
-                <p class="font-medium dark:text-neutral-200 mb-3">Obfuscation Settings (AWG 2.0)</p>
+              <!-- AWG obfuscation settings (base params, shared by 2.0 and 3.0) -->
+              <div v-if="isAmneziaWG(interfaceEdit.protocol)" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
+                <p class="font-medium dark:text-neutral-200 mb-3">Obfuscation Settings (AWG {{ awgVersion(interfaceEdit.protocol) }})</p>
 
                 <!-- Template dropdown -->
                 <div class="mb-3">
@@ -3332,7 +3396,7 @@
                     @change="onEditInterfaceTemplateSelect(interfaceEdit.selectedTemplateId)"
                     class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200">
                     <option value="">— Keep current / manual entry —</option>
-                    <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+                    <option v-for="t in templatesForVersion(awgVersion(interfaceEdit.protocol))" :key="t.id" :value="t.id">{{ t.name }}</option>
                   </select>
                   <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
                     Select a saved profile to overwrite parameters below, or edit manually.
@@ -3440,6 +3504,63 @@
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <!-- AWG3 Transport Protection (only for AWG 3.0 interfaces) -->
+              <div v-if="interfaceEdit.protocol === 'amneziawg-3.0'" class="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded">
+                <p class="font-medium dark:text-neutral-200 mb-3">Transport Protection (AWG 3.0)</p>
+                <p class="text-xs text-gray-400 dark:text-neutral-500 mb-3">
+                  Filled automatically from the Apply Profile selected above (if it's a 3.0 profile), or edit manually.
+                </p>
+
+                <div class="mb-3">
+                  <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Header Protection Key <span class="text-gray-400 font-normal">(optional, base64 32 bytes)</span></label>
+                  <input v-model="interfaceEdit.awg3.headerProtectionKey" type="text"
+                    class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">
+                    Requires S3 and S4 both ≥ 12 in the base AWG obfuscation params.
+                  </p>
+                </div>
+
+                <div class="mb-3">
+                  <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Content Padding Addition <span class="text-gray-400 font-normal">(optional, e.g. "50-100")</span></label>
+                  <input v-model="interfaceEdit.awg3.contentPaddingAddition" type="text" placeholder="e.g. 50-100"
+                    class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                </div>
+
+                <p class="text-xs text-purple-600 dark:text-purple-400 mb-2 font-medium">
+                  Timer overrides <span class="font-normal opacity-75">(optional, ranges e.g. "90-110")</span>
+                </p>
+                <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:12px; margin-bottom:12px;">
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Rekey After Time</label>
+                    <input v-model="interfaceEdit.awg3.rekeyAfterTime" type="text" placeholder="e.g. 100-115"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Rekey Timeout</label>
+                    <input v-model="interfaceEdit.awg3.rekeyTimeout" type="text" placeholder="e.g. 4-6"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Reject After Time</label>
+                    <input v-model="interfaceEdit.awg3.rejectAfterTime" type="text" placeholder="e.g. 140-165"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Keepalive Timeout</label>
+                    <input v-model="interfaceEdit.awg3.keepaliveTimeout" type="text" placeholder="e.g. 8-12"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Max Handshake Attempts</label>
+                    <input v-model="interfaceEdit.awg3.maxHandshakeAttempts" type="text" placeholder="e.g. 15-25"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                </div>
+                <p class="text-xs text-gray-400 dark:text-neutral-500">
+                  Leave all fields empty to clear Transport Protection for this interface.
+                </p>
               </div>
 
             </div><!-- /Body -->
@@ -3713,17 +3834,17 @@
             </div>
           </div>
 
-          <!-- AWG2 Templates -->
+          <!-- AWG Templates -->
           <div class="shadow-md rounded-lg bg-white dark:bg-neutral-700 overflow-hidden">
             <div class="flex items-center p-5 border-b dark:border-neutral-600">
               <div class="flex-grow">
-                <p class="text-xl font-medium dark:text-neutral-200">AWG2 Templates</p>
-                <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Named parameter sets for AmneziaWG 2.0 instances. H1-H4 are copied as-is — AWG protocol randomises within the range per handshake.</p>
+                <p class="text-xl font-medium dark:text-neutral-200">AWG Templates</p>
+                <p class="text-sm text-gray-500 dark:text-neutral-400 mt-1">Named parameter sets for AmneziaWG 2.0/3.0 instances. H1-H4 are copied as-is — AWG protocol randomises within the range per handshake.</p>
               </div>
               <div class="flex items-center gap-2">
                 <button @click="openGenerateModal()"
                   class="px-4 py-2 text-sm font-medium rounded transition flex items-center gap-1.5 border border-yellow-400 text-yellow-600 dark:text-yellow-400 dark:border-yellow-500"
-                  title="Auto-generate AWG2 obfuscation parameters (port of AmneziaWG-Architect)">
+                  title="Auto-generate AWG obfuscation parameters (port of AmneziaWG-Architect)">
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
                   </svg>
@@ -3747,18 +3868,34 @@
               </div>
             </div>
 
+            <!-- Version filter -->
+            <div style="padding:10px 20px 0;" class="flex items-center gap-2">
+              <button v-for="f in [{v:'all',l:'All'},{v:'2.0',l:'2.0'},{v:'3.0',l:'3.0'}]" :key="f.v"
+                @click="templateVersionFilter = f.v"
+                :style="templateVersionFilter === f.v
+                  ? 'padding:3px 12px; background:#7c3aed; color:#fff;'
+                  : 'padding:3px 12px; color:#6b7280;'"
+                class="text-xs font-medium rounded transition dark:text-neutral-300">
+                {{ f.l }}
+              </button>
+            </div>
+
             <!-- Empty state -->
-            <div v-if="!templates || templates.length === 0"
+            <div v-if="!filteredTemplates().length"
               class="text-center text-gray-400 dark:text-neutral-500 py-10">
-              No templates yet. Create one to quickly fill AWG2 parameters.
+              No templates yet. Create one to quickly fill AWG parameters.
             </div>
 
             <!-- Template list -->
-            <div v-for="tmpl in templates" :key="tmpl.id"
+            <div v-for="tmpl in filteredTemplates()" :key="tmpl.id"
               class="border-b last:border-b-0 dark:border-neutral-600 flex items-center gap-3"
               style="padding:8px 20px;">
               <div class="flex-grow min-w-0 flex items-center gap-2">
                 <span class="font-medium dark:text-neutral-200 text-sm">{{ tmpl.name }}</span>
+                <span class="text-xs bg-gray-100 dark:bg-neutral-600 text-gray-500 dark:text-neutral-300 rounded-full font-medium"
+                  style="padding:1px 8px;">
+                  {{ tmpl.version || '2.0' }}
+                </span>
                 <span v-if="tmpl.isDefault"
                   class="text-xs bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 rounded-full font-medium"
                   style="padding:1px 8px;">
@@ -7568,7 +7705,7 @@
           <div class="bg-white dark:bg-neutral-700 modal-panel modal-panel-md">
             <div class="modal-header dark:border-neutral-600">
               <h2 class="text-xl font-medium dark:text-neutral-200">
-                {{ templateEditTarget ? 'Edit Template' : 'New AWG2 Template' }}
+                {{ templateEditTarget ? ('Edit Template (AWG ' + (templateForm.version || '2.0') + ')') : 'New AWG2 Template' }}
               </h2>
             </div>
 
@@ -7674,6 +7811,50 @@
                 </div>
               </div>
 
+              <!-- AWG 3.0 Transport Protection (view/edit only, no manual creation path) -->
+              <div v-if="templateForm.version === '3.0'">
+                <p class="text-xs font-semibold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-wide">
+                  Transport Protection (AWG 3.0)
+                </p>
+                <div class="mb-3">
+                  <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Header Protection Key</label>
+                  <input v-model="templateForm.headerProtectionKey" type="text"
+                    class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                </div>
+                <div class="mb-3">
+                  <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Content Padding Addition</label>
+                  <input v-model="templateForm.contentPaddingAddition" type="text" placeholder="e.g. 50-100"
+                    class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Rekey After Time</label>
+                    <input v-model="templateForm.rekeyAfterTime" type="text" placeholder="e.g. 100-115"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Rekey Timeout</label>
+                    <input v-model="templateForm.rekeyTimeout" type="text" placeholder="e.g. 4-6"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Reject After Time</label>
+                    <input v-model="templateForm.rejectAfterTime" type="text" placeholder="e.g. 140-165"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Keepalive Timeout</label>
+                    <input v-model="templateForm.keepaliveTimeout" type="text" placeholder="e.g. 8-12"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium dark:text-neutral-300 mb-1">Max Handshake Attempts</label>
+                    <input v-model="templateForm.maxHandshakeAttempts" type="text" placeholder="e.g. 15-25"
+                      class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
+                  </div>
+                </div>
+              </div>
+
             </div><!-- /content area -->
 
             <div class="modal-section dark:border-neutral-600">
@@ -7761,6 +7942,29 @@
                 </select>
                 <p class="text-xs text-gray-400 dark:text-neutral-500 mt-1">Adjusts packet sizes to match browser QUIC/TLS fingerprint. Not applicable to SIP.</p>
               </div>
+
+              <!-- AWG 3.0 Transport Protection toggles -->
+              <div class="dark:border-neutral-600" style="border-top:1px solid #e5e7eb; padding-top:12px;">
+                <p class="text-sm font-medium mb-1 dark:text-neutral-200">
+                  AWG 3.0 Transport Protection
+                  <span class="text-gray-400 font-normal">(optional — enable any to generate a 3.0 profile)</span>
+                </p>
+                <div style="display:flex; flex-direction:column; gap:6px;">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="generateForm.headerProtection" class="w-4 h-4">
+                    <span class="text-sm dark:text-neutral-300">Header Protection Key</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="generateForm.contentPadding" class="w-4 h-4">
+                    <span class="text-sm dark:text-neutral-300">Content Padding Addition</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="generateForm.randomizeTimers" class="w-4 h-4">
+                    <span class="text-sm dark:text-neutral-300">Randomize Timers</span>
+                  </label>
+                </div>
+              </div>
+
               <button @click="generateParams()" :disabled="generatingParams"
                 class="w-full py-2 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-60 text-white rounded font-medium text-sm transition flex items-center justify-center gap-2">
                 <svg v-if="generatingParams" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -7794,6 +7998,19 @@
                   <span class="truncate"><span class="text-gray-400">H4=</span>{{ generatedParams.h4 }}</span>
                 </div>
                 <div class="break-all"><span class="text-gray-400">I1=</span>{{ generatedParams.i1 }}</div>
+                <div v-if="generatedParams.headerProtectionKey" class="break-all">
+                  <span class="text-gray-400">HeaderProtectionKey=</span>{{ generatedParams.headerProtectionKey }}
+                </div>
+                <div v-if="generatedParams.contentPaddingAddition">
+                  <span class="text-gray-400">ContentPaddingAddition=</span>{{ generatedParams.contentPaddingAddition }}
+                </div>
+                <div v-if="generatedParams.rejectAfterTime" class="flex flex-wrap gap-x-4 gap-y-1">
+                  <span><span class="text-gray-400">RekeyAfterTime=</span>{{ generatedParams.rekeyAfterTime }}</span>
+                  <span><span class="text-gray-400">RekeyTimeout=</span>{{ generatedParams.rekeyTimeout }}</span>
+                  <span><span class="text-gray-400">RejectAfterTime=</span>{{ generatedParams.rejectAfterTime }}</span>
+                  <span><span class="text-gray-400">KeepaliveTimeout=</span>{{ generatedParams.keepaliveTimeout }}</span>
+                  <span><span class="text-gray-400">MaxHandshakeAttempts=</span>{{ generatedParams.maxHandshakeAttempts }}</span>
+                </div>
               </div>
               <div v-if="generatedParams" class="dark:border-neutral-600" style="border-top:1px solid #e5e7eb; padding-top:16px; display:flex; flex-direction:column; gap:10px;">
                 <input v-model="generateForm.saveName" type="text" placeholder="Template name..."

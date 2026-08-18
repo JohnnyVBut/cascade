@@ -363,19 +363,24 @@ new Vue({
     },
     settingsSaved: false,
     templates: [],
+    templateVersionFilter: 'all', // 'all' | '2.0' | '3.0'
     showTemplateModal: false,
     templateEditTarget: null, // null = create, object = edit
     templateForm: {
       name: '',
       isDefault: false,
+      version: '2.0',
       host: '',
       jc: 6, jmin: 10, jmax: 50,
       s1: 64, s2: 67, s3: 64, s4: 4,
       h1: '', h2: '', h3: '', h4: '',
       i1: '', i2: '', i3: '', i4: '', i5: '',
+      headerProtectionKey: '', contentPaddingAddition: '',
+      rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+      keepaliveTimeout: '', maxHandshakeAttempts: '',
     },
 
-    // Generate AWG2 modal
+    // Generate AWG2/3.0 modal
     showGenerateModal: false,
     generateForm: {
       profile: 'random',
@@ -383,6 +388,9 @@ new Vue({
       host: '',
       browser: '',
       saveName: '',
+      headerProtection: false,
+      contentPadding: false,
+      randomizeTimers: false,
     },
     generatedParams: null,
     generatingParams: false,
@@ -1314,10 +1322,10 @@ new Vue({
           return;
         }
 
-        if (this.interfaceCreate.protocol === 'amneziawg-2.0') {
-          if (!this.interfaceCreate.settings.h1 || !this.interfaceCreate.settings.h2 ||
-              !this.interfaceCreate.settings.h3 || !this.interfaceCreate.settings.h4) {
-            this.showToast('Please set H1-H4 parameters for AWG 2.0 (select a profile or enter manually)', 'error');
+        if (this.isAmneziaWG(this.interfaceCreate.protocol)) {
+          const s = this.interfaceCreate.settings;
+          if (!s.h1 || !s.h2 || !s.h3 || !s.h4) {
+            this.showToast('Please set H1-H4 parameters for AmneziaWG (select a profile or enter manually)', 'error');
             return;
           }
         }
@@ -1333,6 +1341,10 @@ new Vue({
 
         if (this.interfaceCreate.protocol === 'amneziawg-2.0') {
           payload.settings = this.interfaceCreate.settings;
+        } else if (this.interfaceCreate.protocol === 'amneziawg-3.0') {
+          // AWG 3.0 carries the base obfuscation params PLUS the Transport
+          // Protection fields — omitting the base fields would zero them out.
+          payload.settings = { ...this.interfaceCreate.settings, ...this.interfaceCreate.awg3 };
         }
 
         const newIface = await this.api.createTunnelInterface(payload);
@@ -1377,7 +1389,8 @@ new Vue({
         const iface = data.interface || {};
         const addr  = iface.address    || '';
         const port  = iface.listenPort || '';
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : '';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : '';
 
         if (data.started) {
           this.showToast(`✅ ${iface.id} created & started\n${addr} · UDP ${port}${proto}`, 'success');
@@ -1430,7 +1443,8 @@ new Vue({
         this.loadFirewallInterfaces();
 
         const iface = res.interface || {};
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : ' · WG1';
         if (res.conflictWarning) {
           this.showToast(`⚠️ ${res.conflictWarning}`, 'error');
         }
@@ -1492,7 +1506,8 @@ new Vue({
         this.loadFirewallInterfaces();
 
         const iface = res.interface || {};
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : ' · WG1';
         const failed = (res.peersFailed || []).length;
 
         if (res.started) {
@@ -1555,7 +1570,8 @@ new Vue({
         this.loadNatInterfaces();
         this.loadFirewallInterfaces();
         const iface = res.interface || {};
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : ' · WG1';
         const msg = res.started
           ? `✅ Interface restored: ${iface.id} · ${iface.address}${proto} · ${res.peersCreated} peers`
           : `⚠️ Interface restored but failed to start: ${res.startError || ''}`;
@@ -1590,7 +1606,7 @@ new Vue({
           i4:   params.i4   ?? this.interfaceCreate.settings.i4,
           i5:   params.i5   ?? this.interfaceCreate.settings.i5,
         });
-        this.showToast('AWG2 params generated ✓', 'success');
+        this.showToast('AWG params generated ✓', 'success');
       } catch (err) {
         console.error('generateAndFillInterfaceParams failed:', err);
         this.showToast(`Failed to generate params: ${err.message}`, 'error');
@@ -1609,7 +1625,19 @@ new Vue({
           h1: '', h2: '', h3: '', h4: '',
           i1: '', i2: '', i3: '', i4: '', i5: '',
         },
+        awg3: {
+          headerProtectionKey: '', contentPaddingAddition: '',
+          rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+          keepaliveTimeout: '', maxHandshakeAttempts: '',
+        },
       };
+    },
+
+    // templatesForVersion filters the loaded template list to a given AWG
+    // version ("2.0"/"3.0") — templates predating the version column default
+    // to "2.0" server-side, so untagged templates are treated as 2.0 here too.
+    templatesForVersion(version) {
+      return (this.templates || []).filter(t => (t.version || '2.0') === version);
     },
 
     // ========================================================================
@@ -1679,6 +1707,15 @@ new Vue({
           h1:   s.h1   || '',  h2:   s.h2   || '',  h3:   s.h3  || '',  h4: s.h4 || '',
           i1:   s.i1   || '',  i2:   s.i2   || '',  i3:   s.i3  || '',  i4: s.i4 || '',  i5: s.i5 || '',
         },
+        awg3: {
+          headerProtectionKey:    s.headerProtectionKey    || '',
+          contentPaddingAddition: s.contentPaddingAddition || '',
+          rekeyAfterTime:         s.rekeyAfterTime         || '',
+          rekeyTimeout:           s.rekeyTimeout           || '',
+          rejectAfterTime:        s.rejectAfterTime        || '',
+          keepaliveTimeout:       s.keepaliveTimeout       || '',
+          maxHandshakeAttempts:   s.maxHandshakeAttempts   || '',
+        },
       };
       this.showInterfaceEdit = true;
     },
@@ -1701,19 +1738,29 @@ new Vue({
         i1:   tmpl.i1 || '', i2: tmpl.i2 || '', i3: tmpl.i3 || '',
         i4:   tmpl.i4 || '', i5: tmpl.i5 || '',
       };
+      // 2.0 templates never carry these — fields stay empty, which is fine.
+      this.interfaceEdit.awg3 = {
+        headerProtectionKey: tmpl.headerProtectionKey || '',
+        contentPaddingAddition: tmpl.contentPaddingAddition || '',
+        rekeyAfterTime: tmpl.rekeyAfterTime || '',
+        rekeyTimeout: tmpl.rekeyTimeout || '',
+        rejectAfterTime: tmpl.rejectAfterTime || '',
+        keepaliveTimeout: tmpl.keepaliveTimeout || '',
+        maxHandshakeAttempts: tmpl.maxHandshakeAttempts || '',
+      };
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, natDisabled, dns, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, dns, publicHost, mtu, mss, protocol, settings, awg3 } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
         this.showToast('Please enter Tunnel Address in CIDR format (e.g. 10.100.0.1/24)', 'error');
         return;
       }
-      if (protocol === 'amneziawg-2.0') {
+      if (this.isAmneziaWG(protocol)) {
         if (!settings.h1 || !settings.h2 || !settings.h3 || !settings.h4) {
-          this.showToast('Please set H1-H4 parameters for AWG 2.0 (select a profile or enter manually)', 'error');
+          this.showToast('Please set H1-H4 parameters for AmneziaWG (select a profile or enter manually)', 'error');
           return;
         }
       }
@@ -1731,6 +1778,10 @@ new Vue({
       };
       if (protocol === 'amneziawg-2.0') {
         payload.settings = { ...settings };
+      } else if (protocol === 'amneziawg-3.0') {
+        // AWG 3.0 carries the base obfuscation params PLUS the Transport
+        // Protection fields — omitting the base fields would zero them out.
+        payload.settings = { ...settings, ...awg3 };
       }
 
       try {
@@ -4068,10 +4119,25 @@ new Vue({
 
     // Human-readable protocol label for dashboard badges
     dashProtoLabel(protocol) {
-      if (protocol === 'wireguard') return 'WG1.0';
+      if (protocol === 'wireguard' || protocol === 'wireguard-1.0') return 'WG1.0';
       if (protocol === 'amneziawg-2.0') return 'AWG2.0';
+      if (protocol === 'amneziawg-3.0') return 'AWG3.0';
       if (protocol === 'amneziawg') return 'AWG';
       return protocol || 'WG';
+    },
+
+    // isAmneziaWG mirrors the backend's awgparams.IsAmneziaWG — true for
+    // both AWG 2.0 and 3.0, false for plain WireGuard.
+    isAmneziaWG(protocol) {
+      return protocol === 'amneziawg-2.0' || protocol === 'amneziawg-3.0';
+    },
+
+    // awgVersion maps a full protocol string to its AWG template version
+    // ("2.0"/"3.0"), or null for non-AWG protocols (e.g. wireguard-1.0).
+    awgVersion(protocol) {
+      if (protocol === 'amneziawg-2.0') return '2.0';
+      if (protocol === 'amneziawg-3.0') return '3.0';
+      return null;
     },
 
     // ── End Dashboard ──────────────────────────────────────────────────────────
@@ -5523,10 +5589,14 @@ new Vue({
       this.templateForm = {
         name: '',
         isDefault: false,
+        version: '2.0',
         jc: 6, jmin: 10, jmax: 50,
         s1: 64, s2: 67, s3: 64, s4: 4,
         h1: '', h2: '', h3: '', h4: '',
         i1: '', i2: '', i3: '', i4: '', i5: '',
+        headerProtectionKey: '', contentPaddingAddition: '',
+        rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+        keepaliveTimeout: '', maxHandshakeAttempts: '',
       };
       this.randomiseTemplateH();
       this.templateEditTarget = null;
@@ -5537,6 +5607,12 @@ new Vue({
       this.templateForm = { ...tmpl };
       this.templateEditTarget = tmpl;
       this.showTemplateModal = true;
+    },
+
+    // filteredTemplates returns this.templates narrowed by templateVersionFilter.
+    filteredTemplates() {
+      if (this.templateVersionFilter === 'all') return this.templates || [];
+      return this.templatesForVersion(this.templateVersionFilter);
     },
 
     async saveTemplate() {
@@ -5630,7 +5706,10 @@ new Vue({
     // ── Generate AWG2 modal ───────────────────────────────────────────────────
 
     openGenerateModal() {
-      this.generateForm = { profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '' };
+      this.generateForm = {
+        profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '',
+        headerProtection: false, contentPadding: false, randomizeTimers: false,
+      };
       this.generatedParams = null;
       this.showGenerateModal = true;
     },
@@ -5643,6 +5722,9 @@ new Vue({
           intensity: this.generateForm.intensity,
           host:      this.generateForm.host || undefined,
           browser:   this.generateForm.browser || undefined,
+          headerProtection: this.generateForm.headerProtection,
+          contentPadding:   this.generateForm.contentPadding,
+          randomizeTimers:  this.generateForm.randomizeTimers,
         });
         this.generatedParams = res.params;
         if (!this.generateProfiles.length && res.profiles) {
@@ -5655,6 +5737,13 @@ new Vue({
       }
     },
 
+    // isGeneratingV3 mirrors the backend's version-selection rule in
+    // POST /templates/generate: any of the three toggles → a "3.0" template.
+    isGeneratingV3() {
+      const f = this.generateForm;
+      return !!(f.headerProtection || f.contentPadding || f.randomizeTimers);
+    },
+
     async saveGeneratedTemplate() {
       if (!this.generatedParams) return;
       const name = this.generateForm.saveName.trim();
@@ -5663,7 +5752,11 @@ new Vue({
         return;
       }
       try {
-        await this.api.createTemplate({ name, ...this.generatedParams });
+        await this.api.createTemplate({
+          name,
+          version: this.isGeneratingV3() ? '3.0' : '2.0',
+          ...this.generatedParams,
+        });
         await this.loadSettings();
         this.showGenerateModal = false;
         this.showToast(`Profile "${name}" saved`, 'success');
@@ -5678,12 +5771,20 @@ new Vue({
       this.templateForm = {
         name: this.generateForm.saveName || '',
         isDefault: false,
+        version: this.isGeneratingV3() ? '3.0' : '2.0',
         host: this.generateForm.host || '',
         jc: p.jc, jmin: p.jmin, jmax: p.jmax,
         s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4,
         h1: p.h1, h2: p.h2, h3: p.h3, h4: p.h4,
         i1: p.i1 || '', i2: p.i2 || '', i3: p.i3 || '',
         i4: p.i4 || '', i5: p.i5 || '',
+        headerProtectionKey: p.headerProtectionKey || '',
+        contentPaddingAddition: p.contentPaddingAddition || '',
+        rekeyAfterTime: p.rekeyAfterTime || '',
+        rekeyTimeout: p.rekeyTimeout || '',
+        rejectAfterTime: p.rejectAfterTime || '',
+        keepaliveTimeout: p.keepaliveTimeout || '',
+        maxHandshakeAttempts: p.maxHandshakeAttempts || '',
       };
       this.templateEditTarget = null;
       this.showGenerateModal = false;
@@ -5706,6 +5807,16 @@ new Vue({
         h1: tmpl.h1,    h2: tmpl.h2,      h3: tmpl.h3,   h4: tmpl.h4,
         i1: tmpl.i1 || '', i2: tmpl.i2 || '', i3: tmpl.i3 || '',
         i4: tmpl.i4 || '', i5: tmpl.i5 || '',
+      };
+      // 2.0 templates never carry these — fields stay empty, which is fine.
+      this.interfaceCreate.awg3 = {
+        headerProtectionKey: tmpl.headerProtectionKey || '',
+        contentPaddingAddition: tmpl.contentPaddingAddition || '',
+        rekeyAfterTime: tmpl.rekeyAfterTime || '',
+        rekeyTimeout: tmpl.rekeyTimeout || '',
+        rejectAfterTime: tmpl.rejectAfterTime || '',
+        keepaliveTimeout: tmpl.keepaliveTimeout || '',
+        maxHandshakeAttempts: tmpl.maxHandshakeAttempts || '',
       };
     },
 
