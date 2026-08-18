@@ -278,6 +278,117 @@ func TestGenerateCompleteConfig_AWG2WithSettings(t *testing.T) {
 	}
 }
 
+func TestGenerateCompleteConfig_AWG3WritesTransportProtectionFields(t *testing.T) {
+	p := &Peer{
+		Name:                "awg3-client",
+		PrivateKey:          "privatekey789",
+		Address:             "10.9.0.2/24",
+		ClientAllowedIPs:    "0.0.0.0/0",
+		PersistentKeepalive: 25,
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+		Address:    "10.9.0.1/24",
+		Host:       "awg3.example.com",
+		ListenPort: 51822,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "100000000-150000000", H2: "1200000000-1250000000",
+			H3: "2400000000-2450000000", H4: "3600000000-3650000000",
+			HeaderProtectionKey:    "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+			ContentPaddingAddition: "50-100",
+			RekeyAfterTime:         "100-115",
+			RekeyTimeout:           "4-6",
+			RejectAfterTime:        "140-165",
+			KeepaliveTimeout:       "8-12",
+			MaxHandshakeAttempts:   "15-25",
+		},
+	}
+	cfg := p.generateCompleteConfig(iface)
+
+	for _, want := range []string{
+		"HeaderProtectionKey = YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+		"ContentPaddingAddition = 50-100",
+		"RekeyAfterTime = 100-115",
+		"RekeyTimeout = 4-6",
+		"RejectAfterTime = 140-165",
+		"KeepaliveTimeout = 8-12",
+		"MaxHandshakeAttempts = 15-25",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("expected client config to contain %q, got:\n%s", want, cfg)
+		}
+	}
+}
+
+func TestGenerateCompleteConfig_AWG2OmitsTransportProtectionFields(t *testing.T) {
+	// A 2.0 interface must never emit AWG3 fields even if Settings somehow
+	// carries stale values (e.g. downgraded from 3.0) — the 2.0 wg-quick
+	// binary would reject unknown keys.
+	p := &Peer{
+		Name:                "awg2-client",
+		PrivateKey:          "privatekey321",
+		Address:             "10.9.0.3/24",
+		ClientAllowedIPs:    "0.0.0.0/0",
+		PersistentKeepalive: 25,
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-2.0",
+		PublicKey:  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+		Address:    "10.9.0.1/24",
+		ListenPort: 51823,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			HeaderProtectionKey: "stale-key-should-not-appear",
+		},
+	}
+	cfg := p.generateCompleteConfig(iface)
+
+	if strings.Contains(cfg, "HeaderProtectionKey") {
+		t.Errorf("expected AWG 2.0 config to omit HeaderProtectionKey, got:\n%s", cfg)
+	}
+}
+
+func TestGenerateTemplateConfig_AWG3LabelAndFields(t *testing.T) {
+	// Regression test: generateTemplateConfig used to hardcode the protocol
+	// label as "AmneziaWG 2.0" for any AWG interface and never wrote the
+	// Transport Protection fields, so a manually-configured AWG 3.0 peer's
+	// instructional config both mislabeled itself and lacked the key needed
+	// to complete a handshake against the server.
+	p := &Peer{
+		Name:             "awg3-manual-client",
+		ClientAllowedIPs: "0.0.0.0/0",
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE=",
+		Host:       "awg3.example.com",
+		ListenPort: 51824,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			HeaderProtectionKey: "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+			RejectAfterTime:     "140-165",
+		},
+	}
+	cfg := p.generateTemplateConfig(iface)
+
+	if !strings.Contains(cfg, "Protocol: AmneziaWG 3.0") {
+		t.Errorf("expected template config to label itself AmneziaWG 3.0, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "HeaderProtectionKey = YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=") {
+		t.Errorf("expected template config to contain HeaderProtectionKey, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "RejectAfterTime = 140-165") {
+		t.Errorf("expected template config to contain RejectAfterTime, got:\n%s", cfg)
+	}
+}
+
 func TestGenerateCompleteConfig_AddressFromStoredField(t *testing.T) {
 	p := &Peer{
 		PrivateKey:          "pk",

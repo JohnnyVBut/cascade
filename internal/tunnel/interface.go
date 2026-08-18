@@ -1038,6 +1038,10 @@ func (t *TunnelInterface) RegenerateConfig() error {
 // generateWgConfig (full config, wg-quick) and generateSyncConfig (stripped
 // config, `awg syncconf`) so the two config builders can't drift apart on
 // which fields they emit.
+//
+// Field names/format must stay in sync with internal/peer/peer.go's
+// writeAWG3Fields (same name, separate function — internal/peer cannot
+// import internal/tunnel, which already imports internal/peer).
 func writeAWG3Fields(sb *strings.Builder, a *peer.AWG2Settings) {
 	if a.HeaderProtectionKey != "" {
 		sb.WriteString(fmt.Sprintf("HeaderProtectionKey = %s\n", a.HeaderProtectionKey))
@@ -1486,11 +1490,12 @@ func (t *TunnelInterface) ExportInterfaceParams(wgHost string) InterfaceExport {
 	return exp
 }
 
-// ExportObfuscationParams returns a copy of this interface's AWG2 obfuscation params.
-// Returns an error if the interface is not amneziawg-2.0.
+// ExportObfuscationParams returns a copy of this interface's AWG obfuscation
+// params (2.0 base fields, plus the 7 AWG3 Transport Protection fields when set).
+// Returns an error if the interface is not amneziawg-2.0 or amneziawg-3.0.
 func (t *TunnelInterface) ExportObfuscationParams() (*peer.AWG2Settings, error) {
 	if !awgparams.IsAmneziaWG(t.Protocol) {
-		return nil, fmt.Errorf("obfuscation params only available for amneziawg-2.0 interfaces")
+		return nil, fmt.Errorf("obfuscation params only available for amneziawg-2.0/3.0 interfaces")
 	}
 	if t.AWG2 == nil {
 		return nil, fmt.Errorf("interface %s has no AWG2 params configured", t.ID)

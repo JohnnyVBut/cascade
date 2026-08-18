@@ -572,7 +572,7 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		fmt.Fprintf(&sb, "MTU = %d\n", iface.MTU)
 	}
 
-	// AmneziaWG 2.0 obfuscation parameters (must match exactly on both sides).
+	// AmneziaWG obfuscation parameters (must match exactly on both sides).
 	if awgparams.IsAmneziaWG(iface.Protocol) && iface.Settings != nil {
 		s := iface.Settings
 		fmt.Fprintf(&sb, "Jc = %d\n", s.Jc)
@@ -600,6 +600,12 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		}
 		if s.I5 != "" {
 			fmt.Fprintf(&sb, "I5 = %s\n", s.I5)
+		}
+		// AWG 3.0 Transport Protection — HeaderProtectionKey in particular
+		// MUST match the server or handshakes are silently dropped, since
+		// the server unwraps headers using this key before any WG parsing.
+		if iface.Protocol == awgparams.ProtocolAmneziaWG3 {
+			writeAWG3Fields(&sb, s)
 		}
 	}
 
@@ -631,7 +637,10 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	proto := "WireGuard 1.0"
 	bin := "wg-quick"
-	if awgparams.IsAmneziaWG(iface.Protocol) {
+	if iface.Protocol == awgparams.ProtocolAmneziaWG3 {
+		proto = "AmneziaWG 3.0"
+		bin = "awg-quick"
+	} else if awgparams.IsAmneziaWG(iface.Protocol) {
 		proto = "AmneziaWG 2.0"
 		bin = "awg-quick"
 	}
@@ -674,7 +683,7 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 
 	if awgparams.IsAmneziaWG(iface.Protocol) && iface.Settings != nil {
 		s := iface.Settings
-		sb.WriteString("# AmneziaWG 2.0 Parameters (MUST match EXACTLY on both sides!)\n")
+		fmt.Fprintf(&sb, "# %s Parameters (MUST match EXACTLY on both sides!)\n", proto)
 		fmt.Fprintf(&sb, "Jc = %d\nJmin = %d\nJmax = %d\n", s.Jc, s.Jmin, s.Jmax)
 		fmt.Fprintf(&sb, "S1 = %d\nS2 = %d\nS3 = %d\nS4 = %d\n", s.S1, s.S2, s.S3, s.S4)
 		fmt.Fprintf(&sb, "H1 = %s\nH2 = %s\nH3 = %s\nH4 = %s\n", s.H1, s.H2, s.H3, s.H4)
@@ -692,6 +701,9 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 		}
 		if s.I5 != "" {
 			fmt.Fprintf(&sb, "I5 = %s\n", s.I5)
+		}
+		if iface.Protocol == awgparams.ProtocolAmneziaWG3 {
+			writeAWG3Fields(&sb, s)
 		}
 		sb.WriteString("\n")
 	}
@@ -723,6 +735,39 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	sb.WriteString("# ═══════════════════════════════════════════════════════════════\n")
 
 	return sb.String()
+}
+
+// writeAWG3Fields appends AWG 3.0 Transport Protection fields to a client
+// [Interface] block. HeaderProtectionKey in particular must match the
+// server exactly — the server unwraps headers with this key before any
+// WireGuard handshake parsing happens, so an omitted/mismatched key causes
+// handshakes to be silently dropped rather than fail with a visible error.
+//
+// Field names/format must stay in sync with internal/tunnel/interface.go's
+// writeAWG3Fields (same name, separate function — internal/peer cannot
+// import internal/tunnel, which already imports internal/peer).
+func writeAWG3Fields(sb *strings.Builder, s *AWG2Settings) {
+	if s.HeaderProtectionKey != "" {
+		fmt.Fprintf(sb, "HeaderProtectionKey = %s\n", s.HeaderProtectionKey)
+	}
+	if s.ContentPaddingAddition != "" {
+		fmt.Fprintf(sb, "ContentPaddingAddition = %s\n", s.ContentPaddingAddition)
+	}
+	if s.RekeyAfterTime != "" {
+		fmt.Fprintf(sb, "RekeyAfterTime = %s\n", s.RekeyAfterTime)
+	}
+	if s.RekeyTimeout != "" {
+		fmt.Fprintf(sb, "RekeyTimeout = %s\n", s.RekeyTimeout)
+	}
+	if s.RejectAfterTime != "" {
+		fmt.Fprintf(sb, "RejectAfterTime = %s\n", s.RejectAfterTime)
+	}
+	if s.KeepaliveTimeout != "" {
+		fmt.Fprintf(sb, "KeepaliveTimeout = %s\n", s.KeepaliveTimeout)
+	}
+	if s.MaxHandshakeAttempts != "" {
+		fmt.Fprintf(sb, "MaxHandshakeAttempts = %s\n", s.MaxHandshakeAttempts)
+	}
 }
 
 // ── QR code ───────────────────────────────────────────────────────────────────
