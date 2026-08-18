@@ -2303,7 +2303,7 @@
                 <div class="flex flex-wrap gap-3 text-sm mb-4">
                   <div>
                     <span class="text-gray-500 dark:text-neutral-400">Protocol:</span>
-                    <span class="font-medium dark:text-neutral-200 ml-1">{{ currentInterface.protocol === 'amneziawg-2.0' ? 'AWG 2.0' : 'WG 1.0' }}</span>
+                    <span class="font-medium dark:text-neutral-200 ml-1">{{ dashProtoLabel(currentInterface.protocol) }}</span>
                   </div>
                   <div v-if="currentInterface.address">
                     <span class="text-gray-500 dark:text-neutral-400">Address:</span>
