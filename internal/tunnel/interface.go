@@ -416,6 +416,37 @@ func (t *TunnelInterface) PeerCount() int {
 	return len(t.peers)
 }
 
+// ConsumeOneTimeLink atomically finds the peer whose OneTimeLink matches
+// token and clears it in-memory, returning that peer — or nil if no peer
+// currently holds this token (never issued, or already consumed).
+//
+// This must happen under a single peersMu write lock rather than as a
+// separate "scan under RLock, clear under a later Lock" sequence: two
+// concurrent requests for the same still-valid token could otherwise both
+// pass the scan before either clears it, letting a "one-time" link be used
+// twice. Doing the find-and-clear as one atomic step means only the first
+// caller ever observes the token as valid; every other concurrent (or
+// later) caller sees it already cleared.
+//
+// Does not touch SQLite — callers persist the clear afterwards (best
+// effort; a failure to persist just means the in-memory guarantee above
+// still holds for this process's lifetime, matching the previous code's
+// existing best-effort persistence).
+func (t *TunnelInterface) ConsumeOneTimeLink(token string) *peer.Peer {
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+	for id, p := range t.peers {
+		if p.OneTimeLink != token {
+			continue
+		}
+		cp := *p
+		cp.OneTimeLink = ""
+		t.peers[id] = &cp
+		return &cp
+	}
+	return nil
+}
+
 // ── Peer CRUD ─────────────────────────────────────────────────────────────────
 
 // peerEffectiveRateLimits returns the rate limits that should be applied via tc
