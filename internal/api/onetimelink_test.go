@@ -46,7 +46,7 @@ func TestGetPeerConfigByToken_ValidTokenReturnsConfigAndConsumesToken(t *testing
 	app := newOTLApp()
 
 	req := httptest.NewRequest("GET", "/cnf/"+token, nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 5000)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestGetPeerConfigByToken_ValidTokenReturnsConfigAndConsumesToken(t *testing
 
 	// Token must be consumed — a second request for the same token 404s.
 	req2 := httptest.NewRequest("GET", "/cnf/"+token, nil)
-	resp2, err := app.Test(req2)
+	resp2, err := app.Test(req2, 5000)
 	if err != nil {
 		t.Fatalf("second request failed: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestGetPeerConfigByToken_UnknownTokenReturns404(t *testing.T) {
 
 	app := newOTLApp()
 	req := httptest.NewRequest("GET", "/cnf/"+unknownToken, nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 5000)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestGetPeerConfigByToken_UnknownTokenReturns404(t *testing.T) {
 func TestGetPeerConfigByToken_ShortTokenReturns404WithoutLookup(t *testing.T) {
 	app := newOTLApp()
 	req := httptest.NewRequest("GET", "/cnf/tooshort", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 5000)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestGetPeerConfigByToken_ConcurrentRequestsOnlyOneSucceeds(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			req := httptest.NewRequest("GET", "/cnf/"+token, nil)
-			resp, err := app.Test(req)
+			resp, err := app.Test(req, 5000)
 			if err != nil {
 				t.Errorf("request failed: %v", err)
 				return
