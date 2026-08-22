@@ -266,6 +266,12 @@ new Vue({
         h1: '', h2: '', h3: '', h4: '',
         i1: '', i2: '', i3: '', i4: '', i5: '',
       },
+      awg3: {
+        headerProtectionKey: '', contentPaddingAddition: '',
+        rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+        keepaliveTimeout: '', maxHandshakeAttempts: '',
+        randomTrailers: '', disableCookies: '',
+      },
     },
     showPeerCreate: false, // manual peer create modal
     showQuickPeerCreate: false, // quick peer create dialog
@@ -283,6 +289,12 @@ new Vue({
         s1: 64, s2: 67, s3: 64, s4: 4,
         h1: '', h2: '', h3: '', h4: '',
         i1: '', i2: '', i3: '', i4: '', i5: '',
+      },
+      awg3: {
+        headerProtectionKey: '', contentPaddingAddition: '',
+        rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+        keepaliveTimeout: '', maxHandshakeAttempts: '',
+        randomTrailers: '', disableCookies: '',
       },
     },
     peerCreate: {
