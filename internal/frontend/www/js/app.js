@@ -5700,18 +5700,30 @@ new Vue({
 
     /**
      * Экспортировать профиль обфускации в JSON файл.
-     * Скачивает файл с AWG2 параметрами шаблона.
-     * Формат: { name, jc, jmin, jmax, s1-s4, h1-h4, i1-i5 }.
+     * Скачивает файл со всеми параметрами шаблона, включая version и AWG 3.0
+     * Transport Protection поля — без version импорт на другом сервере всегда
+     * создавал бы шаблон как "2.0" (backend-дефолт), теряя AWG3-профиль.
      * Поля meta (id, isDefault, createdAt) не включаются — они специфичны для этого сервера.
      */
     exportTemplateJSON(tmpl) {
       const params = {
         name: tmpl.name,
+        version: tmpl.version || '2.0',
+        host: tmpl.host || null,
         jc: tmpl.jc, jmin: tmpl.jmin, jmax: tmpl.jmax,
         s1: tmpl.s1, s2: tmpl.s2, s3: tmpl.s3, s4: tmpl.s4,
         h1: tmpl.h1, h2: tmpl.h2, h3: tmpl.h3, h4: tmpl.h4,
         i1: tmpl.i1 || null, i2: tmpl.i2 || null, i3: tmpl.i3 || null,
         i4: tmpl.i4 || null, i5: tmpl.i5 || null,
+        headerProtectionKey: tmpl.headerProtectionKey || null,
+        contentPaddingAddition: tmpl.contentPaddingAddition || null,
+        rekeyAfterTime: tmpl.rekeyAfterTime || null,
+        rekeyTimeout: tmpl.rekeyTimeout || null,
+        rejectAfterTime: tmpl.rejectAfterTime || null,
+        keepaliveTimeout: tmpl.keepaliveTimeout || null,
+        maxHandshakeAttempts: tmpl.maxHandshakeAttempts || null,
+        randomTrailers: tmpl.randomTrailers || null,
+        disableCookies: tmpl.disableCookies || null,
       };
       const blob = new Blob([JSON.stringify(params, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -6768,8 +6780,13 @@ new Vue({
       let remoteIfaceId = '';
       try {
         const body = { name: w.remoteIfaceName, address: subnet.remoteAddr, disableRoutes: true, protocol: w.protocol };
-        // Pass AWG2 settings from local interface so remote doesn't need to generate them independently.
-        if (w.protocol === 'amneziawg-2.0' && localSettings) body.settings = localSettings;
+        // Pass AWG2/AWG3 settings from local interface so remote doesn't independently
+        // generate its own random obfuscation params — for AWG3 in particular,
+        // HeaderProtectionKey MUST match exactly on both sides or handshakes are
+        // silently dropped (see writeAWG3Fields in internal/peer/peer.go).
+        if ((w.protocol === 'amneziawg-2.0' || w.protocol === 'amneziawg-3.0') && localSettings) {
+          body.settings = localSettings;
+        }
         const res = await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/tunnel-interfaces', body });
         const remoteIface = res.interface || res;
         remoteIfaceId = remoteIface.id || '';
