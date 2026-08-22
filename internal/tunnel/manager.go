@@ -751,6 +751,19 @@ func (m *Manager) GetPeerRemoteConfig(interfaceID, peerID string) (string, error
 		return "", fmt.Errorf("peer %q not found in interface %q", peerID, interfaceID)
 	}
 
+	return m.BuildPeerRemoteConfig(t, p)
+}
+
+// BuildPeerRemoteConfig generates the downloadable WireGuard config for an
+// already-resolved interface/peer pair. Split out of GetPeerRemoteConfig so
+// callers that already hold a live *TunnelInterface/*peer.Peer (e.g. from a
+// GetAllPeers() scan) can build the config directly instead of doing a
+// second by-ID lookup — a second lookup reintroduces a TOCTOU window where
+// the peer could be removed/changed between the first find and the second
+// resolve, which showed up as spurious "peer not found" errors on the
+// one-time-link download route (see internal/api/peers.go's
+// getPeerConfigByToken).
+func (m *Manager) BuildPeerRemoteConfig(t *TunnelInterface, p *peer.Peer) (string, error) {
 	gs, err := settings.GetSettings()
 	if err != nil {
 		return "", fmt.Errorf("get settings: %w", err)
