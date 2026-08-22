@@ -778,14 +778,6 @@ func (t *TunnelInterface) syncBin() string {
 	return "wg"
 }
 
-// isUserspaceMode reports whether AmneziaWG is running in userspace mode.
-// Userspace mode is active when WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go.
-// In userspace mode: awg syncconf is stable (no kernel deadlock), so
-// KernelRemovePeer can use Reload() instead of full Restart().
-func isUserspaceMode() bool {
-	return os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION") == "amneziawg-go"
-}
-
 // Start regenerates the config file and brings up the interface (FIX-2).
 //
 // With --network host, the WireGuard interface lives in the host kernel and
@@ -1053,7 +1045,7 @@ func (t *TunnelInterface) KernelRemovePeer(peerID string) {
 	if !t.Enabled {
 		return
 	}
-	if awgparams.IsAmneziaWG(t.Protocol) && isUserspaceMode() {
+	if awgparams.IsAmneziaWG(t.Protocol) && awgparams.IsUserspaceMode() {
 		// Userspace: syncconf is stable — use Reload() to preserve transfer stats.
 		t.Reload()
 		return
@@ -1274,7 +1266,7 @@ func (t *TunnelInterface) generateWgConfig() string {
 	// [Peer] sections. Disabled peers return "" from ToWgConfig().
 	t.peersMu.RLock()
 	for _, p := range t.peers {
-		sb.WriteString(p.ToWgConfig())
+		sb.WriteString(p.ToWgConfig(t.Protocol))
 	}
 	t.peersMu.RUnlock()
 
@@ -1327,7 +1319,7 @@ func (t *TunnelInterface) generateSyncConfig() string {
 
 	t.peersMu.RLock()
 	for _, p := range t.peers {
-		sb.WriteString(p.ToWgConfig())
+		sb.WriteString(p.ToWgConfig(t.Protocol))
 	}
 	t.peersMu.RUnlock()
 

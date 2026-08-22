@@ -850,6 +850,18 @@ ALTER TABLE interfaces ADD COLUMN random_trailers TEXT;
 ALTER TABLE interfaces ADD COLUMN disable_cookies TEXT;
 `,
 	},
+	{
+		version: 44,
+		sql: `
+-- AWG 3.1+ PersistentKeepalive range override ("lo-hi", e.g. "5-25").
+-- Additive field kept separate from the existing persistent_keepalive
+-- INTEGER column so v1/v2 peers, the JSON API contract, and old backup
+-- exports are completely unaffected. NULL/empty = not set, falls back to
+-- the plain persistent_keepalive int. Only consulted when the peer's
+-- interface protocol is amneziawg-3.0.
+ALTER TABLE peers ADD COLUMN persistent_keepalive_v3 TEXT;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

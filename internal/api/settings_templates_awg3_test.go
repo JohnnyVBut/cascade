@@ -65,11 +65,12 @@ func doJSON(t *testing.T, app *fiber.App, method, path string, body any) (*httpt
 
 // ── POST /api/templates/generate ─────────────────────────────────────────────
 
-func TestGenerateTemplate_WithAWG3Toggle_SavesAsVersion3_0(t *testing.T) {
+func TestGenerateTemplate_ExplicitVersion3_SavesAsVersion3_0(t *testing.T) {
 	app := initTemplatesTestApp(t)
 
 	rr, out := doJSON(t, app, "POST", "/api/templates/generate", map[string]any{
 		"saveName":        "Gen-V3",
+		"version":         "3.0",
 		"randomizeTimers": true,
 	})
 	if rr.Code != 200 {
@@ -100,11 +101,12 @@ func TestGenerateTemplate_WithAWG3Toggle_SavesAsVersion3_0(t *testing.T) {
 	}
 }
 
-func TestGenerateTemplate_HeaderProtectionToggle_SavesAsVersion3_0(t *testing.T) {
+func TestGenerateTemplate_ExplicitVersion3WithHeaderProtection_SavesAsVersion3_0(t *testing.T) {
 	app := initTemplatesTestApp(t)
 
 	rr, out := doJSON(t, app, "POST", "/api/templates/generate", map[string]any{
 		"saveName":         "Gen-V3-HP",
+		"version":          "3.0",
 		"headerProtection": true,
 	})
 	if rr.Code != 200 {
@@ -116,11 +118,12 @@ func TestGenerateTemplate_HeaderProtectionToggle_SavesAsVersion3_0(t *testing.T)
 	}
 }
 
-func TestGenerateTemplate_ContentPaddingToggle_SavesAsVersion3_0(t *testing.T) {
+func TestGenerateTemplate_ExplicitVersion3WithContentPadding_SavesAsVersion3_0(t *testing.T) {
 	app := initTemplatesTestApp(t)
 
 	rr, out := doJSON(t, app, "POST", "/api/templates/generate", map[string]any{
 		"saveName":       "Gen-V3-CP",
+		"version":        "3.0",
 		"contentPadding": true,
 	})
 	if rr.Code != 200 {
@@ -132,7 +135,7 @@ func TestGenerateTemplate_ContentPaddingToggle_SavesAsVersion3_0(t *testing.T) {
 	}
 }
 
-func TestGenerateTemplate_NoToggles_SavesAsVersion2_0(t *testing.T) {
+func TestGenerateTemplate_NoVersion_SavesAsVersion2_0(t *testing.T) {
 	app := initTemplatesTestApp(t)
 
 	rr, out := doJSON(t, app, "POST", "/api/templates/generate", map[string]any{
@@ -153,6 +156,26 @@ func TestGenerateTemplate_NoToggles_SavesAsVersion2_0(t *testing.T) {
 	}
 	if got.Version != "2.0" {
 		t.Errorf("persisted Version = %q, want '2.0'", got.Version)
+	}
+}
+
+// TestGenerateTemplate_TogglesWithoutExplicitVersion3_RejectedAsVersion2_0
+// is a regression test: AWG 3.0 Transport Protection toggles no longer
+// imply version 3.0 on their own (that inference was a source of bugs —
+// a UI default of "on" for one toggle silently forced every generated
+// profile into a 3.0 template). Without an explicit version:"3.0", the
+// request defaults to version 2.0 and the save is rejected by
+// settings.hasAWG3Fields() validation, exactly as a hand-built 2.0
+// template with stray 3.0-only fields would be.
+func TestGenerateTemplate_TogglesWithoutExplicitVersion3_RejectedAsVersion2_0(t *testing.T) {
+	app := initTemplatesTestApp(t)
+
+	rr, out := doJSON(t, app, "POST", "/api/templates/generate", map[string]any{
+		"saveName":        "Gen-NoVersion-WithToggle",
+		"randomizeTimers": true,
+	})
+	if rr.Code != 400 {
+		t.Fatalf("status = %d, want 400; body = %+v", rr.Code, out)
 	}
 }
 

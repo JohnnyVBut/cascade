@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -737,45 +736,6 @@ func TestExportInterfaceParams_ClientInterface_NoAllowedIPs(t *testing.T) {
 
 	if exp.AllowedIPs != "" {
 		t.Errorf("ExportInterfaceParams DisableRoutes=false: AllowedIPs = %q, want '' (importer derives /32)", exp.AllowedIPs)
-	}
-}
-
-// ── isUserspaceMode ───────────────────────────────────────────────────────────
-
-// TestIsUserspaceMode_WhenEnvSet verifies that isUserspaceMode returns true
-// when WG_QUICK_USERSPACE_IMPLEMENTATION is set to "amneziawg-go".
-func TestIsUserspaceMode_WhenEnvSet(t *testing.T) {
-	if err := os.Setenv("WG_QUICK_USERSPACE_IMPLEMENTATION", "amneziawg-go"); err != nil {
-		t.Fatalf("os.Setenv: %v", err)
-	}
-	defer os.Unsetenv("WG_QUICK_USERSPACE_IMPLEMENTATION")
-
-	if !isUserspaceMode() {
-		t.Error("isUserspaceMode() = false, want true when WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go")
-	}
-}
-
-// TestIsUserspaceMode_WhenEnvEmpty verifies that isUserspaceMode returns false
-// when WG_QUICK_USERSPACE_IMPLEMENTATION is unset or empty (kernel mode).
-func TestIsUserspaceMode_WhenEnvEmpty(t *testing.T) {
-	os.Unsetenv("WG_QUICK_USERSPACE_IMPLEMENTATION")
-
-	if isUserspaceMode() {
-		t.Error("isUserspaceMode() = true, want false when WG_QUICK_USERSPACE_IMPLEMENTATION is unset")
-	}
-}
-
-// TestIsUserspaceMode_WhenEnvOtherValue verifies that isUserspaceMode returns
-// false when WG_QUICK_USERSPACE_IMPLEMENTATION is set to a value other than
-// "amneziawg-go" (e.g. "wireguard-go" — the upstream WireGuard userspace impl).
-func TestIsUserspaceMode_WhenEnvOtherValue(t *testing.T) {
-	if err := os.Setenv("WG_QUICK_USERSPACE_IMPLEMENTATION", "wireguard-go"); err != nil {
-		t.Fatalf("os.Setenv: %v", err)
-	}
-	defer os.Unsetenv("WG_QUICK_USERSPACE_IMPLEMENTATION")
-
-	if isUserspaceMode() {
-		t.Error("isUserspaceMode() = true, want false when WG_QUICK_USERSPACE_IMPLEMENTATION=wireguard-go")
 	}
 }
 

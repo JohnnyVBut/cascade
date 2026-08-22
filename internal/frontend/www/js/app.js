@@ -270,7 +270,7 @@ new Vue({
         headerProtectionKey: '', contentPaddingAddition: '',
         rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
         keepaliveTimeout: '', maxHandshakeAttempts: '',
-        randomTrailers: '', disableCookies: '',
+        randomTrailers: 'on', disableCookies: 'on',
       },
     },
     showPeerCreate: false, // manual peer create modal
@@ -294,7 +294,7 @@ new Vue({
         headerProtectionKey: '', contentPaddingAddition: '',
         rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
         keepaliveTimeout: '', maxHandshakeAttempts: '',
-        randomTrailers: '', disableCookies: '',
+        randomTrailers: 'on', disableCookies: 'on',
       },
     },
     peerCreate: {
@@ -306,6 +306,7 @@ new Vue({
       allowedIPs: '',
       clientAllowedIPs: '',
       persistentKeepalive: 25,
+      persistentKeepaliveV3: '', // AWG 3.1+ range override (e.g. "5-25"), only used when interface protocol is amneziawg-3.0
       groupId: '',          // client-group alias ID
       expiredAt: '',        // YYYY-MM-DD or empty
       showQR: false,
@@ -336,6 +337,7 @@ new Vue({
       _peer: null,          // original peer reference (for type checks + API call)
       name: '',
       persistentKeepalive: 0,
+      persistentKeepaliveV3: '', // AWG 3.1+ range override (e.g. "5-25"), only used when interface protocol is amneziawg-3.0
       endpoint: '',         // interconnect only
       allowedIPs: '',       // interconnect only (editable)
       clientAllowedIPs: '', // client only
@@ -401,11 +403,12 @@ new Vue({
       host: '',
       browser: '',
       saveName: '',
+      version: '2.0',       // explicit — NOT inferred from the toggles below
       headerProtection: false,
       contentPadding: false,
       randomizeTimers: false,
-      randomTrailers: false,
-      disableCookies: false,
+      randomTrailers: true,
+      disableCookies: true,
     },
     generatedParams: null,
     generatingParams: false,
@@ -1644,7 +1647,7 @@ new Vue({
           headerProtectionKey: '', contentPaddingAddition: '',
           rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
           keepaliveTimeout: '', maxHandshakeAttempts: '',
-          randomTrailers: '', disableCookies: '',
+          randomTrailers: 'on', disableCookies: 'on',
         },
       };
     },
@@ -1917,7 +1920,7 @@ new Vue({
         return;
       }
 
-      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, groupId, expiredAt } = this.peerCreate;
+      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, persistentKeepaliveV3, groupId, expiredAt } = this.peerCreate;
 
       // Validation
       if (!name || name.trim() === '') {
@@ -1945,6 +1948,7 @@ new Vue({
         clientAllowedIPs: clientAllowedIPs || undefined,
         endpoint: endpoint || undefined,
         persistentKeepalive: persistentKeepalive || 25,
+        persistentKeepaliveV3: (persistentKeepaliveV3 || '').trim(),
         ...(peerType === 'client' && groupId ? { groupId } : {}),
         ...(expiredAt ? { expiredAt } : {}),
       };
@@ -1962,7 +1966,7 @@ new Vue({
         this.showPeerCreate = false;
         this.inlineGroupShow = false;
         this.inlineGroupInput = '';
-        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), expiredAt: '', showQR: false };
+        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, persistentKeepaliveV3: '', groupId: this.defaultGroupId(), expiredAt: '', showQR: false };
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
@@ -4127,6 +4131,15 @@ new Vue({
       }
     },
 
+    // Open the manual "Add Client/Peer" modal for the currently active interface.
+    openManualPeerCreate() {
+      this.peerCreate.peerType = 'client';
+      this.peerCreate.groupId = this.defaultGroupId();
+      const iface = this.currentInterface;
+      this.peerCreate.persistentKeepaliveV3 = (iface && iface.protocol === 'amneziawg-3.0') ? '5-25' : '';
+      this.showPeerCreate = true;
+    },
+
     // Open Quick Create peer modal for a specific interface from dashboard
     dashOpenAddPeer(iface) {
       if (iface.disableRoutes) return; // S2S interfaces don't support quick-create clients
@@ -5033,12 +5046,14 @@ new Vue({
       if (!name) return;
 
       try {
+        const iface = this.tunnelInterfaces.find(i => i.id === this.activeInterfaceId);
         const payload = {
           name,
           autoAllocateIP: true,
           generateKeys: true,
           expiredAt: this.peerCreateExpiredDate || undefined,
           groupId: this.peerCreateGroupId || this.defaultGroupId() || undefined,
+          ...(iface && iface.protocol === 'amneziawg-3.0' ? { persistentKeepaliveV3: '5-25' } : {}),
         };
 
         const res = await this.api.createTunnelInterfacePeer({
@@ -5193,6 +5208,7 @@ new Vue({
         _peer: peer,
         name: peer.name || '',
         persistentKeepalive: peer.persistentKeepalive || 0,
+        persistentKeepaliveV3: peer.persistentKeepaliveV3 || '',
         endpoint: peer.endpoint || '',
         allowedIPs: peer.allowedIPs || '',
         clientAllowedIPs: peer.clientAllowedIPs || '',
@@ -5202,6 +5218,15 @@ new Vue({
         expiredAt: peer.expiredAt ? (typeof peer.expiredAt === 'string' ? peer.expiredAt.slice(0, 10) : new Date(peer.expiredAt).toISOString().slice(0, 10)) : '',
       };
       this.showPeerEditModal = true;
+    },
+
+    // Returns the tunnel interface object for the peer currently open in the
+    // edit modal, or null. Used to gate the AWG 3.1+ keepalive-range field.
+    peerEditInterface() {
+      const peer = this.peerEditForm._peer;
+      if (!peer) return null;
+      const ifaceId = this._peerIfaceId(peer);
+      return this.tunnelInterfaces.find(i => i.id === ifaceId) || null;
     },
 
     // Format kbps rate for display. 0 = unlimited.
@@ -5241,6 +5266,7 @@ new Vue({
       const updates = {
         name: this.peerEditForm.name,
         persistentKeepalive: Number(this.peerEditForm.persistentKeepalive) || 0,
+        persistentKeepaliveV3: (this.peerEditForm.persistentKeepaliveV3 || '').trim(),
       };
       if (isInterconnect) {
         updates.endpoint = this.peerEditForm.endpoint;
@@ -5617,6 +5643,9 @@ new Vue({
         headerProtectionKey: '', contentPaddingAddition: '',
         rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
         keepaliveTimeout: '', maxHandshakeAttempts: '',
+        // This modal always creates a 2.0 template (no version selector here)
+        // — 'on' would fail backend validation (hasAWG3Fields requires
+        // version="3.0"). Interface create/edit still default these to 'on'.
         randomTrailers: '', disableCookies: '',
       };
       this.randomiseTemplateH();
@@ -5729,8 +5758,9 @@ new Vue({
     openGenerateModal() {
       this.generateForm = {
         profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '',
+        version: '2.0',
         headerProtection: false, contentPadding: false, randomizeTimers: false,
-        randomTrailers: false, disableCookies: false,
+        randomTrailers: true, disableCookies: true,
       };
       this.generatedParams = null;
       this.showGenerateModal = true;
@@ -5738,17 +5768,22 @@ new Vue({
 
     async generateParams() {
       this.generatingParams = true;
+      // AWG 3.0 Transport Protection toggles only apply to a 3.0 profile —
+      // sending them for 2.0 would produce non-empty randomTrailers/
+      // disableCookies params that fail template save validation later.
+      const isV3 = this.generateForm.version === '3.0';
       try {
         const res = await this.api.generateTemplate({
           profile:   this.generateForm.profile,
           intensity: this.generateForm.intensity,
           host:      this.generateForm.host || undefined,
           browser:   this.generateForm.browser || undefined,
-          headerProtection: this.generateForm.headerProtection,
-          contentPadding:   this.generateForm.contentPadding,
-          randomizeTimers:  this.generateForm.randomizeTimers,
-          randomTrailers:   this.generateForm.randomTrailers,
-          disableCookies:   this.generateForm.disableCookies,
+          version:   this.generateForm.version,
+          headerProtection: isV3 && this.generateForm.headerProtection,
+          contentPadding:   isV3 && this.generateForm.contentPadding,
+          randomizeTimers:  isV3 && this.generateForm.randomizeTimers,
+          randomTrailers:   isV3 && this.generateForm.randomTrailers,
+          disableCookies:   isV3 && this.generateForm.disableCookies,
         });
         this.generatedParams = res.params;
         if (!this.generateProfiles.length && res.profiles) {
@@ -5761,14 +5796,6 @@ new Vue({
       }
     },
 
-    // isGeneratingV3 mirrors the backend's version-selection rule in
-    // POST /templates/generate: any toggle → a "3.0" template.
-    isGeneratingV3() {
-      const f = this.generateForm;
-      return !!(f.headerProtection || f.contentPadding || f.randomizeTimers ||
-        f.randomTrailers || f.disableCookies);
-    },
-
     async saveGeneratedTemplate() {
       if (!this.generatedParams) return;
       const name = this.generateForm.saveName.trim();
@@ -5779,7 +5806,7 @@ new Vue({
       try {
         await this.api.createTemplate({
           name,
-          version: this.isGeneratingV3() ? '3.0' : '2.0',
+          version: this.generateForm.version,
           ...this.generatedParams,
         });
         await this.loadSettings();
@@ -5796,7 +5823,7 @@ new Vue({
       this.templateForm = {
         name: this.generateForm.saveName || '',
         isDefault: false,
-        version: this.isGeneratingV3() ? '3.0' : '2.0',
+        version: this.generateForm.version,
         host: this.generateForm.host || '',
         jc: p.jc, jmin: p.jmin, jmax: p.jmax,
         s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4,

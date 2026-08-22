@@ -1,5 +1,7 @@
 package awgparams
 
+import "os"
+
 // Protocol string constants stored in interfaces.protocol / used across the
 // tunnel/peer/api packages. Centralized here (rather than duplicated as
 // string literals) so a future protocol version bump is a small, safe change
@@ -17,4 +19,20 @@ const (
 // by this check — see internal/settings.CreateTemplate/UpdateTemplate).
 func IsAmneziaWG(protocol string) bool {
 	return protocol == ProtocolAmneziaWG2 || protocol == ProtocolAmneziaWG3
+}
+
+// IsUserspaceMode reports whether AmneziaWG is running via the amneziawg-go
+// userspace daemon rather than the in-kernel module. This is a deployment-wide
+// setting baked into the container's environment at startup (see
+// deploy/setup.sh and deploy/switch-mode.sh) — it does not change for the
+// lifetime of the process, so it is safe to read on every call.
+//
+// This is the single place that reads WG_QUICK_USERSPACE_IMPLEMENTATION.
+// Do not duplicate this os.Getenv check elsewhere: internal/tunnel uses it to
+// pick a safe kernel-sync strategy (Reload vs. disruptive Restart) and
+// internal/api reports it for diagnostics — if those checks ever drifted
+// apart (e.g. one is updated for a new implementation value and the other
+// isn't), tunnel and API would silently disagree about which mode is active.
+func IsUserspaceMode() bool {
+	return os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION") == "amneziawg-go"
 }

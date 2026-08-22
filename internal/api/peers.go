@@ -417,6 +417,10 @@ func updatePeer(c *fiber.Ctx) error {
 		n := int(v)
 		upd.PersistentKeepalive = &n
 	}
+	if v, ok := raw["persistentKeepaliveV3"].(string); ok {
+		s := strings.TrimSpace(v)
+		upd.PersistentKeepaliveV3 = &s
+	}
 	if v, ok := raw["enabled"].(bool); ok {
 		upd.Enabled = &v
 	}

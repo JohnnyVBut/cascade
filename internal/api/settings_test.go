@@ -372,6 +372,7 @@ func TestGenerateTemplate_SaveName_HeaderProtection_PersistsInResponseAndRefetch
 	ta := &testApp{app: sta.app, adminToken: sta.token}
 
 	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"version":          "3.0",
 		"headerProtection": true,
 		"saveName":         "AWG3-Saved",
 	})

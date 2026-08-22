@@ -140,7 +140,7 @@ func TestToWgConfig_EnabledPeer(t *testing.T) {
 		PersistentKeepalive: 25,
 		Enabled:             true,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if !strings.Contains(cfg, "[Peer]") {
 		t.Error("expected [Peer] section header")
 	}
@@ -165,7 +165,7 @@ func TestToWgConfig_DisabledPeer(t *testing.T) {
 		AllowedIPs: "10.8.0.3/32",
 		Enabled:    false,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if cfg != "" {
 		t.Errorf("disabled peer should return empty config, got %q", cfg)
 	}
@@ -179,7 +179,7 @@ func TestToWgConfig_NoEndpointWhenEmpty(t *testing.T) {
 		Endpoint:   "",
 		Enabled:    true,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if strings.Contains(cfg, "Endpoint =") {
 		t.Error("should not include Endpoint line when empty")
 	}
@@ -193,7 +193,7 @@ func TestToWgConfig_WithEndpoint(t *testing.T) {
 		Endpoint:   "vpn.example.com:51820",
 		Enabled:    true,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if !strings.Contains(cfg, "Endpoint = vpn.example.com:51820") {
 		t.Errorf("expected Endpoint line, got: %s", cfg)
 	}
@@ -252,10 +252,10 @@ func TestGenerateCompleteConfig_AWG2WithSettings(t *testing.T) {
 		PersistentKeepalive: 25,
 	}
 	iface := InterfaceData{
-		Protocol:  "amneziawg-2.0",
-		PublicKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
-		Address:   "10.9.0.1/24",
-		Host:      "awg.example.com",
+		Protocol:   "amneziawg-2.0",
+		PublicKey:  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+		Address:    "10.9.0.1/24",
+		Host:       "awg.example.com",
 		ListenPort: 51821,
 		Settings: &AWG2Settings{
 			Jc: 6, Jmin: 64, Jmax: 1280,
@@ -745,5 +745,175 @@ func TestDerivePublicKey_AcceptsWellFormedKeyFormat(t *testing.T) {
 	wellFormed := strings.Repeat("A", 43) + "="
 	if _, err := DerivePublicKey("wg", wellFormed); err != nil {
 		t.Errorf("DerivePublicKey with well-formed key returned error: %v", err)
+	}
+}
+
+// ── PersistentKeepaliveV3 ────────────────────────────────────────────────────
+// AWG 3.1+ range override, kept as a separate additive field from the plain
+// PersistentKeepalive int (see internal/db/db.go migration v44) so v1/v2
+// peers, the JSON API contract, and old backup exports stay unaffected.
+
+// TestCreatePeer_PersistesPersistentKeepaliveV3 verifies the field round-trips
+// through CreatePeer -> GetPeer, including the SQL SELECT/scan layer.
+func TestCreatePeer_PersistesPersistentKeepaliveV3(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-pklv3-create"
+	insertTestInterface(t, ifaceID)
+
+	p, err := CreatePeer(ifaceID, PeerInput{
+		Name:                  "v3-client",
+		PublicKey:             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs:            "10.8.0.2/32",
+		PersistentKeepaliveV3: "5-25",
+	})
+	if err != nil {
+		t.Fatalf("CreatePeer: %v", err)
+	}
+	if p.PersistentKeepaliveV3 != "5-25" {
+		t.Errorf("PersistentKeepaliveV3 = %q, want %q", p.PersistentKeepaliveV3, "5-25")
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded.PersistentKeepaliveV3 != "5-25" {
+		t.Errorf("after reload: PersistentKeepaliveV3 = %q, want %q", loaded.PersistentKeepaliveV3, "5-25")
+	}
+}
+
+// TestCreatePeer_PersistentKeepaliveV3EmptyByDefault verifies that a peer
+// created without the field stays "" (not "0" or some other placeholder) —
+// this is the case for every v1/v2 peer and existing v3 peers pre-upgrade.
+func TestCreatePeer_PersistentKeepaliveV3EmptyByDefault(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-pklv3-default"
+	p := createTestPeer(t, ifaceID)
+
+	if p.PersistentKeepaliveV3 != "" {
+		t.Errorf("PersistentKeepaliveV3 = %q, want empty by default", p.PersistentKeepaliveV3)
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded.PersistentKeepaliveV3 != "" {
+		t.Errorf("after reload: PersistentKeepaliveV3 = %q, want empty", loaded.PersistentKeepaliveV3)
+	}
+}
+
+// TestUpdatePeer_SetsAndClearsPersistentKeepaliveV3 verifies UpdatePeer can
+// both set the range override and clear it back to "" (falling back to the
+// plain PersistentKeepalive int at config-render time).
+func TestUpdatePeer_SetsAndClearsPersistentKeepaliveV3(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-pklv3-update"
+	p := createTestPeer(t, ifaceID)
+
+	rangeVal := "10-30"
+	updated, err := UpdatePeer(p.ID, PeerUpdate{PersistentKeepaliveV3: &rangeVal})
+	if err != nil {
+		t.Fatalf("UpdatePeer (set): %v", err)
+	}
+	if updated.PersistentKeepaliveV3 != "10-30" {
+		t.Errorf("PersistentKeepaliveV3 = %q, want %q", updated.PersistentKeepaliveV3, "10-30")
+	}
+
+	empty := ""
+	cleared, err := UpdatePeer(p.ID, PeerUpdate{PersistentKeepaliveV3: &empty})
+	if err != nil {
+		t.Fatalf("UpdatePeer (clear): %v", err)
+	}
+	if cleared.PersistentKeepaliveV3 != "" {
+		t.Errorf("PersistentKeepaliveV3 after clear = %q, want empty", cleared.PersistentKeepaliveV3)
+	}
+}
+
+// TestToWgConfig_PersistentKeepaliveV3OnlyAppliesToV3 verifies the hub-side
+// [Peer] section uses the range override only when protocol is
+// amneziawg-3.0, and falls back to the plain int for every other protocol
+// even when PersistentKeepaliveV3 happens to be set (e.g. leftover data from
+// a downgrade v3 -> v2).
+func TestToWgConfig_PersistentKeepaliveV3OnlyAppliesToV3(t *testing.T) {
+	p := &Peer{
+		Name:                  "v3-peer",
+		PublicKey:             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs:            "10.8.0.2/32",
+		PersistentKeepalive:   25,
+		PersistentKeepaliveV3: "5-25",
+		Enabled:               true,
+	}
+
+	v3cfg := p.ToWgConfig("amneziawg-3.0")
+	if !strings.Contains(v3cfg, "PersistentKeepalive = 5-25") {
+		t.Errorf("expected AWG3 config to use range override, got:\n%s", v3cfg)
+	}
+
+	v2cfg := p.ToWgConfig("amneziawg-2.0")
+	if !strings.Contains(v2cfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected AWG2 config to fall back to plain int despite V3 field being set, got:\n%s", v2cfg)
+	}
+	if strings.Contains(v2cfg, "5-25") {
+		t.Errorf("AWG2 config must not use the V3 range override, got:\n%s", v2cfg)
+	}
+
+	wgCfg := p.ToWgConfig("wireguard-1.0")
+	if !strings.Contains(wgCfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected WireGuard 1.0 config to fall back to plain int, got:\n%s", wgCfg)
+	}
+}
+
+// TestToWgConfig_PersistentKeepaliveV3EmptyFallsBackToPlainInt verifies that
+// a v3 peer without the range override set still emits the plain int (the
+// original v1/v2 behavior), rather than omitting PersistentKeepalive entirely.
+func TestToWgConfig_PersistentKeepaliveV3EmptyFallsBackToPlainInt(t *testing.T) {
+	p := &Peer{
+		Name:                "v3-peer-no-range",
+		PublicKey:           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs:          "10.8.0.2/32",
+		PersistentKeepalive: 25,
+		Enabled:             true,
+	}
+	cfg := p.ToWgConfig("amneziawg-3.0")
+	if !strings.Contains(cfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected fallback to plain int when V3 field is empty, got:\n%s", cfg)
+	}
+}
+
+// TestGenerateCompleteConfig_PersistentKeepaliveV3AppliesOnlyToV3 mirrors
+// TestToWgConfig_PersistentKeepaliveV3OnlyAppliesToV3 for the client-facing
+// config generator (generateCompleteConfig), which is keyed off iface.Protocol
+// rather than a bare string parameter.
+func TestGenerateCompleteConfig_PersistentKeepaliveV3AppliesOnlyToV3(t *testing.T) {
+	p := &Peer{
+		Name:                  "v3-client-cfg",
+		PrivateKey:            "privatekeyabc",
+		Address:               "10.9.0.2/24",
+		ClientAllowedIPs:      "0.0.0.0/0",
+		PersistentKeepalive:   25,
+		PersistentKeepaliveV3: "5-25",
+	}
+
+	v3iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE=",
+		Address:    "10.9.0.1/24",
+		Host:       "awg3.example.com",
+		ListenPort: 51823,
+	}
+	v3cfg := p.generateCompleteConfig(v3iface)
+	if !strings.Contains(v3cfg, "PersistentKeepalive = 5-25") {
+		t.Errorf("expected AWG3 client config to use range override, got:\n%s", v3cfg)
+	}
+
+	v2iface := v3iface
+	v2iface.Protocol = "amneziawg-2.0"
+	v2cfg := p.generateCompleteConfig(v2iface)
+	if !strings.Contains(v2cfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected AWG2 client config to fall back to plain int, got:\n%s", v2cfg)
+	}
+	if strings.Contains(v2cfg, "5-25") {
+		t.Errorf("AWG2 client config must not use the V3 range override, got:\n%s", v2cfg)
 	}
 }

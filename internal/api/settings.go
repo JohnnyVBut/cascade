@@ -32,7 +32,7 @@ func getHostname() string {
 
 // awgRunMode returns "userspace" when amneziawg-go is active, "kernel" otherwise.
 func awgRunMode() string {
-	if os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION") == "amneziawg-go" {
+	if awgparams.IsUserspaceMode() {
 		return "userspace"
 	}
 	return "kernel"
@@ -203,6 +203,12 @@ func RegisterSettings(api fiber.Router) {
 			IterCount int    `json:"iterCount"`
 			Jc        int    `json:"jc"`
 			SaveName  string `json:"saveName"`
+			// Version is explicit — the client decides "2.0" vs "3.0" via its own
+			// UI toggle, it is never inferred from which toggles below are set
+			// (a feature flag determining protocol version was a source of bugs:
+			// defaulting a toggle to "on" silently forced every generation into
+			// a 3.0 profile). Falls back to "2.0" if omitted or invalid.
+			Version string `json:"version"`
 
 			// AWG 3.0 Transport Protection toggles — see awgparams.Options.
 			HeaderProtection bool `json:"headerProtection"`
@@ -230,10 +236,9 @@ func RegisterSettings(api fiber.Router) {
 		})
 
 		if body.SaveName != "" {
-			version := "2.0"
-			if body.HeaderProtection || body.ContentPadding || body.RandomizeTimers ||
-				body.RandomTrailers || body.DisableCookies {
-				version = "3.0"
+			version := body.Version
+			if version != "2.0" && version != "3.0" {
+				version = "2.0"
 			}
 			tmpl, err := settings.CreateTemplate(settings.Template{
 				Name:    body.SaveName,

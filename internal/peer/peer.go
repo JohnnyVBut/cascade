@@ -56,11 +56,18 @@ type Peer struct {
 	PeerType            string `json:"peerType"`         // client | interconnect
 	GroupID             string `json:"groupId"`          // client-group alias ID; "" for interconnect peers
 	PersistentKeepalive int    `json:"persistentKeepalive"`
-	Enabled             bool   `json:"enabled"`
-	CreatedAt           string `json:"createdAt"`
-	UpdatedAt           string `json:"updatedAt"`
-	ExpiredAt           string `json:"expiredAt"`   // "" = no expiry
-	OneTimeLink         string `json:"oneTimeLink"` // "" = no one-time link
+	// PersistentKeepaliveV3 is an AWG 3.1+ range override ("lo-hi", e.g.
+	// "5-25") for interfaces on amneziawg-3.0 only. "" = not set, falls back
+	// to the plain PersistentKeepalive int above. Kept as a separate field
+	// (additive) rather than changing PersistentKeepalive's type, so v1/v2
+	// peers, the JSON API contract, and existing backup exports are
+	// completely unaffected — see plans/awg3-protocol-notes.md.
+	PersistentKeepaliveV3 string `json:"persistentKeepaliveV3,omitempty"`
+	Enabled               bool   `json:"enabled"`
+	CreatedAt             string `json:"createdAt"`
+	UpdatedAt             string `json:"updatedAt"`
+	ExpiredAt             string `json:"expiredAt"`   // "" = no expiry
+	OneTimeLink           string `json:"oneTimeLink"` // "" = no one-time link
 
 	// Bandwidth limits (kbps). 0 = unlimited.
 	// Applied via tc HTB (egress/download) + tc police (ingress/upload).
@@ -93,18 +100,19 @@ type Peer struct {
 
 // PeerInput is the create/update request payload.
 type PeerInput struct {
-	Name                string `json:"name"`
-	PublicKey           string `json:"publicKey"`
-	PrivateKey          string `json:"privateKey"`
-	PresharedKey        string `json:"presharedKey"`
-	Endpoint            string `json:"endpoint"`
-	AllowedIPs          string `json:"allowedIPs"`
-	Address             string `json:"address"`
-	ClientAllowedIPs    string `json:"clientAllowedIPs"`
-	PeerType            string `json:"peerType"`
-	GroupID             string `json:"groupId"` // client-group alias ID (for client peers)
-	PersistentKeepalive int    `json:"persistentKeepalive"`
-	ExpiredAt           string `json:"expiredAt"` // RFC3339 or YYYY-MM-DD; "" = no expiry
+	Name                  string `json:"name"`
+	PublicKey             string `json:"publicKey"`
+	PrivateKey            string `json:"privateKey"`
+	PresharedKey          string `json:"presharedKey"`
+	Endpoint              string `json:"endpoint"`
+	AllowedIPs            string `json:"allowedIPs"`
+	Address               string `json:"address"`
+	ClientAllowedIPs      string `json:"clientAllowedIPs"`
+	PeerType              string `json:"peerType"`
+	GroupID               string `json:"groupId"` // client-group alias ID (for client peers)
+	PersistentKeepalive   int    `json:"persistentKeepalive"`
+	PersistentKeepaliveV3 string `json:"persistentKeepaliveV3"` // AWG 3.1+ range override, "" = unset
+	ExpiredAt             string `json:"expiredAt"`             // RFC3339 or YYYY-MM-DD; "" = no expiry
 	// Special flags (not stored directly)
 	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
 	AutoAllocateIP bool   `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
@@ -114,18 +122,19 @@ type PeerInput struct {
 // PeerUpdate contains the fields that can be changed via PATCH.
 // nil pointer = do not update that field.
 type PeerUpdate struct {
-	Name                *string `json:"name"`
-	Endpoint            *string `json:"endpoint"`
-	AllowedIPs          *string `json:"allowedIPs"`
-	ClientAllowedIPs    *string `json:"clientAllowedIPs"`
-	PersistentKeepalive *int    `json:"persistentKeepalive"`
-	Enabled             *bool   `json:"enabled"`
-	ExpiredAt           *string `json:"expiredAt"`
-	OneTimeLink         *string `json:"oneTimeLink"`
-	RateDown            *int    `json:"rateDown"`
-	RateUp              *int    `json:"rateUp"`
-	GroupID             *string `json:"groupId"`         // client-group alias ID
-	PreviousGroupId     *string `json:"previousGroupId"` // set internally by expiry policy; not exposed via API
+	Name                  *string `json:"name"`
+	Endpoint              *string `json:"endpoint"`
+	AllowedIPs            *string `json:"allowedIPs"`
+	ClientAllowedIPs      *string `json:"clientAllowedIPs"`
+	PersistentKeepalive   *int    `json:"persistentKeepalive"`
+	PersistentKeepaliveV3 *string `json:"persistentKeepaliveV3"`
+	Enabled               *bool   `json:"enabled"`
+	ExpiredAt             *string `json:"expiredAt"`
+	OneTimeLink           *string `json:"oneTimeLink"`
+	RateDown              *int    `json:"rateDown"`
+	RateUp                *int    `json:"rateUp"`
+	GroupID               *string `json:"groupId"`         // client-group alias ID
+	PreviousGroupId       *string `json:"previousGroupId"` // set internally by expiry policy; not exposed via API
 }
 
 // InterfaceData carries the interface fields needed for config/QR generation.
@@ -204,7 +213,7 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 	rows, err := db.DB().Query(`
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
-		       peer_type, group_id, persistent_keepalive, enabled,
+		       peer_type, group_id, persistent_keepalive, persistent_keepalive_v3, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
 		       total_rx, total_tx, rate_down, rate_up, previous_group_id,
 		       latest_handshake_at
@@ -233,7 +242,7 @@ func GetPeer(id string) (*Peer, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
-		       peer_type, group_id, persistent_keepalive, enabled,
+		       peer_type, group_id, persistent_keepalive, persistent_keepalive_v3, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
 		       total_rx, total_tx, rate_down, rate_up, previous_group_id,
 		       latest_handshake_at
@@ -271,8 +280,9 @@ func CreatePeer(interfaceID string, inp PeerInput) (*Peer, error) {
 		ClientAllowedIPs:    inp.ClientAllowedIPs,
 		PeerType:            strOr(inp.PeerType, "client"),
 		GroupID:             inp.GroupID,
-		PersistentKeepalive: intOr(inp.PersistentKeepalive, 25),
-		Enabled:             true,
+		PersistentKeepalive:   intOr(inp.PersistentKeepalive, 25),
+		PersistentKeepaliveV3: strings.TrimSpace(inp.PersistentKeepaliveV3),
+		Enabled:               true,
 		CreatedAt:           createdAt,
 		UpdatedAt:           now,
 		ExpiredAt:           normaliseExpiredAt(inp.ExpiredAt),
@@ -312,6 +322,9 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 	}
 	if upd.PersistentKeepalive != nil {
 		p.PersistentKeepalive = *upd.PersistentKeepalive
+	}
+	if upd.PersistentKeepaliveV3 != nil {
+		p.PersistentKeepaliveV3 = strings.TrimSpace(*upd.PersistentKeepaliveV3)
 	}
 	if upd.Enabled != nil {
 		p.Enabled = *upd.Enabled
@@ -513,7 +526,10 @@ func DerivePublicKey(bin, privateKey string) (string, error) {
 
 // ToWgConfig returns the [Peer] section for the hub-side wg-quick config.
 // Returns "" for disabled peers — they are excluded from the kernel config.
-func (p *Peer) ToWgConfig() string {
+// protocol gates the AWG 3.1+ PersistentKeepaliveV3 range override — it only
+// applies on amneziawg-3.0; pass "" (or any other value) to always use the
+// plain PersistentKeepalive int.
+func (p *Peer) ToWgConfig(protocol string) string {
 	if !p.Enabled {
 		return ""
 	}
@@ -532,7 +548,9 @@ func (p *Peer) ToWgConfig() string {
 		fmt.Fprintf(&sb, "Endpoint = %s\n", p.Endpoint)
 	}
 
-	if p.PersistentKeepalive > 0 {
+	if protocol == awgparams.ProtocolAmneziaWG3 && p.PersistentKeepaliveV3 != "" {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", p.PersistentKeepaliveV3)
+	} else if p.PersistentKeepalive > 0 {
 		fmt.Fprintf(&sb, "PersistentKeepalive = %d\n", p.PersistentKeepalive)
 	}
 
@@ -638,7 +656,11 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		clientAllowedIPs = "0.0.0.0/0, ::/0"
 	}
 	fmt.Fprintf(&sb, "AllowedIPs = %s\n", clientAllowedIPs)
-	fmt.Fprintf(&sb, "PersistentKeepalive = %d\n", p.PersistentKeepalive)
+	if iface.Protocol == awgparams.ProtocolAmneziaWG3 && p.PersistentKeepaliveV3 != "" {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", p.PersistentKeepaliveV3)
+	} else {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %d\n", p.PersistentKeepalive)
+	}
 
 	return sb.String()
 }
@@ -735,7 +757,11 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 		clientAllowedIPs = "0.0.0.0/0, ::/0"
 	}
 	fmt.Fprintf(&sb, "AllowedIPs = %s\n", clientAllowedIPs)
-	fmt.Fprintf(&sb, "PersistentKeepalive = %d\n\n", p.PersistentKeepalive)
+	if iface.Protocol == awgparams.ProtocolAmneziaWG3 && p.PersistentKeepaliveV3 != "" {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n\n", p.PersistentKeepaliveV3)
+	} else {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %d\n\n", p.PersistentKeepalive)
+	}
 
 	sb.WriteString("# ═══════════════════════════════════════════════════════════════\n")
 	sb.WriteString("# 1. Generate keys: wg genkey | tee privatekey | wg pubkey > publickey\n")
@@ -854,10 +880,11 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 	var enabled int
 
 	var latestHandshakeAt string
+	var pklv3 sql.NullString
 	err := s.Scan(
 		&p.ID, &p.InterfaceID, &p.Name, &p.PublicKey, &p.PrivateKey, &p.PresharedKey,
 		&p.Endpoint, &p.AllowedIPs, &p.Address, &p.ClientAllowedIPs,
-		&p.PeerType, &p.GroupID, &p.PersistentKeepalive, &enabled,
+		&p.PeerType, &p.GroupID, &p.PersistentKeepalive, &pklv3, &enabled,
 		&p.CreatedAt, &p.UpdatedAt, &p.ExpiredAt, &p.OneTimeLink,
 		&p.TotalRx, &p.TotalTx,
 		&p.RateDown, &p.RateUp,
@@ -870,6 +897,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
+	p.PersistentKeepaliveV3 = pklv3.String
 
 	p.Enabled = enabled != 0
 	p.DownloadableConfig = p.PrivateKey != ""
@@ -892,14 +920,14 @@ func insertPeer(p Peer) error {
 		INSERT INTO peers
 		    (id, interface_id, name, public_key, private_key, preshared_key,
 		     endpoint, allowed_ips, address, client_allowed_ips,
-		     peer_type, group_id, persistent_keepalive, enabled,
+		     peer_type, group_id, persistent_keepalive, persistent_keepalive_v3, enabled,
 		     created_at, updated_at, expired_at, one_time_link,
 		     rate_down, rate_up, previous_group_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		p.ID, p.InterfaceID, p.Name, p.PublicKey, p.PrivateKey, p.PresharedKey,
 		p.Endpoint, p.AllowedIPs, p.Address, p.ClientAllowedIPs,
-		p.PeerType, p.GroupID, p.PersistentKeepalive, boolInt(p.Enabled),
+		p.PeerType, p.GroupID, p.PersistentKeepalive, nullIfEmpty(p.PersistentKeepaliveV3), boolInt(p.Enabled),
 		p.CreatedAt, p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
 		p.RateDown, p.RateUp, p.PreviousGroupId,
 	)
@@ -911,12 +939,14 @@ func updatePeer(p Peer) error {
 		UPDATE peers
 		SET name = ?, endpoint = ?, allowed_ips = ?, address = ?,
 		    client_allowed_ips = ?, group_id = ?, persistent_keepalive = ?,
+		    persistent_keepalive_v3 = ?,
 		    enabled = ?, updated_at = ?, expired_at = ?, one_time_link = ?,
 		    rate_down = ?, rate_up = ?, previous_group_id = ?
 		WHERE id = ?
 	`,
 		p.Name, p.Endpoint, p.AllowedIPs, p.Address,
 		p.ClientAllowedIPs, p.GroupID, p.PersistentKeepalive,
+		nullIfEmpty(p.PersistentKeepaliveV3),
 		boolInt(p.Enabled), p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
 		p.RateDown, p.RateUp, p.PreviousGroupId,
 		p.ID,
@@ -958,6 +988,15 @@ func isValidEndpoint(ep string) bool {
 		}
 	}
 	return len(port) > 0
+}
+
+// nullIfEmpty converts "" to SQL NULL so persistent_keepalive_v3 stays
+// unset (rather than an empty-string row value) for peers that don't use it.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func boolInt(b bool) int {

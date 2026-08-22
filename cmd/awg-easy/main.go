@@ -19,6 +19,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/api"
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/frontend"
@@ -48,6 +49,11 @@ func main() {
 	cfg := parseConfig()
 
 	log.Printf("Cascade %s (%s)", version.Version, version.GitCommit)
+	if awgparams.IsUserspaceMode() {
+		log.Printf("AmneziaWG run mode: userspace (amneziawg-go)")
+	} else {
+		log.Printf("AmneziaWG run mode: kernel")
+	}
 
 	// Start background update checker — polls GitHub Releases API every 24 h.
 	// Runs in a goroutine; first check happens after a 10 s delay so the
