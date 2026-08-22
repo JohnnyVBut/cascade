@@ -859,7 +859,7 @@ func requireAWG3ProtocolForFields(protocol string, a *peer.AWG2Settings) error {
 		return fmt.Errorf("AWG 3.0 Transport Protection fields require protocol %q, got %q",
 			awgparams.ProtocolAmneziaWG3, protocol)
 	}
-	return nil
+	return awgparams.ValidateHeaderProtectionKeyPadding(a.HeaderProtectionKey, a.S3, a.S4)
 }
 
 // peerDefaults returns global peer defaults from settings (DNS, clientAllowedIPs, keepalive).

@@ -44,7 +44,10 @@ func TestRequireAWG3ProtocolForFields_RejectsOnNon3_0Protocols(t *testing.T) {
 }
 
 func TestRequireAWG3ProtocolForFields_AcceptsOn3_0(t *testing.T) {
-	a := &peer.AWG2Settings{HeaderProtectionKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="}
+	a := &peer.AWG2Settings{
+		HeaderProtectionKey: "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		S3:                  12, S4: 12, // required padding once HeaderProtectionKey is set
+	}
 	if err := requireAWG3ProtocolForFields(awgparams.ProtocolAmneziaWG3, a); err != nil {
 		t.Errorf("unexpected error for protocol amneziawg-3.0: %v", err)
 	}

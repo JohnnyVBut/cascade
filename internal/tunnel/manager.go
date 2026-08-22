@@ -194,6 +194,14 @@ func (m *Manager) CreateInterface(inp CreateInput) (*TunnelInterface, error) {
 	if awgparams.IsAmneziaWG(inp.Protocol) && inp.AWG2 == nil {
 		return nil, fmt.Errorf("AWG2 settings are required for protocol %q", inp.Protocol)
 	}
+	if inp.AWG2 != nil {
+		// Callers that bypass the API handlers (e.g. ImportConf, fed directly
+		// from a parsed .conf file) don't get requireAWG3ProtocolForFields'
+		// validation, so it must also be enforced here.
+		if err := awgparams.ValidateHeaderProtectionKeyPadding(inp.AWG2.HeaderProtectionKey, inp.AWG2.S3, inp.AWG2.S4); err != nil {
+			return nil, err
+		}
+	}
 
 	// Key generation uses the protocol-specific binary (wg vs awg).
 	syncBin := "wg"

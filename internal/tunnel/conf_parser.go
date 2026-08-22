@@ -31,6 +31,12 @@ package tunnel
 //
 // AmneziaWG extensions (Jc, Jmin, Jmax, S1-S4, H1-H4, I1-I5) are parsed
 // from the [Interface] section and used to set Protocol = amneziawg-2.0.
+// AWG 3.0 Transport Protection fields (HeaderProtectionKey,
+// ContentPaddingAddition, RekeyAfterTime, RekeyTimeout, RejectAfterTime,
+// KeepaliveTimeout, MaxHandshakeAttempts, RandomTrailers, DisableCookies)
+// are also parsed — client .conf exports for a v3 interface include them
+// (see writeAWG3Fields in internal/peer/peer.go) — and their presence sets
+// Protocol = amneziawg-3.0 instead of amneziawg-2.0.
 
 import (
 	"fmt"
@@ -78,6 +84,7 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 	c := &ParsedConf{Protocol: "wireguard-1.0"}
 	awg := &peer.AWG2Settings{}
 	hasAWG := false
+	hasAWG3 := false
 
 	var section string
 	var cur *ParsedPeer // current [Peer] being parsed
@@ -189,6 +196,40 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 				awg.I4 = val
 			case "i5":
 				awg.I5 = val
+			case "headerprotectionkey":
+				awg.HeaderProtectionKey = val
+				hasAWG3 = true
+			case "contentpaddingaddition":
+				awg.ContentPaddingAddition = val
+				hasAWG3 = true
+			case "rekeyaftertime":
+				awg.RekeyAfterTime = val
+				hasAWG3 = true
+			case "rekeytimeout":
+				awg.RekeyTimeout = val
+				hasAWG3 = true
+			case "rejectaftertime":
+				awg.RejectAfterTime = val
+				hasAWG3 = true
+			case "keepalivetimeout":
+				awg.KeepaliveTimeout = val
+				hasAWG3 = true
+			case "maxhandshakeattempts":
+				awg.MaxHandshakeAttempts = val
+				hasAWG3 = true
+			case "randomtrailers":
+				// Always present (even "off") in a v3-exported client .conf —
+				// see writeAWG3Fields in internal/peer/peer.go — so its mere
+				// presence, not just "on", is a reliable v3 marker.
+				if strings.EqualFold(val, "on") {
+					awg.RandomTrailers = "on"
+				}
+				hasAWG3 = true
+			case "disablecookies":
+				if strings.EqualFold(val, "on") {
+					awg.DisableCookies = "on"
+				}
+				hasAWG3 = true
 			}
 
 		case "peer":
@@ -224,14 +265,18 @@ func ParseWGConf(content string) (*ParsedConf, error) {
 		return nil, fmt.Errorf("missing Address in [Interface] section")
 	}
 
-	if hasAWG {
-		// Always imports as 2.0, never 3.0: the .conf format has no way to
-		// express AWG 3.0 Transport Protection fields (HeaderProtectionKey,
-		// ContentPaddingAddition, timer overrides — see writeAWG3Fields in
-		// interface.go, which only ever writes them into the server-side
-		// wg-quick config, not into peer .conf exports). If .conf export for
-		// those fields is ever added, this hardcoded assignment must be
-		// revisited so re-imported configs aren't silently downgraded to 2.0.
+	if hasAWG3 {
+		// Client .conf exports for a v3 interface include the Transport
+		// Protection fields (see writeAWG3Fields in internal/peer/peer.go) —
+		// their presence here means this really is a v3 config, not v2.
+		// Without this, HeaderProtectionKey would be silently dropped and the
+		// re-imported interface would be created as 2.0: the server unwraps
+		// packet headers with that key before any handshake parsing, so a
+		// missing/mismatched key causes handshakes to be silently dropped
+		// rather than fail with a visible error.
+		c.Protocol = "amneziawg-3.0"
+		c.AWG2 = awg
+	} else if hasAWG {
 		c.Protocol = "amneziawg-2.0"
 		c.AWG2 = awg
 	}

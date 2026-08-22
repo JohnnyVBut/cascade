@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
+	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
 func TestBuildAWG2Params_AWG3_NoDefaultTemplate_FullFallback(t *testing.T) {
@@ -53,5 +54,60 @@ func TestBuildAWG2Params_AWG2_NoDefaultTemplate_NoAWG3Fields(t *testing.T) {
 	if got.RekeyAfterTime != "" || got.RekeyTimeout != "" || got.RejectAfterTime != "" ||
 		got.KeepaliveTimeout != "" || got.MaxHandshakeAttempts != "" {
 		t.Errorf("expected no AWG3 timer fields set for a 2.0 random fallback, got %+v", got)
+	}
+}
+
+// TestCreateInterface_RejectsHeaderProtectionKeyWithSmallS3S4 is a regression
+// test: amneziawg-go and the kernel module both refuse to start when
+// HeaderProtectionKey is set but S3/S4 are below 12 (the cipher nonce comes
+// from that padding buffer). This constraint was already enforced for
+// templates (settings.CreateTemplate/UpdateTemplate) and for the interface
+// create/update API handlers, but CreateInterface itself — used directly by
+// ImportConf, which is fed from a parsed .conf file and bypasses those API
+// handlers entirely — had no such check. That gap became reachable once
+// ParseWGConf started correctly extracting HeaderProtectionKey from a real
+// v3 client .conf (previously it was silently dropped, so this path could
+// never receive one). See awgparams.ValidateHeaderProtectionKeyPadding.
+func TestCreateInterface_RejectsHeaderProtectionKeyWithSmallS3S4(t *testing.T) {
+	initTunnelTestDB(t)
+
+	m := newTestManager()
+	_, err := m.CreateInterface(CreateInput{
+		Protocol: awgparams.ProtocolAmneziaWG3,
+		Address:  "10.9.0.1/24",
+		AWG2: &peer.AWG2Settings{
+			Jc: 6, Jmin: 10, Jmax: 50,
+			S1: 64, S2: 67, S3: 8, S4: 8, // below the required minimum of 12
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			HeaderProtectionKey: "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected CreateInterface to reject HeaderProtectionKey with S3/S4 < 12")
+	}
+}
+
+// TestCreateInterface_AcceptsHeaderProtectionKeyWithValidS3S4 confirms the
+// new check isn't over-broad — valid S3/S4 (>= 12) with HeaderProtectionKey
+// set must still succeed.
+func TestCreateInterface_AcceptsHeaderProtectionKeyWithValidS3S4(t *testing.T) {
+	initTunnelTestDB(t)
+
+	m := newTestManager()
+	iface, err := m.CreateInterface(CreateInput{
+		Protocol: awgparams.ProtocolAmneziaWG3,
+		Address:  "10.9.0.1/24",
+		AWG2: &peer.AWG2Settings{
+			Jc: 6, Jmin: 10, Jmax: 50,
+			S1: 64, S2: 67, S3: 12, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			HeaderProtectionKey: "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateInterface with valid S3/S4 padding: %v", err)
+	}
+	if iface == nil {
+		t.Fatal("expected non-nil interface")
 	}
 }

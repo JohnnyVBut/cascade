@@ -16,6 +16,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/validate"
 )
@@ -400,8 +401,8 @@ func CreateTemplate(data Template) (*Template, error) {
 	// to bring an interface up otherwise. Checked here (after defaults) so a
 	// template that didn't explicitly set S3/S4 can't slip through with the
 	// plain-AWG2 defaults (S4 defaults to 4).
-	if data.HeaderProtectionKey != "" && (data.S3 < 12 || data.S4 < 12) {
-		return nil, fmt.Errorf("headerProtectionKey requires S3 and S4 to both be at least 12")
+	if err := awgparams.ValidateHeaderProtectionKeyPadding(data.HeaderProtectionKey, data.S3, data.S4); err != nil {
+		return nil, err
 	}
 
 	data.ID = uuid.NewString()
@@ -566,9 +567,9 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		if err := validate.WGKey(t.HeaderProtectionKey); err != nil {
 			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
 		}
-		if t.S3 < 12 || t.S4 < 12 {
-			return nil, fmt.Errorf("headerProtectionKey requires S3 and S4 to both be at least 12")
-		}
+	}
+	if err := awgparams.ValidateHeaderProtectionKeyPadding(t.HeaderProtectionKey, t.S3, t.S4); err != nil {
+		return nil, err
 	}
 
 	tx, err := db.DB().Begin()

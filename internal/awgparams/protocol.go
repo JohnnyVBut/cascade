@@ -1,6 +1,9 @@
 package awgparams
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 // Protocol string constants stored in interfaces.protocol / used across the
 // tunnel/peer/api packages. Centralized here (rather than duplicated as
@@ -35,4 +38,20 @@ func IsAmneziaWG(protocol string) bool {
 // isn't), tunnel and API would silently disagree about which mode is active.
 func IsUserspaceMode() bool {
 	return os.Getenv("WG_QUICK_USERSPACE_IMPLEMENTATION") == "amneziawg-go"
+}
+
+// ValidateHeaderProtectionKeyPadding returns an error if headerProtectionKey
+// is set but s3/s4 are below 12 — amneziawg-go and the kernel module both
+// refuse to start with a smaller S3/S4 padding buffer once a
+// HeaderProtectionKey is configured (the key's cipher nonce is taken from
+// that padding). Shared by every path that can persist an AWG2Settings with
+// HeaderProtectionKey set: internal/settings.CreateTemplate/UpdateTemplate,
+// internal/api's interface create/update handlers, and
+// internal/tunnel.CreateInterface (used directly by ImportConf, which
+// bypasses the API handlers' validation).
+func ValidateHeaderProtectionKeyPadding(headerProtectionKey string, s3, s4 int) error {
+	if headerProtectionKey != "" && (s3 < 12 || s4 < 12) {
+		return fmt.Errorf("headerProtectionKey requires S3 and S4 to both be at least 12")
+	}
+	return nil
 }
