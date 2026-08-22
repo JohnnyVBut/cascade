@@ -173,18 +173,28 @@ type AWG2Settings struct {
 	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
 	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
 	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+
+	// amneziawg-go 3.1+ static flags — "on"/"off"/"" (empty = unset, treated
+	// as "off" at config-render time, same as an interface that predates
+	// this field existing).
+	RandomTrailers string `json:"randomTrailers,omitempty"`
+	DisableCookies string `json:"disableCookies,omitempty"`
 }
 
 // HasAWG3Fields reports whether any AWG 3.0 Transport Protection field is
 // set — used to reject these fields on a non-"amneziawg-3.0" interface
 // (mirrors settings.Template.hasAWG3Fields for the same reason: templates).
+// RandomTrailers/DisableCookies only count when "on" — "off" is functionally
+// identical to unset, so treating it as a marker would reject an interface
+// for a value that has no actual effect.
 func (a *AWG2Settings) HasAWG3Fields() bool {
 	if a == nil {
 		return false
 	}
 	return a.HeaderProtectionKey != "" || a.ContentPaddingAddition != "" ||
 		a.RekeyAfterTime != "" || a.RekeyTimeout != "" || a.RejectAfterTime != "" ||
-		a.KeepaliveTimeout != "" || a.MaxHandshakeAttempts != ""
+		a.KeepaliveTimeout != "" || a.MaxHandshakeAttempts != "" ||
+		a.RandomTrailers == "on" || a.DisableCookies == "on"
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -769,12 +779,21 @@ func writeAWG3Fields(sb *strings.Builder, s *AWG2Settings) {
 		fmt.Fprintf(sb, "MaxHandshakeAttempts = %s\n", s.MaxHandshakeAttempts)
 	}
 	// RandomTrailers/DisableCookies: amneziawg-go defaults both to off when
-	// absent, so this is a no-op today — written explicitly only so the
-	// field is present in the client config for tooling that keys off its
-	// presence rather than its value. Keep in sync with the server-side
-	// writeAWG3Fields above.
-	fmt.Fprintf(sb, "RandomTrailers = off\n")
-	fmt.Fprintf(sb, "DisableCookies = off\n")
+	// absent, so an empty/unset field renders as the explicit "off" —
+	// written unconditionally either way so the field is always present in
+	// the client config. Keep in sync with the server-side writeAWG3Fields
+	// above (internal/tunnel/interface.go).
+	fmt.Fprintf(sb, "RandomTrailers = %s\n", onOffOrDefault(s.RandomTrailers))
+	fmt.Fprintf(sb, "DisableCookies = %s\n", onOffOrDefault(s.DisableCookies))
+}
+
+// onOffOrDefault normalizes a possibly-empty (legacy/never-set) AWG3 static
+// flag to its explicit "on"/"off" wire value, defaulting to "off".
+func onOffOrDefault(v string) string {
+	if v == "on" {
+		return "on"
+	}
+	return "off"
 }
 
 // ── QR code ───────────────────────────────────────────────────────────────────

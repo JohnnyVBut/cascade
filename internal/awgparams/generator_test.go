@@ -552,6 +552,36 @@ func TestGenerate_RandomizeTimersOn_Invariants(t *testing.T) {
 	}
 }
 
+func TestGenerate_RandomTrailersDisableCookies_DefaultOff(t *testing.T) {
+	p := Generate(Options{})
+	if p.RandomTrailers != "off" {
+		t.Errorf("RandomTrailers = %q, want \"off\" when not requested", p.RandomTrailers)
+	}
+	if p.DisableCookies != "off" {
+		t.Errorf("DisableCookies = %q, want \"off\" when not requested", p.DisableCookies)
+	}
+}
+
+func TestGenerate_RandomTrailersDisableCookies_OnWhenRequested(t *testing.T) {
+	p := Generate(Options{RandomTrailers: true, DisableCookies: true})
+	if p.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want \"on\"", p.RandomTrailers)
+	}
+	if p.DisableCookies != "on" {
+		t.Errorf("DisableCookies = %q, want \"on\"", p.DisableCookies)
+	}
+}
+
+func TestGenerate_RandomTrailersDisableCookies_IndependentToggles(t *testing.T) {
+	p := Generate(Options{RandomTrailers: true, DisableCookies: false})
+	if p.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want \"on\"", p.RandomTrailers)
+	}
+	if p.DisableCookies != "off" {
+		t.Errorf("DisableCookies = %q, want \"off\" (independent of RandomTrailers)", p.DisableCookies)
+	}
+}
+
 func TestGenerate_AWG3TogglesIndependentlyCombinable(t *testing.T) {
 	p := Generate(Options{
 		HeaderProtection: true,

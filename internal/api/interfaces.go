@@ -843,6 +843,8 @@ func mapToAWG2(v any) (*peer.AWG2Settings, error) {
 	a.RejectAfterTime = strField("rejectAfterTime")
 	a.KeepaliveTimeout = strField("keepaliveTimeout")
 	a.MaxHandshakeAttempts = strField("maxHandshakeAttempts")
+	a.RandomTrailers = strField("randomTrailers")
+	a.DisableCookies = strField("disableCookies")
 	return a, nil
 }
 

@@ -95,6 +95,10 @@ type Template struct {
 	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
 	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
 	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+
+	// amneziawg-go 3.1+ static flags — "on"/"off"/"" (empty = unset).
+	RandomTrailers string `json:"randomTrailers,omitempty"`
+	DisableCookies string `json:"disableCookies,omitempty"`
 }
 
 // AWG2Params is a flat set of AWG2/AWG3 params returned by ApplyTemplate.
@@ -124,6 +128,10 @@ type AWG2Params struct {
 	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
 	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
 	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+
+	// amneziawg-go 3.1+ static flags — "on"/"off"/"" (empty = unset).
+	RandomTrailers string `json:"randomTrailers,omitempty"`
+	DisableCookies string `json:"disableCookies,omitempty"`
 }
 
 // PeerDefaults are passed to InterfaceManager when creating a new peer.
@@ -238,12 +246,14 @@ const templateColumns = `id, name, is_default, host,
 	       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
 	       header_protection_key, content_padding_addition,
 	       rekey_after_time, rekey_timeout, reject_after_time,
-	       keepalive_timeout, max_handshake_attempts, version`
+	       keepalive_timeout, max_handshake_attempts, version,
+	       random_trailers, disable_cookies`
 
 // scanTemplate scans one row's worth of templateColumns into t.
 func scanTemplate(t *Template, scan func(...any) error) error {
 	var isDefault int
 	var hpk, cpa, rat, rt, rejat, kt, mha sql.NullString
+	var rtr, dc sql.NullString
 	if err := scan(
 		&t.ID, &t.Name, &isDefault, &t.Host,
 		&t.Jc, &t.Jmin, &t.Jmax,
@@ -253,6 +263,7 @@ func scanTemplate(t *Template, scan func(...any) error) error {
 		&t.CreatedAt,
 		&hpk, &cpa, &rat, &rt, &rejat, &kt, &mha,
 		&t.Version,
+		&rtr, &dc,
 	); err != nil {
 		return err
 	}
@@ -264,6 +275,8 @@ func scanTemplate(t *Template, scan func(...any) error) error {
 	t.RejectAfterTime = rejat.String
 	t.KeepaliveTimeout = kt.String
 	t.MaxHandshakeAttempts = mha.String
+	t.RandomTrailers = rtr.String
+	t.DisableCookies = dc.String
 	return nil
 }
 
@@ -418,8 +431,9 @@ func CreateTemplate(data Template) (*Template, error) {
 		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
 		     header_protection_key, content_padding_addition,
 		     rekey_after_time, rekey_timeout, reject_after_time,
-		     keepalive_timeout, max_handshake_attempts, version)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		     keepalive_timeout, max_handshake_attempts, version,
+		     random_trailers, disable_cookies)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		data.ID, data.Name, boolInt(data.IsDefault), data.Host,
 		data.Jc, data.Jmin, data.Jmax,
 		data.S1, data.S2, data.S3, data.S4,
@@ -430,6 +444,7 @@ func CreateTemplate(data Template) (*Template, error) {
 		db.NullIfEmpty(data.RekeyAfterTime), db.NullIfEmpty(data.RekeyTimeout), db.NullIfEmpty(data.RejectAfterTime),
 		db.NullIfEmpty(data.KeepaliveTimeout), db.NullIfEmpty(data.MaxHandshakeAttempts),
 		data.Version,
+		db.NullIfEmpty(data.RandomTrailers), db.NullIfEmpty(data.DisableCookies),
 	)
 	if err != nil {
 		tx.Rollback()
@@ -535,6 +550,12 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	if v, ok := updates["maxHandshakeAttempts"].(string); ok {
 		t.MaxHandshakeAttempts = v
 	}
+	if v, ok := updates["randomTrailers"].(string); ok {
+		t.RandomTrailers = v
+	}
+	if v, ok := updates["disableCookies"].(string); ok {
+		t.DisableCookies = v
+	}
 	if t.Version != "2.0" && t.Version != "3.0" {
 		return nil, fmt.Errorf("invalid template version %q — must be \"2.0\" or \"3.0\"", t.Version)
 	}
@@ -572,7 +593,8 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		    i1=?, i2=?, i3=?, i4=?, i5=?,
 		    header_protection_key=?, content_padding_addition=?,
 		    rekey_after_time=?, rekey_timeout=?, reject_after_time=?,
-		    keepalive_timeout=?, max_handshake_attempts=?, version=?
+		    keepalive_timeout=?, max_handshake_attempts=?, version=?,
+		    random_trailers=?, disable_cookies=?
 		WHERE id=?`,
 		t.Name, boolInt(t.IsDefault), t.Host,
 		t.Jc, t.Jmin, t.Jmax,
@@ -583,6 +605,7 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		db.NullIfEmpty(t.RekeyAfterTime), db.NullIfEmpty(t.RekeyTimeout), db.NullIfEmpty(t.RejectAfterTime),
 		db.NullIfEmpty(t.KeepaliveTimeout), db.NullIfEmpty(t.MaxHandshakeAttempts),
 		t.Version,
+		db.NullIfEmpty(t.RandomTrailers), db.NullIfEmpty(t.DisableCookies),
 		id,
 	)
 	if err != nil {
@@ -708,6 +731,8 @@ func templateToParams(t *Template) *AWG2Params {
 		RejectAfterTime:        t.RejectAfterTime,
 		KeepaliveTimeout:       t.KeepaliveTimeout,
 		MaxHandshakeAttempts:   t.MaxHandshakeAttempts,
+		RandomTrailers:         t.RandomTrailers,
+		DisableCookies:         t.DisableCookies,
 	}
 }
 
@@ -929,8 +954,12 @@ func boolInt(b bool) int {
 
 // hasAWG3Fields reports whether any AWG 3.0 Transport Protection field is
 // set — used to reject a "2.0" template that carries 3.0-only fields.
+// RandomTrailers/DisableCookies only count when "on" — "off" is functionally
+// identical to unset, so treating it as a marker would reject a "2.0"
+// template for a value that has no actual effect.
 func (t Template) hasAWG3Fields() bool {
 	return t.HeaderProtectionKey != "" || t.ContentPaddingAddition != "" ||
 		t.RekeyAfterTime != "" || t.RekeyTimeout != "" || t.RejectAfterTime != "" ||
-		t.KeepaliveTimeout != "" || t.MaxHandshakeAttempts != ""
+		t.KeepaliveTimeout != "" || t.MaxHandshakeAttempts != "" ||
+		t.RandomTrailers == "on" || t.DisableCookies == "on"
 }

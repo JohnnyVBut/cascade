@@ -44,6 +44,8 @@ type Options struct {
 	HeaderProtection bool // encrypt packet-type headers of the established tunnel (HeaderProtectionKey)
 	ContentPadding   bool // random padding on transport packets beyond the fixed 16-byte grid (ContentPaddingAddition)
 	RandomizeTimers  bool // randomize handshake/keepalive timers instead of WireGuard's fixed constants
+	RandomTrailers   bool // amneziawg-go 3.1+ UAPI flag; no generator-side randomization, just an on/off toggle
+	DisableCookies   bool // amneziawg-go 3.1+ UAPI flag; no generator-side randomization, just an on/off toggle
 }
 
 // Params is the complete set of AWG 2.0 obfuscation parameters, plus the
@@ -76,6 +78,12 @@ type Params struct {
 	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`        // client-side: range, seconds
 	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`       // client-side: range, seconds
 	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`   // client-side: range
+
+	// amneziawg-go 3.1+ static flags. Always "on" or "off" (never empty) —
+	// unlike the fields above, these have no "not applicable" state, so both
+	// server and client configs always write one or the other explicitly.
+	RandomTrailers string `json:"randomTrailers"`
+	DisableCookies string `json:"disableCookies"`
 }
 
 // Profile is a UI-facing profile descriptor.
@@ -347,11 +355,22 @@ func Generate(opts Options) Params {
 		params.RekeyAfterTime, params.RekeyTimeout, params.RejectAfterTime,
 			params.KeepaliveTimeout, params.MaxHandshakeAttempts = genTimers()
 	}
+	params.RandomTrailers = onOff(opts.RandomTrailers)
+	params.DisableCookies = onOff(opts.DisableCookies)
 
 	return params
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// onOff renders a bool as the literal string amneziawg-go's UAPI/config
+// parser expects for RandomTrailers/DisableCookies.
+func onOff(v bool) string {
+	if v {
+		return "on"
+	}
+	return "off"
+}
 
 // rnd returns a random int in [a, b] inclusive. Mirrors JS rnd(a, b).
 func rnd(a, b int) int {

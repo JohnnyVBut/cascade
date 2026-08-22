@@ -50,6 +50,8 @@ func TestSaveScanInterface_AWG3FieldsRoundTrip(t *testing.T) {
 			RejectAfterTime:        "3h",
 			KeepaliveTimeout:       "15-25",
 			MaxHandshakeAttempts:   "20",
+			RandomTrailers:         "on",
+			DisableCookies:         "on",
 		},
 		peers: make(map[string]*peer.Peer),
 	}
@@ -85,6 +87,12 @@ func TestSaveScanInterface_AWG3FieldsRoundTrip(t *testing.T) {
 	}
 	if loaded.AWG2.MaxHandshakeAttempts != "20" {
 		t.Errorf("MaxHandshakeAttempts = %q, want '20'", loaded.AWG2.MaxHandshakeAttempts)
+	}
+	if loaded.AWG2.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want 'on'", loaded.AWG2.RandomTrailers)
+	}
+	if loaded.AWG2.DisableCookies != "on" {
+		t.Errorf("DisableCookies = %q, want 'on'", loaded.AWG2.DisableCookies)
 	}
 	// Existing AWG2 fields must still round-trip (regression check).
 	if loaded.AWG2.Jc != 5 || loaded.AWG2.I5 != "i5" {

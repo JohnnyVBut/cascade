@@ -972,6 +972,8 @@ func (m *Manager) buildAWG2Params(protocol string) (*peer.AWG2Settings, error) {
 		opts.HeaderProtection = true
 		opts.ContentPadding = true
 		opts.RandomizeTimers = true
+		opts.RandomTrailers = true
+		opts.DisableCookies = true
 	}
 	generated := awgparams.Generate(opts)
 	return awg2ParamsFromGenerated(&generated), nil
@@ -1004,6 +1006,8 @@ func awg2ParamsFromTemplate(p *settings.AWG2Params) *peer.AWG2Settings {
 		RejectAfterTime:        p.RejectAfterTime,
 		KeepaliveTimeout:       p.KeepaliveTimeout,
 		MaxHandshakeAttempts:   p.MaxHandshakeAttempts,
+		RandomTrailers:         p.RandomTrailers,
+		DisableCookies:         p.DisableCookies,
 	}
 }
 
@@ -1034,6 +1038,8 @@ func awg2ParamsFromGenerated(p *awgparams.Params) *peer.AWG2Settings {
 		RejectAfterTime:        p.RejectAfterTime,
 		KeepaliveTimeout:       p.KeepaliveTimeout,
 		MaxHandshakeAttempts:   p.MaxHandshakeAttempts,
+		RandomTrailers:         p.RandomTrailers,
+		DisableCookies:         p.DisableCookies,
 	}
 }
 

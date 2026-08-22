@@ -2994,6 +2994,20 @@
                         class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                     </div>
                   </div>
+                  <div class="flex items-center gap-4 mb-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" class="w-4 h-4"
+                        :checked="interfaceCreate.awg3.randomTrailers === 'on'"
+                        @change="interfaceCreate.awg3.randomTrailers = $event.target.checked ? 'on' : 'off'">
+                      <span class="text-xs font-medium dark:text-neutral-300">Random Trailers</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" class="w-4 h-4"
+                        :checked="interfaceCreate.awg3.disableCookies === 'on'"
+                        @change="interfaceCreate.awg3.disableCookies = $event.target.checked ? 'on' : 'off'">
+                      <span class="text-xs font-medium dark:text-neutral-300">Disable Cookies</span>
+                    </label>
+                  </div>
                   <p class="text-xs text-gray-400 dark:text-neutral-500">
                     Leave all fields empty to skip Transport Protection for this interface (plain AWG 3.0 params
                     still apply). Randomized timers must satisfy Reject After Time &gt; Keepalive Timeout + Rekey
@@ -3557,6 +3571,20 @@
                     <input v-model="interfaceEdit.awg3.maxHandshakeAttempts" type="text" placeholder="e.g. 15-25"
                       class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                   </div>
+                </div>
+                <div class="flex items-center gap-4 mb-3">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="w-4 h-4"
+                      :checked="interfaceEdit.awg3.randomTrailers === 'on'"
+                      @change="interfaceEdit.awg3.randomTrailers = $event.target.checked ? 'on' : 'off'">
+                    <span class="text-xs font-medium dark:text-neutral-300">Random Trailers</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="w-4 h-4"
+                      :checked="interfaceEdit.awg3.disableCookies === 'on'"
+                      @change="interfaceEdit.awg3.disableCookies = $event.target.checked ? 'on' : 'off'">
+                    <span class="text-xs font-medium dark:text-neutral-300">Disable Cookies</span>
+                  </label>
                 </div>
                 <p class="text-xs text-gray-400 dark:text-neutral-500">
                   Leave all fields empty to clear Transport Protection for this interface.
@@ -7853,6 +7881,20 @@
                       class="w-full px-2 py-1 text-sm border rounded dark:bg-neutral-600 dark:border-neutral-500 dark:text-neutral-200 font-mono">
                   </div>
                 </div>
+                <div class="flex items-center gap-4 mt-3">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="w-4 h-4"
+                      :checked="templateForm.randomTrailers === 'on'"
+                      @change="templateForm.randomTrailers = $event.target.checked ? 'on' : 'off'">
+                    <span class="text-xs font-medium dark:text-neutral-300">Random Trailers</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="w-4 h-4"
+                      :checked="templateForm.disableCookies === 'on'"
+                      @change="templateForm.disableCookies = $event.target.checked ? 'on' : 'off'">
+                    <span class="text-xs font-medium dark:text-neutral-300">Disable Cookies</span>
+                  </label>
+                </div>
               </div>
 
             </div><!-- /content area -->
@@ -7962,6 +8004,14 @@
                     <input type="checkbox" v-model="generateForm.randomizeTimers" class="w-4 h-4">
                     <span class="text-sm dark:text-neutral-300">Randomize Timers</span>
                   </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="generateForm.randomTrailers" class="w-4 h-4">
+                    <span class="text-sm dark:text-neutral-300">Random Trailers</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" v-model="generateForm.disableCookies" class="w-4 h-4">
+                    <span class="text-sm dark:text-neutral-300">Disable Cookies</span>
+                  </label>
                 </div>
               </div>
 
@@ -8010,6 +8060,10 @@
                   <span><span class="text-gray-400">RejectAfterTime=</span>{{ generatedParams.rejectAfterTime }}</span>
                   <span><span class="text-gray-400">KeepaliveTimeout=</span>{{ generatedParams.keepaliveTimeout }}</span>
                   <span><span class="text-gray-400">MaxHandshakeAttempts=</span>{{ generatedParams.maxHandshakeAttempts }}</span>
+                </div>
+                <div v-if="generatedParams.randomTrailers === 'on' || generatedParams.disableCookies === 'on'" class="flex flex-wrap gap-x-4 gap-y-1">
+                  <span v-if="generatedParams.randomTrailers === 'on'"><span class="text-gray-400">RandomTrailers=</span>on</span>
+                  <span v-if="generatedParams.disableCookies === 'on'"><span class="text-gray-400">DisableCookies=</span>on</span>
                 </div>
               </div>
               <div v-if="generatedParams" class="dark:border-neutral-600" style="border-top:1px solid #e5e7eb; padding-top:16px; display:flex; flex-direction:column; gap:10px;">

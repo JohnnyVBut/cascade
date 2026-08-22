@@ -208,6 +208,8 @@ func RegisterSettings(api fiber.Router) {
 			HeaderProtection bool `json:"headerProtection"`
 			ContentPadding   bool `json:"contentPadding"`
 			RandomizeTimers  bool `json:"randomizeTimers"`
+			RandomTrailers   bool `json:"randomTrailers"`
+			DisableCookies   bool `json:"disableCookies"`
 		}
 		// Body is optional — ignore parse errors, use zero values → defaults
 		_ = c.BodyParser(&body)
@@ -223,11 +225,14 @@ func RegisterSettings(api fiber.Router) {
 			HeaderProtection: body.HeaderProtection,
 			ContentPadding:   body.ContentPadding,
 			RandomizeTimers:  body.RandomizeTimers,
+			RandomTrailers:   body.RandomTrailers,
+			DisableCookies:   body.DisableCookies,
 		})
 
 		if body.SaveName != "" {
 			version := "2.0"
-			if body.HeaderProtection || body.ContentPadding || body.RandomizeTimers {
+			if body.HeaderProtection || body.ContentPadding || body.RandomizeTimers ||
+				body.RandomTrailers || body.DisableCookies {
 				version = "3.0"
 			}
 			tmpl, err := settings.CreateTemplate(settings.Template{
@@ -245,6 +250,8 @@ func RegisterSettings(api fiber.Router) {
 				RejectAfterTime:        params.RejectAfterTime,
 				KeepaliveTimeout:       params.KeepaliveTimeout,
 				MaxHandshakeAttempts:   params.MaxHandshakeAttempts,
+				RandomTrailers:         params.RandomTrailers,
+				DisableCookies:         params.DisableCookies,
 			})
 			if err != nil {
 				return fiber.NewError(fiber.StatusBadRequest, err.Error())

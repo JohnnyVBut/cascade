@@ -328,6 +328,37 @@ func TestGenerateCompleteConfig_AWG3WritesTransportProtectionFields(t *testing.T
 	}
 }
 
+func TestGenerateCompleteConfig_AWG3RandomTrailersDisableCookiesOn(t *testing.T) {
+	p := &Peer{
+		Name:                "awg3-client-on",
+		PrivateKey:          "privatekey790",
+		Address:             "10.9.0.4/24",
+		ClientAllowedIPs:    "0.0.0.0/0",
+		PersistentKeepalive: 25,
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+		Address:    "10.9.0.1/24",
+		ListenPort: 51823,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			RandomTrailers: "on",
+			DisableCookies: "on",
+		},
+	}
+	cfg := p.generateCompleteConfig(iface)
+
+	if !strings.Contains(cfg, "RandomTrailers = on") {
+		t.Errorf("expected client config to contain RandomTrailers = on, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = on") {
+		t.Errorf("expected client config to contain DisableCookies = on, got:\n%s", cfg)
+	}
+}
+
 func TestGenerateCompleteConfig_AWG2OmitsTransportProtectionFields(t *testing.T) {
 	// A 2.0 interface must never emit AWG3 fields even if Settings somehow
 	// carries stale values (e.g. downgraded from 3.0) — the 2.0 wg-quick
@@ -349,12 +380,17 @@ func TestGenerateCompleteConfig_AWG2OmitsTransportProtectionFields(t *testing.T)
 			S1: 32, S2: 33, S3: 20, S4: 12,
 			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
 			HeaderProtectionKey: "stale-key-should-not-appear",
+			RandomTrailers:      "on",
+			DisableCookies:      "on",
 		},
 	}
 	cfg := p.generateCompleteConfig(iface)
 
 	if strings.Contains(cfg, "HeaderProtectionKey") {
 		t.Errorf("expected AWG 2.0 config to omit HeaderProtectionKey, got:\n%s", cfg)
+	}
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Errorf("expected AWG 2.0 config to omit RandomTrailers/DisableCookies even when \"on\", got:\n%s", cfg)
 	}
 }
 

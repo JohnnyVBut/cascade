@@ -837,6 +837,19 @@ ALTER TABLE interfaces ADD COLUMN max_handshake_attempts   TEXT;
 ALTER TABLE templates ADD COLUMN version TEXT NOT NULL DEFAULT '2.0';
 `,
 	},
+	{
+		version: 43,
+		sql: `
+-- amneziawg-go 3.1+ static flags. NULL/empty means "not set", rendered as
+-- the explicit "off" default at config-render time (see onOffOrDefault in
+-- internal/tunnel/interface.go and internal/peer/peer.go).
+ALTER TABLE templates ADD COLUMN random_trailers TEXT;
+ALTER TABLE templates ADD COLUMN disable_cookies TEXT;
+
+ALTER TABLE interfaces ADD COLUMN random_trailers TEXT;
+ALTER TABLE interfaces ADD COLUMN disable_cookies TEXT;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {

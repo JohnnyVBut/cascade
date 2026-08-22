@@ -294,6 +294,7 @@ func (t *TunnelInterface) save() error {
 	var h1, h2, h3, h4 interface{}
 	var i1, i2, i3, i4, i5 interface{}
 	var hpk, cpa, rat, rt, rejat, kt, mha interface{}
+	var rtr, dc interface{}
 	if t.AWG2 != nil {
 		a := t.AWG2
 		jc, jmin, jmax = a.Jc, a.Jmin, a.Jmax
@@ -307,6 +308,8 @@ func (t *TunnelInterface) save() error {
 		rejat = db.NullIfEmpty(a.RejectAfterTime)
 		kt = db.NullIfEmpty(a.KeepaliveTimeout)
 		mha = db.NullIfEmpty(a.MaxHandshakeAttempts)
+		rtr = db.NullIfEmpty(a.RandomTrailers)
+		dc = db.NullIfEmpty(a.DisableCookies)
 	}
 
 	_, err := db.DB().Exec(`
@@ -317,8 +320,9 @@ func (t *TunnelInterface) save() error {
 			 i1, i2, i3, i4, i5, created_at,
 			 header_protection_key, content_padding_addition,
 			 rekey_after_time, rekey_timeout, reject_after_time,
-			 keepalive_timeout, max_handshake_attempts)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			 keepalive_timeout, max_handshake_attempts,
+			 random_trailers, disable_cookies)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 			name=excluded.name, address=excluded.address,
 			listen_port=excluded.listen_port, protocol=excluded.protocol,
@@ -336,7 +340,9 @@ func (t *TunnelInterface) save() error {
 			rekey_after_time=excluded.rekey_after_time, rekey_timeout=excluded.rekey_timeout,
 			reject_after_time=excluded.reject_after_time,
 			keepalive_timeout=excluded.keepalive_timeout,
-			max_handshake_attempts=excluded.max_handshake_attempts`,
+			max_handshake_attempts=excluded.max_handshake_attempts,
+			random_trailers=excluded.random_trailers,
+			disable_cookies=excluded.disable_cookies`,
 		t.ID, t.Name, t.Address, t.ListenPort, t.Protocol,
 		boolInt(t.Enabled), boolInt(t.DisableRoutes), boolInt(t.NatDisabled),
 		t.DNS, t.PublicHost, t.MTU, t.MSS, boolInt(t.Uplink), t.PrivateKey, t.PublicKey,
@@ -345,6 +351,7 @@ func (t *TunnelInterface) save() error {
 		i1, i2, i3, i4, i5,
 		t.CreatedAt,
 		hpk, cpa, rat, rt, rejat, kt, mha,
+		rtr, dc,
 	)
 	return err
 }
@@ -1115,23 +1122,27 @@ func writeAWG3Fields(sb *strings.Builder, a *peer.AWG2Settings) {
 	}
 }
 
-// writeAWG3StaticFields appends AWG-3.0-only static flags that are not part
-// of peer.AWG2Settings (no per-interface value to store — always "off" for
-// now). Unlike writeAWG3Fields above, this must only be called for a real
-// amneziawg-3.0 interface: unlike the other 7 fields (each individually
-// gated by non-emptiness, safe to call for any AmneziaWG version),
-// RandomTrailers/DisableCookies have no "empty" state to gate on, so an
-// unconditional call here would leak them onto amneziawg-2.0 configs too.
-//
-// amneziawg-go 0.0.20250522 defaults both to off when absent (confirmed via
-// `awg show` on a live interface), so this is a no-op today — written
-// explicitly only so the field is present in the config text for
-// clients/tooling that key off its presence rather than its value. No
-// generator toggle yet since neither field's "on" behavior has been
-// verified against our shipped daemon.
-func writeAWG3StaticFields(sb *strings.Builder) {
-	sb.WriteString("RandomTrailers = off\n")
-	sb.WriteString("DisableCookies = off\n")
+// writeAWG3StaticFields appends AWG-3.0-only static flags. Unlike
+// writeAWG3Fields above, this must only be called for a real amneziawg-3.0
+// interface: unlike the other 7 fields (each individually gated by
+// non-emptiness, safe to call for any AmneziaWG version), RandomTrailers/
+// DisableCookies have no "empty" state to gate on — they're always written
+// as an explicit "on" or "off" — so an unconditional call here would leak
+// them onto amneziawg-2.0 configs too.
+func writeAWG3StaticFields(sb *strings.Builder, a *peer.AWG2Settings) {
+	sb.WriteString("RandomTrailers = " + onOffOrDefault(a.RandomTrailers) + "\n")
+	sb.WriteString("DisableCookies = " + onOffOrDefault(a.DisableCookies) + "\n")
+}
+
+// onOffOrDefault normalizes a possibly-empty (legacy/never-set) AWG3 static
+// flag to its explicit "on"/"off" wire value, defaulting to "off". Kept in
+// sync with internal/peer/peer.go's copy of the same helper (same
+// import-cycle constraint as writeAWG3Fields/writeAWG3StaticFields above).
+func onOffOrDefault(v string) string {
+	if v == "on" {
+		return "on"
+	}
+	return "off"
 }
 
 // generateWgConfig builds the full wg-quick config string including PostUp/PostDown.
@@ -1256,7 +1267,7 @@ func (t *TunnelInterface) generateWgConfig() string {
 		}
 		writeAWG3Fields(&sb, a)
 		if t.Protocol == awgparams.ProtocolAmneziaWG3 {
-			writeAWG3StaticFields(&sb)
+			writeAWG3StaticFields(&sb, a)
 		}
 	}
 
@@ -1310,7 +1321,7 @@ func (t *TunnelInterface) generateSyncConfig() string {
 		}
 		writeAWG3Fields(&sb, a)
 		if t.Protocol == awgparams.ProtocolAmneziaWG3 {
-			writeAWG3StaticFields(&sb)
+			writeAWG3StaticFields(&sb, a)
 		}
 	}
 
@@ -1607,7 +1618,8 @@ func scanInterface(id string) (*TunnelInterface, error) {
 		       i1, i2, i3, i4, i5, created_at,
 		       header_protection_key, content_padding_addition,
 		       rekey_after_time, rekey_timeout, reject_after_time,
-		       keepalive_timeout, max_handshake_attempts
+		       keepalive_timeout, max_handshake_attempts,
+		       random_trailers, disable_cookies
 		FROM interfaces WHERE id = ?`, id)
 
 	t := &TunnelInterface{}
@@ -1618,6 +1630,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 		h1, h2, h3, h4                              sql.NullString
 		i1, i2, i3, i4, i5                          sql.NullString
 		hpk, cpa, rat, rt, rejat, kt, mha           sql.NullString
+		rtr, dc                                     sql.NullString
 	)
 
 	err := row.Scan(
@@ -1630,6 +1643,7 @@ func scanInterface(id string) (*TunnelInterface, error) {
 		&i1, &i2, &i3, &i4, &i5,
 		&t.CreatedAt,
 		&hpk, &cpa, &rat, &rt, &rejat, &kt, &mha,
+		&rtr, &dc,
 	)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("interface %q not found", id)
@@ -1658,6 +1672,8 @@ func scanInterface(id string) (*TunnelInterface, error) {
 			RejectAfterTime:        rejat.String,
 			KeepaliveTimeout:       kt.String,
 			MaxHandshakeAttempts:   mha.String,
+			RandomTrailers:         rtr.String,
+			DisableCookies:         dc.String,
 		}
 	}
 

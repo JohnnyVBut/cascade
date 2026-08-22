@@ -378,6 +378,7 @@ new Vue({
       headerProtectionKey: '', contentPaddingAddition: '',
       rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
       keepaliveTimeout: '', maxHandshakeAttempts: '',
+      randomTrailers: '', disableCookies: '',
     },
 
     // Generate AWG2/3.0 modal
@@ -391,6 +392,8 @@ new Vue({
       headerProtection: false,
       contentPadding: false,
       randomizeTimers: false,
+      randomTrailers: false,
+      disableCookies: false,
     },
     generatedParams: null,
     generatingParams: false,
@@ -1629,6 +1632,7 @@ new Vue({
           headerProtectionKey: '', contentPaddingAddition: '',
           rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
           keepaliveTimeout: '', maxHandshakeAttempts: '',
+          randomTrailers: '', disableCookies: '',
         },
       };
     },
@@ -1715,6 +1719,8 @@ new Vue({
           rejectAfterTime:        s.rejectAfterTime        || '',
           keepaliveTimeout:       s.keepaliveTimeout       || '',
           maxHandshakeAttempts:   s.maxHandshakeAttempts   || '',
+          randomTrailers:         s.randomTrailers         || '',
+          disableCookies:         s.disableCookies         || '',
         },
       };
       this.showInterfaceEdit = true;
@@ -1747,6 +1753,8 @@ new Vue({
         rejectAfterTime: tmpl.rejectAfterTime || '',
         keepaliveTimeout: tmpl.keepaliveTimeout || '',
         maxHandshakeAttempts: tmpl.maxHandshakeAttempts || '',
+        randomTrailers: tmpl.randomTrailers || '',
+        disableCookies: tmpl.disableCookies || '',
       };
     },
 
@@ -5597,6 +5605,7 @@ new Vue({
         headerProtectionKey: '', contentPaddingAddition: '',
         rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
         keepaliveTimeout: '', maxHandshakeAttempts: '',
+        randomTrailers: '', disableCookies: '',
       };
       this.randomiseTemplateH();
       this.templateEditTarget = null;
@@ -5709,6 +5718,7 @@ new Vue({
       this.generateForm = {
         profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '',
         headerProtection: false, contentPadding: false, randomizeTimers: false,
+        randomTrailers: false, disableCookies: false,
       };
       this.generatedParams = null;
       this.showGenerateModal = true;
@@ -5725,6 +5735,8 @@ new Vue({
           headerProtection: this.generateForm.headerProtection,
           contentPadding:   this.generateForm.contentPadding,
           randomizeTimers:  this.generateForm.randomizeTimers,
+          randomTrailers:   this.generateForm.randomTrailers,
+          disableCookies:   this.generateForm.disableCookies,
         });
         this.generatedParams = res.params;
         if (!this.generateProfiles.length && res.profiles) {
@@ -5738,10 +5750,11 @@ new Vue({
     },
 
     // isGeneratingV3 mirrors the backend's version-selection rule in
-    // POST /templates/generate: any of the three toggles → a "3.0" template.
+    // POST /templates/generate: any toggle → a "3.0" template.
     isGeneratingV3() {
       const f = this.generateForm;
-      return !!(f.headerProtection || f.contentPadding || f.randomizeTimers);
+      return !!(f.headerProtection || f.contentPadding || f.randomizeTimers ||
+        f.randomTrailers || f.disableCookies);
     },
 
     async saveGeneratedTemplate() {
@@ -5785,6 +5798,8 @@ new Vue({
         rejectAfterTime: p.rejectAfterTime || '',
         keepaliveTimeout: p.keepaliveTimeout || '',
         maxHandshakeAttempts: p.maxHandshakeAttempts || '',
+        randomTrailers: p.randomTrailers || '',
+        disableCookies: p.disableCookies || '',
       };
       this.templateEditTarget = null;
       this.showGenerateModal = false;
@@ -5817,6 +5832,8 @@ new Vue({
         rejectAfterTime: tmpl.rejectAfterTime || '',
         keepaliveTimeout: tmpl.keepaliveTimeout || '',
         maxHandshakeAttempts: tmpl.maxHandshakeAttempts || '',
+        randomTrailers: tmpl.randomTrailers || '',
+        disableCookies: tmpl.disableCookies || '',
       };
     },
 

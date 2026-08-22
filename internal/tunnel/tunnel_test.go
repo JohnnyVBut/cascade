@@ -483,6 +483,23 @@ func TestGenerateWgConfig_AWG3StaticFieldsOnlyForV3(t *testing.T) {
 	}
 }
 
+func TestGenerateWgConfig_AWG3StaticFieldsOnWhenSet(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-3.0"
+	a := baseAWG2SettingsNoAWG3()
+	a.RandomTrailers = "on"
+	a.DisableCookies = "on"
+	iface.AWG2 = a
+	cfg := iface.generateWgConfig()
+
+	if !strings.Contains(cfg, "RandomTrailers = on") {
+		t.Errorf("generateWgConfig missing RandomTrailers = on, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = on") {
+		t.Errorf("generateWgConfig missing DisableCookies = on, got:\n%s", cfg)
+	}
+}
+
 func TestGenerateSyncConfig_AWG3FieldsAllSet(t *testing.T) {
 	iface := newTestIface()
 	iface.Protocol = "amneziawg-2.0"

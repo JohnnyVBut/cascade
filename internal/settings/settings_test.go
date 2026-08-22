@@ -648,9 +648,17 @@ func TestCreateTemplate_AWG3FieldsRoundTrip(t *testing.T) {
 		RejectAfterTime:        "3h",
 		KeepaliveTimeout:       "15-25",
 		MaxHandshakeAttempts:   "20",
+		RandomTrailers:         "on",
+		DisableCookies:         "on",
 	})
 	if err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
+	}
+	if tmpl.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want 'on'", tmpl.RandomTrailers)
+	}
+	if tmpl.DisableCookies != "on" {
+		t.Errorf("DisableCookies = %q, want 'on'", tmpl.DisableCookies)
 	}
 	if tmpl.HeaderProtectionKey != "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" {
 		t.Errorf("HeaderProtectionKey = %q, want 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8='", tmpl.HeaderProtectionKey)
@@ -684,6 +692,12 @@ func TestCreateTemplate_AWG3FieldsRoundTrip(t *testing.T) {
 	}
 	if got.MaxHandshakeAttempts != "20" {
 		t.Errorf("GetTemplate MaxHandshakeAttempts = %q, want '20'", got.MaxHandshakeAttempts)
+	}
+	if got.RandomTrailers != "on" {
+		t.Errorf("GetTemplate RandomTrailers = %q, want 'on'", got.RandomTrailers)
+	}
+	if got.DisableCookies != "on" {
+		t.Errorf("GetTemplate DisableCookies = %q, want 'on'", got.DisableCookies)
 	}
 
 	// Round-trip through GetTemplates (list query → scanTemplate).
