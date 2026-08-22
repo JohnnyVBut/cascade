@@ -42,8 +42,8 @@ func RegisterOneTimeLink(r fiber.Router) {
 }
 
 // getPeerConfigByToken serves a peer config using a one-time token.
-// Finds the peer whose OneTimeLink matches the token, clears the token,
-// and returns the WireGuard config as a downloadable file.
+// Atomically consumes the token (see ConsumeOneTimeLink) and returns the
+// WireGuard config as a downloadable file.
 func getPeerConfigByToken(c *fiber.Ctx) error {
 	token := c.Params("token")
 	if len(token) != 32 {
@@ -56,23 +56,34 @@ func getPeerConfigByToken(c *fiber.Ctx) error {
 	}
 
 	for _, iface := range m.GetAllInterfaces() {
-		for _, p := range iface.GetAllPeers() {
-			if p.OneTimeLink != token {
-				continue
-			}
-			config, err := m.GetPeerRemoteConfig(iface.ID, p.ID)
-			if err != nil {
-				return fiber.NewError(fiber.StatusInternalServerError, "config generation failed")
-			}
-			// Consume the token only after config is successfully generated.
-			empty := ""
-			if _, err := m.UpdatePeer(iface.ID, p.ID, peer.PeerUpdate{OneTimeLink: &empty}); err != nil {
-				log.Printf("api: cnf: clear token for peer %s: %v", p.ID, err)
-			}
-			c.Set("Content-Type", "text/plain; charset=utf-8")
-			c.Set("Content-Disposition", `attachment; filename="wg.conf"`)
-			return c.SendString(config)
+		// ConsumeOneTimeLink atomically finds-and-clears the token in-memory in
+		// one locked step, so only the first of any concurrent requests for the
+		// same token can ever win here — see its doc comment for why a separate
+		// scan-then-clear (the previous behavior) let a "one-time" link be used
+		// more than once under a race.
+		p := iface.ConsumeOneTimeLink(token)
+		if p == nil {
+			continue
 		}
+		// The token is already burned in-memory at this point even if config
+		// generation fails below — a false-negative (token wasted, needs
+		// reissue) is the safe failure mode for a one-time link, versus a
+		// false-positive (usable twice) if we cleared it only after success.
+		config, err := m.BuildPeerRemoteConfig(iface, p)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "config generation failed")
+		}
+		// Persist the already-in-memory-cleared token to SQLite. Best effort:
+		// a failure here doesn't reopen the race, since the in-memory state
+		// (checked by every request, including any that raced with this one)
+		// is already cleared regardless of whether the DB write below succeeds.
+		empty := ""
+		if _, err := peer.UpdatePeer(p.ID, peer.PeerUpdate{OneTimeLink: &empty}); err != nil {
+			log.Printf("api: cnf: persist cleared token for peer %s: %v", p.ID, err)
+		}
+		c.Set("Content-Type", "text/plain; charset=utf-8")
+		c.Set("Content-Disposition", `attachment; filename="wg.conf"`)
+		return c.SendString(config)
 	}
 
 	return fiber.NewError(fiber.StatusNotFound, "token not found or already used")

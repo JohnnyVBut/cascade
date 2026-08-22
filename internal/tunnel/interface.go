@@ -383,7 +383,9 @@ func (t *TunnelInterface) ReloadPeerFromDB(id string) (*peer.Peer, error) {
 		return nil, nil
 	}
 	t.peersMu.Lock()
-	t.peers[id] = fresh
+	// Key by fresh.ID, not the id parameter — see UpdatePeer's comment on
+	// why the map key must come from the stored value's own ID field.
+	t.peers[fresh.ID] = fresh
 	t.peersMu.Unlock()
 	return fresh, nil
 }
@@ -414,6 +416,44 @@ func (t *TunnelInterface) PeerCount() int {
 	t.peersMu.RLock()
 	defer t.peersMu.RUnlock()
 	return len(t.peers)
+}
+
+// ConsumeOneTimeLink atomically finds the peer whose OneTimeLink matches
+// token and clears it in-memory, returning that peer — or nil if no peer
+// currently holds this token (never issued, or already consumed).
+//
+// This must happen under a single peersMu write lock rather than as a
+// separate "scan under RLock, clear under a later Lock" sequence: two
+// concurrent requests for the same still-valid token could otherwise both
+// pass the scan before either clears it, letting a "one-time" link be used
+// twice. Doing the find-and-clear as one atomic step means only the first
+// caller ever observes the token as valid; every other concurrent (or
+// later) caller sees it already cleared.
+//
+// Does not touch SQLite — callers persist the clear afterwards (best
+// effort; a failure to persist just means the in-memory guarantee above
+// still holds for this process's lifetime, matching the previous code's
+// existing best-effort persistence).
+func (t *TunnelInterface) ConsumeOneTimeLink(token string) *peer.Peer {
+	t.peersMu.Lock()
+	defer t.peersMu.Unlock()
+	for id, p := range t.peers {
+		if p.OneTimeLink != token {
+			continue
+		}
+		cp := *p
+		cp.OneTimeLink = ""
+		// Self-healing: if this entry's map key ever drifted from the peer's
+		// own ID (see UpdatePeer's comment — issue #99), drop the stale key
+		// instead of perpetuating it, and store under cp.ID like every other
+		// write site now does.
+		if id != cp.ID {
+			delete(t.peers, id)
+		}
+		t.peers[cp.ID] = &cp
+		return &cp
+	}
+	return nil
 }
 
 // ── Peer CRUD ─────────────────────────────────────────────────────────────────
@@ -577,7 +617,16 @@ func (t *TunnelInterface) UpdatePeer(peerID string, upd peer.PeerUpdate) (*peer.
 	}
 
 	t.peersMu.Lock()
-	t.peers[peerID] = updated
+	// Key by updated.ID, not the peerID parameter. A caller-supplied string
+	// (e.g. straight from a Fiber route param) is not guaranteed to be safe
+	// to retain as a long-lived map key indefinitely, and any mismatch
+	// between the key and the stored peer's own ID silently produces a
+	// duplicate entry on the next write for that peer (the old key's entry
+	// is never removed) rather than replacing it — this was the actual
+	// cause of one-time-links becoming re-usable after the previous fix,
+	// see the GitHub issue #99 discussion. Always deriving the key from the
+	// value being stored guarantees map key == Peer.ID as an invariant.
+	t.peers[updated.ID] = updated
 	t.peersMu.Unlock()
 
 	// Only reload the kernel when fields that appear in [Peer] config sections change.
