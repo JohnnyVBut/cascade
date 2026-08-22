@@ -42,7 +42,20 @@ func newDashboardTestApp(t *testing.T) *dashboardTestApp {
 	if err := db.Init(dir); err != nil {
 		t.Fatalf("db.Init: %v", err)
 	}
-	t.Cleanup(db.Close)
+	// db's instance is a single unguarded package-level global shared by the
+	// whole test binary (see import_client_configs_test.go's TestMain) —
+	// closing it here would leave every test that runs afterward with a nil
+	// db.DB(), and re-opening a fresh empty one would leave them pointed at
+	// a database missing the fixtures TestMain seeded. Restore the shared
+	// TestMain database rather than just closing this test's own.
+	t.Cleanup(func() {
+		db.Close()
+		if sharedTestDBDir != "" {
+			if err := db.Init(sharedTestDBDir); err != nil {
+				t.Fatalf("restore shared test db: %v", err)
+			}
+		}
+	})
 
 	// getDashboardWidgets calls gateway.Get(), which panics unless a Manager
 	// singleton has been installed (see gateway.SetInstance).

@@ -51,6 +51,15 @@ const (
 var (
 	importCfgApp *fiber.App
 	wgBinPath    string // "" if wg is not available on this machine
+
+	// sharedTestDBDir is the data dir TestMain opened db.DB() against for
+	// this whole package's test run. Tests that need their own temporarily
+	// isolated database (e.g. dashboard_test.go's newDashboardTestApp) must
+	// restore db.Init(sharedTestDBDir) in their cleanup — the db package's
+	// instance is a single unguarded global, so leaving it closed or
+	// pointed at a throwaway DB after such a test breaks every test that
+	// runs afterward in this same package/binary.
+	sharedTestDBDir string
 )
 
 func TestMain(m *testing.M) {
@@ -58,6 +67,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
+	sharedTestDBDir = dir
 	if err := db.Init(dir); err != nil {
 		panic(err)
 	}
