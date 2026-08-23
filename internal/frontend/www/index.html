@@ -724,6 +724,15 @@
                           <span class="text-gray-500 dark:text-neutral-400">Load avg</span>
                           <span class="font-mono dark:text-neutral-200">{{ dashSystemInfo.load1 }} / {{ dashSystemInfo.load5 }} / {{ dashSystemInfo.load15 }}</span>
                         </div>
+                        <div v-if="dashSystemInfo.awgCliVersion || dashSystemInfo.awgKernelVersion"
+                          class="flex items-center justify-between text-sm">
+                          <span class="text-gray-500 dark:text-neutral-400">AWG CLI / kernel</span>
+                          <span class="font-mono" :style="{ color: dashSystemInfo.awgVersionMismatch ? '#dc2626' : (theme==='dark' ? '#e5e5e5' : '#111827') }"
+                            :title="dashSystemInfo.awgVersionMismatch ? 'CLI and kernel module versions differ — may cause peer sync failures (Invalid argument)' : ''">
+                            {{ dashSystemInfo.awgCliVersion || '?' }} / {{ dashSystemInfo.awgKernelVersion || '?' }}
+                            <span v-if="dashSystemInfo.awgVersionMismatch">⚠</span>
+                          </span>
+                        </div>
                         <div style="margin-top:4px;">
                           <div class="flex items-center justify-between text-sm mb-1">
                             <span class="text-gray-500 dark:text-neutral-400">Memory</span>

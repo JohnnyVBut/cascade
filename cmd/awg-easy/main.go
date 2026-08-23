@@ -53,6 +53,15 @@ func main() {
 		log.Printf("AmneziaWG run mode: userspace (amneziawg-go)")
 	} else {
 		log.Printf("AmneziaWG run mode: kernel")
+		// CLI/kernel-module version mismatch is a known source of silent
+		// `awg setconf: Unable to modify interface: Invalid argument`
+		// failures (see the compatibility note in this repo's Dockerfile) —
+		// warn loudly at startup rather than let it surface later as a
+		// cryptic kernel error during peer sync.
+		if vr := awgparams.CheckKernelCLIVersionMismatch(); vr.Mismatch {
+			log.Printf("WARNING: AmneziaWG CLI/kernel-module version mismatch (%s) — "+
+				"peer sync may fail with EINVAL; consider aligning awg-tools and the amneziawg kernel module versions", vr)
+		}
 	}
 
 	// Start background update checker — polls GitHub Releases API every 24 h.
