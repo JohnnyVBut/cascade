@@ -251,12 +251,23 @@ Full threat model: [docs/SECURITY.md](docs/SECURITY.md)
 > protocol jump (2026-07-30)** — the module stayed on the pre-3.0 line while
 > the image moved to 3.0.x, so `awg setconf`'s netlink format no longer
 > matches what the old module expects. If they drift apart, interfaces will
-> fail to start with `Unable to modify interface: Invalid argument`. Always
-> re-sync the kernel module alongside a container update:
+> fail to start with `Unable to modify interface: Invalid argument`.
+>
+> **Order matters:** pull the new image but do *not* run `up -d` yet — restarting
+> the container on the new image while the host module is still old recreates
+> the exact mismatch above. Let `switch-mode.sh --kernel` do both the module
+> resync *and* the container restart together, so the CLI and kernel module
+> flip in the same step instead of drifting apart mid-update:
 > ```bash
+> git pull origin master
+> docker compose -f docker-compose.yml pull
 > sudo bash deploy/switch-mode.sh --kernel
 > ```
-> Userspace mode is unaffected — it doesn't depend on a host kernel module.
+> As of v0.9.5, `--kernel` re-checks the `ppa:amnezia/ppa` package version every
+> time — even if a module is already loaded — and reloads it if a newer
+> build is available, so the sync is real rather than a no-op when the old
+> module is already `lsmod`-loaded. Userspace mode is unaffected — it
+> doesn't depend on a host kernel module, so the plain steps below are fine.
 
 ### Host network mode (default)
 
@@ -265,6 +276,9 @@ git pull origin master
 docker compose -f docker-compose.yml pull
 docker compose -f docker-compose.yml up -d
 ```
+
+> Kernel module mode users: skip the `up -d` above and run
+> `sudo bash deploy/switch-mode.sh --kernel` instead — see the warning above.
 
 ### Full stack (Caddy + setup.sh)
 
