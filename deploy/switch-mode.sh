@@ -77,20 +77,36 @@ apply_userspace() {
 apply_kernel() {
   info "Switching to kernel module mode..."
   rm -f /etc/modprobe.d/amneziawg-blacklist.conf
-  if lsmod | grep -q amneziawg 2>/dev/null; then
-    ok "amneziawg already loaded"
-  elif dpkg -l amneziawg &>/dev/null 2>&1; then
-    modprobe amneziawg
-    echo "amneziawg" > /etc/modules-load.d/amneziawg.conf
-    ok "amneziawg loaded"
-  else
+
+  # Always resync the package to the latest PPA version, even if a module is
+  # already loaded — `apt-get install` is a no-op when already current, but
+  # upgrades it when the PPA has moved on. This is what makes --kernel a real
+  # "re-sync the kernel module" step after a container update (see README's
+  # AWG3-protocol-jump warning); merely checking `lsmod` would silently keep
+  # a stale pre-3.0 module loaded and never touch it.
+  if ! dpkg -l amneziawg &>/dev/null 2>&1; then
     info "Installing amneziawg kernel module (ppa:amnezia/ppa)..."
     add-apt-repository -y ppa:amnezia/ppa > /dev/null 2>&1
     apt-get update -qq
-    apt-get install -y amneziawg
+  else
+    info "Checking for amneziawg kernel module updates (ppa:amnezia/ppa)..."
+    apt-get update -qq
+  fi
+
+  BEFORE_VER="$(dpkg-query -W -f='${Version}' amneziawg 2>/dev/null || echo "")"
+  apt-get install -y amneziawg
+  AFTER_VER="$(dpkg-query -W -f='${Version}' amneziawg 2>/dev/null || echo "")"
+
+  if lsmod | grep -q amneziawg 2>/dev/null && [[ "$BEFORE_VER" == "$AFTER_VER" ]]; then
+    ok "amneziawg already loaded and up to date (${AFTER_VER})"
+  else
+    if lsmod | grep -q amneziawg 2>/dev/null; then
+      info "Package updated (${BEFORE_VER:-none} → ${AFTER_VER}) — reloading module..."
+      modprobe -r amneziawg 2>/dev/null || warn "Could not unload old module — a reboot may be required to pick up the new version"
+    fi
     modprobe amneziawg
     echo "amneziawg" > /etc/modules-load.d/amneziawg.conf
-    ok "amneziawg installed and loaded"
+    ok "amneziawg ${AFTER_VER} loaded"
   fi
 }
 
