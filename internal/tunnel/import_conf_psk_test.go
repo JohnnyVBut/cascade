@@ -18,6 +18,15 @@
 // nil { return p, err }` — p is non-nil). Config generation itself is
 // already covered by TestParseWGConf_* in conf_parser_test.go and the
 // peer.ToWgConfig tests in internal/peer/peer_test.go.
+//
+// The two tests below still need a real "wg" binary to get past
+// Manager.CreateInterface's own peer.GenerateKeys("wg") call for the
+// interface's own keypair (unrelated to the peer-level PSK logic under
+// test) — skipped via exec.LookPath("wg") on a runner that doesn't have
+// wireguard-tools installed (confirmed necessary: GitHub Actions'
+// ubuntu-latest runner doesn't ship it, unlike this repo's own macOS dev
+// sandboxes, where util.Exec no-ops for every command regardless of PATH
+// — see internal/util/exec.go — so this was invisible locally).
 package tunnel
 
 import (
@@ -44,6 +53,9 @@ func addPeerTolerateRegenerateConfigFailure(t *testing.T, iface *TunnelInterface
 }
 
 func TestAddPeer_ImportConfStylePeer_NoPresharedKey_StaysEmpty(t *testing.T) {
+	if _, err := exec.LookPath("wg"); err != nil {
+		t.Skip("wg binary not found in PATH — skipping")
+	}
 	initTunnelTestDB(t)
 
 	m := newTestManager()
@@ -79,6 +91,9 @@ func TestAddPeer_ImportConfStylePeer_NoPresharedKey_StaysEmpty(t *testing.T) {
 }
 
 func TestAddPeer_ImportConfStylePeer_WithPresharedKey_UsedAsIs(t *testing.T) {
+	if _, err := exec.LookPath("wg"); err != nil {
+		t.Skip("wg binary not found in PATH — skipping")
+	}
 	initTunnelTestDB(t)
 
 	m := newTestManager()
