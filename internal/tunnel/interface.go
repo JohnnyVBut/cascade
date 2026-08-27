@@ -522,11 +522,18 @@ func (t *TunnelInterface) AddPeer(inp peer.PeerInput) (*peer.Peer, error) {
 		inp.GenerateKeys = false
 	}
 
-	// Interconnect peers always need a PSK for mutual authentication.
-	// If none was provided (first importer in S2S workflow), generate one now.
-	// The importer exports their params with this PSK so the remote side can
-	// import it and the two ends end up with a matching PSK.
-	if inp.PeerType == "interconnect" && inp.PresharedKey == "" {
+	// Cascade↔Cascade S2S interconnect peers need a PSK for mutual
+	// authentication. If none was provided and the caller opted in via
+	// AutoGeneratePSK (the S2S JSON-import flow — see PeerInput's doc
+	// comment), generate one now; the importer exports its params with this
+	// PSK so the remote side can import it and the two ends end up matching.
+	//
+	// Must NOT fire for third-party WireGuard .conf imports (tunnel.ImportConf,
+	// used for e.g. Cloudflare WARP uplinks): AutoGeneratePSK stays false
+	// there, so a peer with no PresharedKey in the source .conf is created
+	// with no PSK — inventing one the remote server never learns about
+	// silently breaks the handshake (issue #102).
+	if inp.PeerType == "interconnect" && inp.PresharedKey == "" && inp.AutoGeneratePSK {
 		psk, err := peer.GeneratePSK(t.syncBin())
 		if err != nil {
 			return nil, fmt.Errorf("generate PSK for interconnect peer: %w", err)

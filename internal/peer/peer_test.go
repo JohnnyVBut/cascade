@@ -917,3 +917,55 @@ func TestGenerateCompleteConfig_PersistentKeepaliveV3AppliesOnlyToV3(t *testing.
 		t.Errorf("AWG2 client config must not use the V3 range override, got:\n%s", v2cfg)
 	}
 }
+
+// TestCreatePeer_EmptyPresharedKeyRoundTrips is a regression check for issue
+// #102: a peer created with no PresharedKey (e.g. a third-party WireGuard
+// .conf import via tunnel.ImportConf, whose PeerInput has no PSK and does
+// not set AutoGeneratePSK — see PeerInput.AutoGeneratePSK's doc comment)
+// must persist and reload with PresharedKey == "", not some NULL-vs-empty-
+// -string artifact from the DB layer, so callers reliably see "no PSK" and
+// don't accidentally omit/garble the PresharedKey line on config generation.
+func TestCreatePeer_EmptyPresharedKeyRoundTrips(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-empty-psk"
+	insertTestInterface(t, ifaceID)
+
+	p, err := CreatePeer(ifaceID, PeerInput{
+		Name:       "uplink-no-psk",
+		PublicKey:  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs: "0.0.0.0/0",
+		PeerType:   "interconnect",
+		// PresharedKey and AutoGeneratePSK both left at zero value, mirroring
+		// tunnel.ImportConf's PeerInput for a .conf with no PresharedKey line.
+	})
+	if err != nil {
+		t.Fatalf("CreatePeer: %v", err)
+	}
+	if p.PresharedKey != "" {
+		t.Fatalf("PresharedKey = %q immediately after CreatePeer, want empty", p.PresharedKey)
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("GetPeer returned nil")
+	}
+	if loaded.PresharedKey != "" {
+		t.Errorf("after reload: PresharedKey = %q, want empty (no NULL-vs-empty-string confusion)", loaded.PresharedKey)
+	}
+
+	// Also verify GetPeers (list path, used by e.g. GetAllPeers/interface
+	// listing) round-trips the same way — a separate SELECT/scan path.
+	peers, err := GetPeers(ifaceID)
+	if err != nil {
+		t.Fatalf("GetPeers: %v", err)
+	}
+	if len(peers) != 1 {
+		t.Fatalf("GetPeers returned %d peers, want 1", len(peers))
+	}
+	if peers[0].PresharedKey != "" {
+		t.Errorf("GetPeers: PresharedKey = %q, want empty", peers[0].PresharedKey)
+	}
+}

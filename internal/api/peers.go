@@ -175,6 +175,17 @@ func createPeer(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
 	}
 
+	// This handler is also how an admin manually pairs with another Cascade
+	// instance for S2S (peerType=interconnect, mode=manual in the UI — no PSK
+	// field exists there, the admin only pastes the remote's public key). Like
+	// importPeerJSON, it's a Cascade-authored peer with a real chance for the
+	// generated PSK to reach the other side (via export-json), unlike
+	// tunnel.ImportConf's third-party .conf import — see PeerInput's
+	// AutoGeneratePSK doc comment and issue #102.
+	if inp.PeerType == "interconnect" {
+		inp.AutoGeneratePSK = true
+	}
+
 	// Apply global defaults from settings when not explicitly set.
 	d := peerDefaults()
 	if inp.ClientAllowedIPs == "" {
@@ -219,6 +230,11 @@ func importPeerJSON(c *fiber.Ctx) error {
 	// The remote side exports its public key + endpoint; we create a peer pointing at it.
 	inp := peer.PeerInput{
 		PeerType: "interconnect",
+		// This is the Cascade↔Cascade S2S flow — opt into AddPeer's PSK
+		// auto-generation when the export didn't already include one (the
+		// first importer in the exchange). See PeerInput.AutoGeneratePSK's
+		// doc comment: must NOT be set for third-party .conf imports.
+		AutoGeneratePSK: true,
 	}
 	if v, ok := body["name"].(string); ok {
 		inp.Name = strings.TrimSpace(v)
@@ -254,7 +270,8 @@ func importPeerJSON(c *fiber.Ctx) error {
 	}
 
 	// PSK is generated automatically in AddPeer when inp.PresharedKey == ""
-	// (interconnect peer without PSK → AddPeer calls peer.GeneratePSK).
+	// and inp.AutoGeneratePSK is true (set above) — interconnect peer without
+	// PSK → AddPeer calls peer.GeneratePSK.
 
 	p, err := mgr().AddPeer(ifaceID, inp)
 	if err != nil {

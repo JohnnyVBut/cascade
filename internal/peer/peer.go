@@ -117,6 +117,18 @@ type PeerInput struct {
 	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
 	AutoAllocateIP bool   `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
 	CreatedAt      string `json:"createdAt"`      // if non-empty, overrides the auto-generated timestamp (e.g. backup import)
+
+	// AutoGeneratePSK opts an interconnect peer into TunnelInterface.AddPeer's
+	// PSK auto-generation when PresharedKey is empty. Server-internal decision,
+	// not exposed to API clients (json:"-"): set true for every Cascade-authored
+	// S2S interconnect peer — internal/api/peers.go's importPeerJSON (JSON-paste
+	// import) and createPeer (manual "Add Peer", peerType=interconnect, which
+	// has no PSK field in its UI) — since in both cases the generated PSK has a
+	// real chance to reach the other side (via export-json). Must stay false
+	// for third-party WireGuard .conf imports (tunnel.ImportConf) — see issue
+	// #102: auto-generating a PSK the remote server never learns about silently
+	// breaks the handshake. Ignored for non-interconnect peers.
+	AutoGeneratePSK bool `json:"-"`
 }
 
 // PeerUpdate contains the fields that can be changed via PATCH.
