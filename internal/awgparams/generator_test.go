@@ -1,6 +1,7 @@
 package awgparams
 
 import (
+	"encoding/base64"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -423,5 +424,204 @@ func TestComposite_NotInRandomPool(t *testing.T) {
 		if composites[p.Profile] {
 			t.Errorf("iteration %d: random pool returned composite profile %q — composites must be excluded", i, p.Profile)
 		}
+	}
+}
+
+// ── AWG 3.0 Transport Protection ─────────────────────────────────────────────
+
+func TestGenerate_HeaderProtectionOff_S3S4OldBounds(t *testing.T) {
+	sawS3Below12 := false
+	sawS4Below12 := false
+	for i := 0; i < 200; i++ {
+		p := Generate(Options{HeaderProtection: false})
+		if p.S3 < 8 {
+			t.Errorf("iteration %d: S3=%d below old minimum 8", i, p.S3)
+		}
+		if p.S4 < 6 {
+			t.Errorf("iteration %d: S4=%d below old minimum 6", i, p.S4)
+		}
+		if p.S3 < 12 {
+			sawS3Below12 = true
+		}
+		if p.S4 < 12 {
+			sawS4Below12 = true
+		}
+	}
+	if !sawS3Below12 && !sawS4Below12 {
+		t.Error("HeaderProtection=false: expected at least some runs with S3<12 or S4<12 (old bounds should be reachable)")
+	}
+}
+
+func TestGenerate_HeaderProtectionOn_S3S4Min12(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		p := Generate(Options{HeaderProtection: true})
+		if p.S3 < 12 {
+			t.Errorf("iteration %d: HeaderProtection=true but S3=%d < 12", i, p.S3)
+		}
+		if p.S4 < 12 {
+			t.Errorf("iteration %d: HeaderProtection=true but S4=%d < 12", i, p.S4)
+		}
+	}
+}
+
+func TestGenerate_HeaderProtectionOff_KeyEmpty(t *testing.T) {
+	p := Generate(Options{HeaderProtection: false})
+	if p.HeaderProtectionKey != "" {
+		t.Errorf("HeaderProtection=false: expected empty HeaderProtectionKey, got %q", p.HeaderProtectionKey)
+	}
+}
+
+func TestGenerate_HeaderProtectionOn_KeyValid(t *testing.T) {
+	p := Generate(Options{HeaderProtection: true})
+	if p.HeaderProtectionKey == "" {
+		t.Fatal("HeaderProtection=true: HeaderProtectionKey is empty")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(p.HeaderProtectionKey)
+	if err != nil {
+		t.Fatalf("HeaderProtectionKey %q is not valid base64: %v", p.HeaderProtectionKey, err)
+	}
+	if len(decoded) != 32 {
+		t.Errorf("HeaderProtectionKey decodes to %d bytes, expected 32", len(decoded))
+	}
+}
+
+func TestGenerate_ContentPaddingOff_Empty(t *testing.T) {
+	p := Generate(Options{ContentPadding: false})
+	if p.ContentPaddingAddition != "" {
+		t.Errorf("ContentPadding=false: expected empty ContentPaddingAddition, got %q", p.ContentPaddingAddition)
+	}
+}
+
+func TestGenerate_ContentPaddingOn_Range(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		p := Generate(Options{ContentPadding: true})
+		if p.ContentPaddingAddition == "" {
+			t.Fatalf("iteration %d: ContentPadding=true but ContentPaddingAddition is empty", i)
+		}
+		lo, hi := parseRange(t, p.ContentPaddingAddition)
+		if lo < 10 || lo > 40 {
+			t.Errorf("iteration %d: ContentPaddingAddition lo=%d not in [10,40]", i, lo)
+		}
+		if hi <= lo {
+			t.Errorf("iteration %d: ContentPaddingAddition hi=%d not > lo=%d", i, hi, lo)
+		}
+	}
+}
+
+func TestGenerate_RandomizeTimersOff_AllEmpty(t *testing.T) {
+	p := Generate(Options{RandomizeTimers: false})
+	if p.RekeyAfterTime != "" || p.RekeyTimeout != "" || p.RejectAfterTime != "" ||
+		p.KeepaliveTimeout != "" || p.MaxHandshakeAttempts != "" {
+		t.Errorf("RandomizeTimers=false: expected all timer fields empty, got RekeyAfterTime=%q RekeyTimeout=%q RejectAfterTime=%q KeepaliveTimeout=%q MaxHandshakeAttempts=%q",
+			p.RekeyAfterTime, p.RekeyTimeout, p.RejectAfterTime, p.KeepaliveTimeout, p.MaxHandshakeAttempts)
+	}
+}
+
+func TestGenerate_RandomizeTimersOn_Invariants(t *testing.T) {
+	for i := 0; i < 500; i++ {
+		p := Generate(Options{RandomizeTimers: true})
+		if p.RekeyAfterTime == "" || p.RekeyTimeout == "" || p.RejectAfterTime == "" ||
+			p.KeepaliveTimeout == "" || p.MaxHandshakeAttempts == "" {
+			t.Fatalf("iteration %d: RandomizeTimers=true but a timer field is empty: RekeyAfterTime=%q RekeyTimeout=%q RejectAfterTime=%q KeepaliveTimeout=%q MaxHandshakeAttempts=%q",
+				i, p.RekeyAfterTime, p.RekeyTimeout, p.RejectAfterTime, p.KeepaliveTimeout, p.MaxHandshakeAttempts)
+		}
+
+		rkLo, rkHi := parseRange(t, p.RekeyAfterTime)
+		_, rtHi := parseRange(t, p.RekeyTimeout)
+		rejLo, _ := parseRange(t, p.RejectAfterTime)
+		_, kaHi := parseRange(t, p.KeepaliveTimeout)
+		maLo, maHi := parseRange(t, p.MaxHandshakeAttempts)
+
+		if rkLo >= rkHi && rkLo != rkHi {
+			t.Errorf("iteration %d: RekeyAfterTime lo=%d > hi=%d", i, rkLo, rkHi)
+		}
+		if maLo > maHi {
+			t.Errorf("iteration %d: MaxHandshakeAttempts lo=%d > hi=%d", i, maLo, maHi)
+		}
+
+		// Invariant 1: rejectAfter.lo must exceed keepalive.hi + rekeyTimeout.hi (worst case).
+		if rejLo <= kaHi+rtHi {
+			t.Errorf("iteration %d: invariant violated — RejectAfterTime.lo=%d <= KeepaliveTimeout.hi=%d + RekeyTimeout.hi=%d (sum=%d)",
+				i, rejLo, kaHi, rtHi, kaHi+rtHi)
+		}
+
+		// Invariant 2: rekeyAfter.hi must fire before rejectAfter.lo.
+		if rkHi >= rejLo {
+			t.Errorf("iteration %d: invariant violated — RekeyAfterTime.hi=%d >= RejectAfterTime.lo=%d", i, rkHi, rejLo)
+		}
+	}
+}
+
+func TestGenerate_RandomTrailersDisableCookies_DefaultOff(t *testing.T) {
+	p := Generate(Options{})
+	if p.RandomTrailers != "off" {
+		t.Errorf("RandomTrailers = %q, want \"off\" when not requested", p.RandomTrailers)
+	}
+	if p.DisableCookies != "off" {
+		t.Errorf("DisableCookies = %q, want \"off\" when not requested", p.DisableCookies)
+	}
+}
+
+func TestGenerate_RandomTrailersDisableCookies_OnWhenRequested(t *testing.T) {
+	p := Generate(Options{RandomTrailers: true, DisableCookies: true})
+	if p.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want \"on\"", p.RandomTrailers)
+	}
+	if p.DisableCookies != "on" {
+		t.Errorf("DisableCookies = %q, want \"on\"", p.DisableCookies)
+	}
+}
+
+func TestGenerate_RandomTrailersDisableCookies_IndependentToggles(t *testing.T) {
+	p := Generate(Options{RandomTrailers: true, DisableCookies: false})
+	if p.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want \"on\"", p.RandomTrailers)
+	}
+	if p.DisableCookies != "off" {
+		t.Errorf("DisableCookies = %q, want \"off\" (independent of RandomTrailers)", p.DisableCookies)
+	}
+}
+
+func TestGenerate_AWG3TogglesIndependentlyCombinable(t *testing.T) {
+	p := Generate(Options{
+		HeaderProtection: true,
+		ContentPadding:   false,
+		RandomizeTimers:  true,
+	})
+	if p.HeaderProtectionKey == "" {
+		t.Error("expected HeaderProtectionKey to be set")
+	}
+	if p.ContentPaddingAddition != "" {
+		t.Errorf("expected ContentPaddingAddition empty, got %q", p.ContentPaddingAddition)
+	}
+	if p.RekeyAfterTime == "" || p.RekeyTimeout == "" || p.RejectAfterTime == "" ||
+		p.KeepaliveTimeout == "" || p.MaxHandshakeAttempts == "" {
+		t.Error("expected all timer fields to be set")
+	}
+}
+
+func TestGenerate_AWG2FieldsUnaffectedWhenAWG3TogglesOff(t *testing.T) {
+	p := Generate(Options{
+		Profile:          "quic_initial",
+		HeaderProtection: false,
+		ContentPadding:   false,
+		RandomizeTimers:  false,
+	})
+	if p.Jc < 3 || p.Jc > 10 {
+		t.Errorf("Jc=%d out of expected AWG2 range", p.Jc)
+	}
+	if p.H1 == "" || p.H2 == "" || p.H3 == "" || p.H4 == "" {
+		t.Error("H1-H4 must be populated regardless of AWG3 toggles")
+	}
+	if p.I1 == "" {
+		t.Error("I1 must be populated regardless of AWG3 toggles")
+	}
+	if p.Profile != "quic_initial" {
+		t.Errorf("expected Profile=quic_initial, got %s", p.Profile)
+	}
+	if p.HeaderProtectionKey != "" || p.ContentPaddingAddition != "" ||
+		p.RekeyAfterTime != "" || p.RekeyTimeout != "" || p.RejectAfterTime != "" ||
+		p.KeepaliveTimeout != "" || p.MaxHandshakeAttempts != "" {
+		t.Error("expected all AWG3 fields empty when all toggles off")
 	}
 }

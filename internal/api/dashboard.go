@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
 )
 
@@ -89,15 +90,23 @@ func putDashboardWidgets(c *fiber.Ctx) error {
 // SystemInfo holds server metrics for the dashboard system-info card.
 type SystemInfo struct {
 	Hostname  string  `json:"hostname"`
-	Uptime    string  `json:"uptime"`    // human-readable: "3d 4h 12m"
+	Uptime    string  `json:"uptime"` // human-readable: "3d 4h 12m"
 	UptimeSec int64   `json:"uptimeSec"`
 	Load1     float64 `json:"load1"`
 	Load5     float64 `json:"load5"`
 	Load15    float64 `json:"load15"`
-	MemTotal  int64   `json:"memTotal"`  // kB
-	MemFree   int64   `json:"memFree"`   // kB (MemAvailable)
-	MemUsed   int64   `json:"memUsed"`   // kB
-	MemPct    int     `json:"memPct"`    // 0-100
+	MemTotal  int64   `json:"memTotal"` // kB
+	MemFree   int64   `json:"memFree"`  // kB (MemAvailable)
+	MemUsed   int64   `json:"memUsed"`  // kB
+	MemPct    int     `json:"memPct"`   // 0-100
+
+	// AWG CLI/kernel-module version diagnostics (kernel mode only — always
+	// empty/false in userspace mode, where there's no separate kernel
+	// module to compare against). Best-effort: "" means undetectable, not
+	// necessarily absent.
+	AWGCliVersion      string `json:"awgCliVersion"`
+	AWGKernelVersion   string `json:"awgKernelVersion"`
+	AWGVersionMismatch bool   `json:"awgVersionMismatch"`
 }
 
 func getSystemInfo(c *fiber.Ctx) error {
@@ -151,6 +160,13 @@ func getSystemInfo(c *fiber.Ctx) error {
 		if info.MemTotal > 0 {
 			info.MemPct = int(math.Round(float64(info.MemUsed) / float64(info.MemTotal) * 100))
 		}
+	}
+
+	if !awgparams.IsUserspaceMode() {
+		vr := awgparams.CheckKernelCLIVersionMismatch()
+		info.AWGCliVersion = vr.CLIVersion
+		info.AWGKernelVersion = vr.KernelVersion
+		info.AWGVersionMismatch = vr.Mismatch
 	}
 
 	return c.JSON(info)

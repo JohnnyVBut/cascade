@@ -333,7 +333,10 @@ func (m *Manager) importAWGEasyBackup(inp ImportBackupInput) (*ImportBackupResul
 	m.mu.RUnlock()
 
 	// ── Detect protocol ───────────────────────────────────────────────────────
-	// AWG-Easy uses AWG2 when Jc (junk-count) is set.
+	// AWG-Easy uses AWG2 when Jc (junk-count) is set. Unlike conf_parser.go's
+	// ParseWGConf (which now detects v3 from Transport Protection fields),
+	// AWG-Easy backups genuinely predate AWG 3.0 and can never carry those
+	// fields, so this always imports as 2.0, never 3.0.
 	protocol := "wireguard-1.0"
 	var awg2 *peer.AWG2Settings
 	if srv.Jc != "" {

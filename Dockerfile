@@ -55,6 +55,15 @@ HEALTHCHECK --interval=1m --timeout=5s --retries=3 \
 # - iptables / iptables-legacy: firewall management
 # - iproute2: ip route/rule commands
 # - ipset: alias ipsets for firewall rules
+# - kmod: real modinfo with zstd/xz/gzip decompression support, needed to
+#   read the host's amneziawg kernel module version (mounted read-only at
+#   /lib/modules — see docker-compose.yml). BusyBox's built-in modinfo
+#   applet (already present via the base image) can only parse plain
+#   uncompressed .ko files — many modern kernels (e.g. Ubuntu 6.8+) ship
+#   modules pre-compressed as .ko.zst, which BusyBox's modinfo silently
+#   fails to read (empty output, exit 0 — no error at all). `apk add kmod`
+#   installs the real modinfo at the same /sbin/modinfo path, replacing
+#   the BusyBox applet.
 # NOTE: no node, no libstdc++, no libgcc — Go binary is static
 RUN apk add --no-cache \
     dumb-init \
@@ -68,7 +77,8 @@ RUN apk add --no-cache \
     iputils-ping \
     traceroute \
     tcpdump \
-    coreutils
+    coreutils \
+    kmod
 
 # Use iptables-legacy as default iptables.
 # Alpine не имеет update-alternatives (это команда dpkg/Debian).

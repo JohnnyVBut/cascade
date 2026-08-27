@@ -19,6 +19,7 @@ package awgparams
 
 import (
 	cryptorand "crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -36,9 +37,20 @@ type Options struct {
 	Browser   string // BFP browser: "chrome" | "firefox" | "safari" | "edge" | "yandex_desktop" | "yandex_mobile" | "" (= no BFP)
 	IterCount int    // retry counter — increases intensity (0 = first attempt)
 	Jc        int    // base Jc value 0-10 (default: 6)
+
+	// AWG 3.0 Transport Protection — independent toggles, since a user may
+	// want one aspect without the others. Requires an AWG 3.0-line CLI/kernel
+	// module on both server and client; see plans/awg3-protocol-notes.md.
+	HeaderProtection bool // encrypt packet-type headers of the established tunnel (HeaderProtectionKey)
+	ContentPadding   bool // random padding on transport packets beyond the fixed 16-byte grid (ContentPaddingAddition)
+	RandomizeTimers  bool // randomize handshake/keepalive timers instead of WireGuard's fixed constants
+	RandomTrailers   bool // amneziawg-go 3.1+ UAPI flag; no generator-side randomization, just an on/off toggle
+	DisableCookies   bool // amneziawg-go 3.1+ UAPI flag; no generator-side randomization, just an on/off toggle
 }
 
-// Params is the complete set of AWG 2.0 obfuscation parameters.
+// Params is the complete set of AWG 2.0 obfuscation parameters, plus the
+// optional AWG 3.0 Transport Protection fields (empty strings/false when not
+// requested via Options).
 type Params struct {
 	Jc      int    `json:"jc"`
 	Jmin    int    `json:"jmin"`
@@ -57,6 +69,21 @@ type Params struct {
 	I4      string `json:"i4"`
 	I5      string `json:"i5"`
 	Profile string `json:"profile"` // resolved profile (never "random")
+
+	// AWG 3.0 Transport Protection (empty string = not requested/not applicable).
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`    // server-side: must match on both peers
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"` // client-side: range, doesn't need to match peer
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`         // client-side: range, seconds
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`           // client-side: range, seconds
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`        // client-side: range, seconds
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`       // client-side: range, seconds
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`   // client-side: range
+
+	// amneziawg-go 3.1+ static flags. Always "on" or "off" (never empty) —
+	// unlike the fields above, these have no "not applicable" state, so both
+	// server and client configs always write one or the other explicitly.
+	RandomTrailers string `json:"randomTrailers"`
+	DisableCookies string `json:"disableCookies"`
 }
 
 // Profile is a UI-facing profile descriptor.
@@ -243,6 +270,13 @@ func Generate(opts Options) Params {
 	if opts.Jc == 0 {
 		opts.Jc = 6
 	}
+	if opts.IterCount < 0 {
+		// boost = IterCount*5 below; a negative IterCount would make boost
+		// negative and could push S3/S4 below the 12-byte header-protection
+		// nonce minimum, silently reintroducing the EINVAL-class bug the
+		// HeaderProtection bound raise (below) exists to prevent.
+		opts.IterCount = 0
+	}
 
 	imap := map[string]int{"low": 1, "medium": 2, "high": 3}
 	iv := imap[opts.Intensity]
@@ -266,8 +300,17 @@ func Generate(opts Options) Params {
 	if s2 == s1+56 { // критичное ограничение: S1+56 ≠ S2
 		s2++
 	}
-	s3 := min(64, rnd(8, 24)+boost)
-	s4 := min(32, rnd(6, 18)+boost)
+	// S3/S4 lower bound: HeaderProtectionKey's cipher nonce is taken from the
+	// first 12 bytes of the padding buffer S3/S4 define — shorter than that,
+	// both amneziawg-go and the kernel module refuse to bring the interface
+	// up ("S%d must be more then 12 to use headerProtection"). Without header
+	// protection the normal 2.0 bounds apply.
+	s3Min, s4Min := 8, 6
+	if opts.HeaderProtection {
+		s3Min, s4Min = 12, 12
+	}
+	s3 := min(64, rnd(s3Min, 24)+boost)
+	s4 := min(32, rnd(s4Min, 18)+boost)
 
 	// Jc / Jmin / Jmax
 	jcExtra := 0
@@ -294,16 +337,40 @@ func Generate(opts Options) Params {
 	i4 := mkEntropy(3, iv)
 	i5 := mkEntropy(4, iv)
 
-	return Params{
+	params := Params{
 		Jc: jc, Jmin: jmin, Jmax: jmax,
 		S1: s1, S2: s2, S3: s3, S4: s4,
 		H1: h1, H2: h2, H3: h3, H4: h4,
 		I1: i1, I2: i2, I3: i3, I4: i4, I5: i5,
 		Profile: resolvedProfile,
 	}
+
+	if opts.HeaderProtection {
+		params.HeaderProtectionKey = genHeaderProtectionKey()
+	}
+	if opts.ContentPadding {
+		params.ContentPaddingAddition = genContentPaddingAddition()
+	}
+	if opts.RandomizeTimers {
+		params.RekeyAfterTime, params.RekeyTimeout, params.RejectAfterTime,
+			params.KeepaliveTimeout, params.MaxHandshakeAttempts = genTimers()
+	}
+	params.RandomTrailers = onOff(opts.RandomTrailers)
+	params.DisableCookies = onOff(opts.DisableCookies)
+
+	return params
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+// onOff renders a bool as the literal string amneziawg-go's UAPI/config
+// parser expects for RandomTrailers/DisableCookies.
+func onOff(v bool) string {
+	if v {
+		return "on"
+	}
+	return "off"
+}
 
 // rnd returns a random int in [a, b] inclusive. Mirrors JS rnd(a, b).
 func rnd(a, b int) int {
@@ -353,6 +420,76 @@ func assertEvenHex(h, label string) string {
 func rRange(base int) string {
 	s := base + rnd(0, 500_000)
 	return fmt.Sprintf("%d-%d", s, s+rnd(1_000, 50_000))
+}
+
+// ── AWG 3.0 Transport Protection ────────────────────────────────────────────
+
+// genHeaderProtectionKey generates a 32-byte key, base64-encoded the same
+// way a WireGuard private key is — server-side, must be copied verbatim into
+// every peer's config for the tunnel to come up.
+func genHeaderProtectionKey() string {
+	b := make([]byte, 32)
+	// Unlike rh() below (cosmetic junk-padding bytes — a weak result there
+	// is a minor fingerprinting regression at worst), this is a real
+	// symmetric cipher key shared verbatim between server and every peer.
+	// A silently-ignored Read failure would leave b all-zero and hand out
+	// a predictable "encryption" key with zero entropy. Fail loudly instead
+	// — Fiber's recover middleware (cmd/awg-easy/main.go) turns this into a
+	// 500 rather than crashing the process.
+	if _, err := cryptorand.Read(b); err != nil {
+		panic(fmt.Sprintf("awgparams: failed to generate header protection key: %v", err))
+	}
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// genContentPaddingAddition generates a small padding range for transport
+// packets. Client-side — doesn't need to match the peer's value.
+func genContentPaddingAddition() string {
+	lo := rnd(10, 40)
+	hi := lo + rnd(20, 60)
+	return fmt.Sprintf("%d-%d", lo, hi)
+}
+
+// genTimers generates randomized handshake/keepalive timer ranges, enforcing
+// the two invariants that keep the tunnel alive (see
+// plans/awg3-protocol-notes.md — "Зачем рандомизировать таймеры"):
+//   - RejectAfterTime must stay clearly above KeepaliveTimeout + RekeyTimeout,
+//     using the worst case (lowest RejectAfterTime vs. highest of the other
+//     two), or the rekey window collapses to zero and the session dies.
+//   - RekeyAfterTime must fire before RejectAfterTime.
+func genTimers() (rekeyAfter, rekeyTimeout, rejectAfter, keepalive, maxAttempts string) {
+	kaLo := rnd(8, 14)
+	kaHi := kaLo + rnd(4, 10)
+
+	rtLo := rnd(4, 6)
+	rtHi := rtLo + rnd(1, 3)
+
+	// Comfortable margin above the worst-case sum of the two timers above.
+	worstCaseSum := kaHi + rtHi
+	rejLo := worstCaseSum + rnd(100, 140)
+	rejHi := rejLo + rnd(20, 40)
+
+	// RekeyAfterTime must finish (its high end) before RejectAfterTime can
+	// possibly fire (its low end).
+	rkLo := rnd(90, 110)
+	rkHi := min(rkLo+rnd(10, 30), rejLo-1)
+	// Structurally unreachable given the constants above: rejLo's minimum
+	// (kaHi_min=12 + rtHi_min=5 + 100 = 117) always exceeds rkLo's maximum
+	// (110), so rejLo-1 ≥ rkLo always holds and this clamp never fires.
+	// Kept as a safety net in case the ranges above are ever tuned —
+	// verify the derivation still holds before removing it.
+	if rkHi < rkLo {
+		rkHi = rkLo
+	}
+
+	maLo := rnd(15, 20)
+	maHi := maLo + rnd(5, 10)
+
+	return fmt.Sprintf("%d-%d", rkLo, rkHi),
+		fmt.Sprintf("%d-%d", rtLo, rtHi),
+		fmt.Sprintf("%d-%d", rejLo, rejHi),
+		fmt.Sprintf("%d-%d", kaLo, kaHi),
+		fmt.Sprintf("%d-%d", maLo, maHi)
 }
 
 // getHost picks a random host from the pool for the given profile,

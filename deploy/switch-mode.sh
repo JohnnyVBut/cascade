@@ -11,6 +11,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 COMPOSE_FILE="$REPO_DIR/docker-compose.yml"
+OVERRIDE_FILE="$REPO_DIR/docker-compose.override.yml"
+
+# Local dev builds (./build.sh) are only picked up via docker-compose.override.yml
+# (image: cascade:latest instead of the base file's ghcr.io/... image). Plain
+# `docker compose up/down` (no -f) merges it in automatically, but an explicit
+# `-f docker-compose.yml` — which this script used to hardcode — disables that
+# automatic merge, silently falling back to the GHCR image and discarding
+# whatever was actually running. Build the -f arg list to mirror what a bare
+# `docker compose up/down` would do, override included when present.
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  COMPOSE_ARGS+=(-f "$OVERRIDE_FILE")
+fi
 
 G='\033[0;32m'; Y='\033[1;33m'; R='\033[0;31m'; B='\033[0;34m'; N='\033[0m'
 ok()   { echo -e "  ${G}✓${N} $*"; }
@@ -121,10 +134,13 @@ fi
 update_env
 
 # Restart container if running
-if $COMPOSE_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | grep -q .; then
+if $COMPOSE_CMD "${COMPOSE_ARGS[@]}" ps --quiet 2>/dev/null | grep -q .; then
   info "Restarting Cascade container..."
-  $COMPOSE_CMD -f "$COMPOSE_FILE" down
-  $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+  if [[ -f "$OVERRIDE_FILE" ]]; then
+    info "Using docker-compose.override.yml (local build) alongside docker-compose.yml"
+  fi
+  $COMPOSE_CMD "${COMPOSE_ARGS[@]}" down
+  $COMPOSE_CMD "${COMPOSE_ARGS[@]}" up -d
   ok "Container restarted"
 
   sleep 2
@@ -141,7 +157,7 @@ if $COMPOSE_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | grep -q .; then
   fi
 else
   info "Container is not running — start with:"
-  echo "  $COMPOSE_CMD -f docker-compose.yml up -d"
+  echo "  $COMPOSE_CMD ${COMPOSE_ARGS[*]} up -d"
 fi
 
 echo ""

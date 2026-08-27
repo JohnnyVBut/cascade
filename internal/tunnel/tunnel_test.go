@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -343,6 +342,321 @@ func TestGenerateSyncConfig_AWG2ParamsIncluded(t *testing.T) {
 	}
 }
 
+// ── AWG 3.0 Transport Protection fields (writeAWG3Fields) ───────────────────
+
+func fullAWG3Settings() *peer.AWG2Settings {
+	return &peer.AWG2Settings{
+		Jc: 5, Jmin: 50, Jmax: 1000,
+		S1: 30, S2: 31, S3: 20, S4: 10,
+		H1:                     "100000000-150000000",
+		H2:                     "1200000000-1250000000",
+		H3:                     "2400000000-2450000000",
+		H4:                     "3600000000-3650000000",
+		HeaderProtectionKey:    "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		ContentPaddingAddition: "0-1",
+		RekeyAfterTime:         "1h-2h",
+		RekeyTimeout:           "5-10",
+		RejectAfterTime:        "3h",
+		KeepaliveTimeout:       "15-25",
+		MaxHandshakeAttempts:   "20",
+	}
+}
+
+func baseAWG2SettingsNoAWG3() *peer.AWG2Settings {
+	return &peer.AWG2Settings{
+		Jc: 4, Jmin: 40, Jmax: 800,
+		S1: 20, S2: 21, S3: 15, S4: 8,
+		H1: "100000000-150000000",
+		H2: "1200000000-1250000000",
+		H3: "2400000000-2450000000",
+		H4: "3600000000-3650000000",
+		// AWG3 fields intentionally left empty.
+	}
+}
+
+func TestGenerateWgConfig_AWG3FieldsAllSet(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	iface.AWG2 = fullAWG3Settings()
+	cfg := iface.generateWgConfig()
+
+	for _, want := range []string{
+		"HeaderProtectionKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		"ContentPaddingAddition = 0-1",
+		"RekeyAfterTime = 1h-2h",
+		"RekeyTimeout = 5-10",
+		"RejectAfterTime = 3h",
+		"KeepaliveTimeout = 15-25",
+		"MaxHandshakeAttempts = 20",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("generateWgConfig missing AWG3 field %q", want)
+		}
+	}
+
+	// Positioned after the I1-I5 block and before [Peer].
+	i5Idx := strings.Index(cfg, "I1 =")
+	if i5Idx != -1 {
+		t.Fatalf("unexpected I1 present, test fixture has no I-fields set")
+	}
+	h4Idx := strings.Index(cfg, "H4 =")
+	hpkIdx := strings.Index(cfg, "HeaderProtectionKey =")
+	if h4Idx == -1 || hpkIdx == -1 || hpkIdx < h4Idx {
+		t.Error("AWG3 fields must appear after the base AWG2 H1-H4 block")
+	}
+	peerIdx := strings.Index(cfg, "[Peer]")
+	if peerIdx != -1 && peerIdx < hpkIdx {
+		t.Error("AWG3 fields must appear before [Peer] section")
+	}
+}
+
+func TestGenerateWgConfig_AWG3FieldsAllEmptyOmitted(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	iface.AWG2 = baseAWG2SettingsNoAWG3()
+	cfg := iface.generateWgConfig()
+
+	for _, key := range []string{
+		"HeaderProtectionKey",
+		"ContentPaddingAddition",
+		"RekeyAfterTime",
+		"RekeyTimeout",
+		"RejectAfterTime",
+		"KeepaliveTimeout",
+		"MaxHandshakeAttempts",
+	} {
+		if strings.Contains(cfg, key) {
+			t.Errorf("generateWgConfig must not contain any trace of empty AWG3 field %q", key)
+		}
+	}
+}
+
+func TestGenerateWgConfig_AWG3FieldsPartialPopulation(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	a := baseAWG2SettingsNoAWG3()
+	a.HeaderProtectionKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	a.RejectAfterTime = "3h"
+	iface.AWG2 = a
+	cfg := iface.generateWgConfig()
+
+	for _, want := range []string{
+		"HeaderProtectionKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		"RejectAfterTime = 3h",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("generateWgConfig missing expected AWG3 field %q", want)
+		}
+	}
+	for _, key := range []string{
+		"ContentPaddingAddition",
+		"RekeyAfterTime",
+		"RekeyTimeout",
+		"KeepaliveTimeout",
+		"MaxHandshakeAttempts",
+	} {
+		if strings.Contains(cfg, key) {
+			t.Errorf("generateWgConfig must not contain unset AWG3 field %q", key)
+		}
+	}
+	// RandomTrailers/DisableCookies are 3.0-only static flags with no
+	// "unset" state to gate on individually — must never leak onto a 2.0
+	// interface's config even when other AWG3 fields (like
+	// HeaderProtectionKey above) are present.
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Error("generateWgConfig must not write RandomTrailers/DisableCookies for an amneziawg-2.0 interface")
+	}
+}
+
+func TestGenerateWgConfig_AWG3StaticFieldsOnlyForV3(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-3.0"
+	iface.AWG2 = baseAWG2SettingsNoAWG3()
+	cfg := iface.generateWgConfig()
+
+	if !strings.Contains(cfg, "RandomTrailers = off") {
+		t.Errorf("generateWgConfig missing RandomTrailers for amneziawg-3.0, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = off") {
+		t.Errorf("generateWgConfig missing DisableCookies for amneziawg-3.0, got:\n%s", cfg)
+	}
+}
+
+func TestGenerateWgConfig_AWG3StaticFieldsOnWhenSet(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-3.0"
+	a := baseAWG2SettingsNoAWG3()
+	a.RandomTrailers = "on"
+	a.DisableCookies = "on"
+	iface.AWG2 = a
+	cfg := iface.generateWgConfig()
+
+	if !strings.Contains(cfg, "RandomTrailers = on") {
+		t.Errorf("generateWgConfig missing RandomTrailers = on, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = on") {
+		t.Errorf("generateWgConfig missing DisableCookies = on, got:\n%s", cfg)
+	}
+}
+
+func TestGenerateSyncConfig_AWG3FieldsAllSet(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	iface.AWG2 = fullAWG3Settings()
+	cfg := iface.generateSyncConfig()
+
+	for _, want := range []string{
+		"HeaderProtectionKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		"ContentPaddingAddition = 0-1",
+		"RekeyAfterTime = 1h-2h",
+		"RekeyTimeout = 5-10",
+		"RejectAfterTime = 3h",
+		"KeepaliveTimeout = 15-25",
+		"MaxHandshakeAttempts = 20",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("generateSyncConfig missing AWG3 field %q", want)
+		}
+	}
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Error("generateSyncConfig must not write RandomTrailers/DisableCookies for an amneziawg-2.0 interface")
+	}
+}
+
+func TestGenerateSyncConfig_AWG3StaticFieldsOnlyForV3(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-3.0"
+	iface.AWG2 = baseAWG2SettingsNoAWG3()
+	cfg := iface.generateSyncConfig()
+
+	if !strings.Contains(cfg, "RandomTrailers = off") {
+		t.Errorf("generateSyncConfig missing RandomTrailers for amneziawg-3.0, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = off") {
+		t.Errorf("generateSyncConfig missing DisableCookies for amneziawg-3.0, got:\n%s", cfg)
+	}
+}
+
+func TestGenerateSyncConfig_AWG3FieldsAllEmptyOmitted(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	iface.AWG2 = baseAWG2SettingsNoAWG3()
+	cfg := iface.generateSyncConfig()
+
+	for _, key := range []string{
+		"HeaderProtectionKey",
+		"ContentPaddingAddition",
+		"RekeyAfterTime",
+		"RekeyTimeout",
+		"RejectAfterTime",
+		"KeepaliveTimeout",
+		"MaxHandshakeAttempts",
+	} {
+		if strings.Contains(cfg, key) {
+			t.Errorf("generateSyncConfig must not contain any trace of empty AWG3 field %q", key)
+		}
+	}
+}
+
+func TestGenerateSyncConfig_AWG3FieldsPartialPopulation(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	a := baseAWG2SettingsNoAWG3()
+	a.HeaderProtectionKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+	a.RejectAfterTime = "3h"
+	iface.AWG2 = a
+	cfg := iface.generateSyncConfig()
+
+	for _, want := range []string{
+		"HeaderProtectionKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+		"RejectAfterTime = 3h",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("generateSyncConfig missing expected AWG3 field %q", want)
+		}
+	}
+	for _, key := range []string{
+		"ContentPaddingAddition",
+		"RekeyAfterTime",
+		"RekeyTimeout",
+		"KeepaliveTimeout",
+		"MaxHandshakeAttempts",
+	} {
+		if strings.Contains(cfg, key) {
+			t.Errorf("generateSyncConfig must not contain unset AWG3 field %q", key)
+		}
+	}
+}
+
+func TestGenerateWgConfig_AWG3NoFieldsForWG1(t *testing.T) {
+	iface := newTestIface() // Protocol = wireguard-1.0, AWG2 = nil
+	cfg := iface.generateWgConfig()
+
+	for _, key := range []string{
+		"HeaderProtectionKey",
+		"ContentPaddingAddition",
+		"RekeyAfterTime",
+		"RekeyTimeout",
+		"RejectAfterTime",
+		"KeepaliveTimeout",
+		"MaxHandshakeAttempts",
+	} {
+		if strings.Contains(cfg, key) {
+			t.Errorf("WG1 config (nil AWG2) must not contain AWG3 field %q", key)
+		}
+	}
+}
+
+func TestGenerateSyncConfig_AWG3NoFieldsForWG1(t *testing.T) {
+	iface := newTestIface() // Protocol = wireguard-1.0, AWG2 = nil
+	cfg := iface.generateSyncConfig()
+
+	for _, key := range []string{
+		"HeaderProtectionKey",
+		"ContentPaddingAddition",
+		"RekeyAfterTime",
+		"RekeyTimeout",
+		"RejectAfterTime",
+		"KeepaliveTimeout",
+		"MaxHandshakeAttempts",
+	} {
+		if strings.Contains(cfg, key) {
+			t.Errorf("syncconf config (nil AWG2) must not contain AWG3 field %q", key)
+		}
+	}
+}
+
+func TestGenerateWgConfig_AWG3LineFormatExact(t *testing.T) {
+	iface := newTestIface()
+	iface.Protocol = "amneziawg-2.0"
+	iface.AWG2 = fullAWG3Settings()
+	cfg := iface.generateWgConfig()
+
+	// Base64 values contain '=' padding characters; verify the line format
+	// "Key = value\n" is emitted exactly, with no extra whitespace and no
+	// confusion between the "Key = " separator and '=' inside the value.
+	lines := strings.Split(cfg, "\n")
+	wantLines := map[string]bool{
+		"HeaderProtectionKey = AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=": false,
+		"ContentPaddingAddition = 0-1":                                       false,
+		"RekeyAfterTime = 1h-2h":                                             false,
+		"RekeyTimeout = 5-10":                                                false,
+		"RejectAfterTime = 3h":                                               false,
+		"KeepaliveTimeout = 15-25":                                           false,
+		"MaxHandshakeAttempts = 20":                                          false,
+	}
+	for _, line := range lines {
+		if _, ok := wantLines[line]; ok {
+			wantLines[line] = true
+		}
+	}
+	for want, found := range wantLines {
+		if !found {
+			t.Errorf("expected exact line %q not found verbatim in config (whitespace/format mismatch)", want)
+		}
+	}
+}
+
 // ── AutoAllocateIP ────────────────────────────────────────────────────────────
 
 func TestAutoAllocateIP_FirstAvailable(t *testing.T) {
@@ -422,45 +736,6 @@ func TestExportInterfaceParams_ClientInterface_NoAllowedIPs(t *testing.T) {
 
 	if exp.AllowedIPs != "" {
 		t.Errorf("ExportInterfaceParams DisableRoutes=false: AllowedIPs = %q, want '' (importer derives /32)", exp.AllowedIPs)
-	}
-}
-
-// ── isUserspaceMode ───────────────────────────────────────────────────────────
-
-// TestIsUserspaceMode_WhenEnvSet verifies that isUserspaceMode returns true
-// when WG_QUICK_USERSPACE_IMPLEMENTATION is set to "amneziawg-go".
-func TestIsUserspaceMode_WhenEnvSet(t *testing.T) {
-	if err := os.Setenv("WG_QUICK_USERSPACE_IMPLEMENTATION", "amneziawg-go"); err != nil {
-		t.Fatalf("os.Setenv: %v", err)
-	}
-	defer os.Unsetenv("WG_QUICK_USERSPACE_IMPLEMENTATION")
-
-	if !isUserspaceMode() {
-		t.Error("isUserspaceMode() = false, want true when WG_QUICK_USERSPACE_IMPLEMENTATION=amneziawg-go")
-	}
-}
-
-// TestIsUserspaceMode_WhenEnvEmpty verifies that isUserspaceMode returns false
-// when WG_QUICK_USERSPACE_IMPLEMENTATION is unset or empty (kernel mode).
-func TestIsUserspaceMode_WhenEnvEmpty(t *testing.T) {
-	os.Unsetenv("WG_QUICK_USERSPACE_IMPLEMENTATION")
-
-	if isUserspaceMode() {
-		t.Error("isUserspaceMode() = true, want false when WG_QUICK_USERSPACE_IMPLEMENTATION is unset")
-	}
-}
-
-// TestIsUserspaceMode_WhenEnvOtherValue verifies that isUserspaceMode returns
-// false when WG_QUICK_USERSPACE_IMPLEMENTATION is set to a value other than
-// "amneziawg-go" (e.g. "wireguard-go" — the upstream WireGuard userspace impl).
-func TestIsUserspaceMode_WhenEnvOtherValue(t *testing.T) {
-	if err := os.Setenv("WG_QUICK_USERSPACE_IMPLEMENTATION", "wireguard-go"); err != nil {
-		t.Fatalf("os.Setenv: %v", err)
-	}
-	defer os.Unsetenv("WG_QUICK_USERSPACE_IMPLEMENTATION")
-
-	if isUserspaceMode() {
-		t.Error("isUserspaceMode() = true, want false when WG_QUICK_USERSPACE_IMPLEMENTATION=wireguard-go")
 	}
 }
 
@@ -563,10 +838,10 @@ func newTrafficIface(peerID, pubKey string, dbTotal int64) *TunnelInterface {
 		totalTx: dbTotal,
 	}
 	return &TunnelInterface{
-		ID:       "wg10",
-		Enabled:  true,
-		Protocol: "wireguard-1.0",
-		peers:    map[string]*peer.Peer{peerID: p},
+		ID:           "wg10",
+		Enabled:      true,
+		Protocol:     "wireguard-1.0",
+		peers:        map[string]*peer.Peer{peerID: p},
 		trafficState: map[string]*peerTrafficState{peerID: st},
 	}
 }
@@ -588,9 +863,12 @@ func TestTrafficAccumulation_DeltaAccumulates(t *testing.T) {
 	// Manually apply the same delta logic used in GetStatus inner loop.
 	dRx := p.TransferRx - st.lastSeenRx
 	dTx := p.TransferTx - st.lastSeenTx
-	st.totalRx += dRx; st.totalTx += dTx
-	st.lastSeenRx = p.TransferRx; st.lastSeenTx = p.TransferTx
-	p.TotalRx = st.totalRx; p.TotalTx = st.totalTx
+	st.totalRx += dRx
+	st.totalTx += dTx
+	st.lastSeenRx = p.TransferRx
+	st.lastSeenTx = p.TransferTx
+	p.TotalRx = st.totalRx
+	p.TotalTx = st.totalTx
 	iface.trafficMu.Unlock()
 
 	if p.TotalRx != 100 {
@@ -604,9 +882,12 @@ func TestTrafficAccumulation_DeltaAccumulates(t *testing.T) {
 	iface.trafficMu.Lock()
 	dRx = 300 - st.lastSeenRx
 	dTx = 500 - st.lastSeenTx
-	st.totalRx += dRx; st.totalTx += dTx
-	st.lastSeenRx = 300; st.lastSeenTx = 500
-	p.TotalRx = st.totalRx; p.TotalTx = st.totalTx
+	st.totalRx += dRx
+	st.totalTx += dTx
+	st.lastSeenRx = 300
+	st.lastSeenTx = 500
+	p.TotalRx = st.totalRx
+	p.TotalTx = st.totalTx
 	iface.trafficMu.Unlock()
 
 	if p.TotalRx != 300 {
@@ -639,7 +920,9 @@ func TestTrafficAccumulation_CounterReset(t *testing.T) {
 	iface.trafficMu.Lock()
 	newRx := int64(0)
 	dRx := newRx - st.lastSeenRx
-	if dRx < 0 { dRx = 0 }
+	if dRx < 0 {
+		dRx = 0
+	}
 	st.totalRx += dRx
 	st.lastSeenRx = newRx
 	p.TotalRx = st.totalRx

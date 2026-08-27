@@ -19,6 +19,7 @@ import (
 
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/api"
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/frontend"
@@ -48,6 +49,20 @@ func main() {
 	cfg := parseConfig()
 
 	log.Printf("Cascade %s (%s)", version.Version, version.GitCommit)
+	if awgparams.IsUserspaceMode() {
+		log.Printf("AmneziaWG run mode: userspace (amneziawg-go)")
+	} else {
+		log.Printf("AmneziaWG run mode: kernel")
+		// CLI/kernel-module version mismatch is a known source of silent
+		// `awg setconf: Unable to modify interface: Invalid argument`
+		// failures (see the compatibility note in this repo's Dockerfile) —
+		// warn loudly at startup rather than let it surface later as a
+		// cryptic kernel error during peer sync.
+		if vr := awgparams.CheckKernelCLIVersionMismatch(); vr.Mismatch {
+			log.Printf("WARNING: AmneziaWG CLI/kernel-module version mismatch (%s) — "+
+				"peer sync may fail with EINVAL; consider aligning awg-tools and the amneziawg kernel module versions", vr)
+		}
+	}
 
 	// Start background update checker — polls GitHub Releases API every 24 h.
 	// Runs in a goroutine; first check happens after a 10 s delay so the

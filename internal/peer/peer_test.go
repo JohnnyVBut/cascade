@@ -140,7 +140,7 @@ func TestToWgConfig_EnabledPeer(t *testing.T) {
 		PersistentKeepalive: 25,
 		Enabled:             true,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if !strings.Contains(cfg, "[Peer]") {
 		t.Error("expected [Peer] section header")
 	}
@@ -165,7 +165,7 @@ func TestToWgConfig_DisabledPeer(t *testing.T) {
 		AllowedIPs: "10.8.0.3/32",
 		Enabled:    false,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if cfg != "" {
 		t.Errorf("disabled peer should return empty config, got %q", cfg)
 	}
@@ -179,7 +179,7 @@ func TestToWgConfig_NoEndpointWhenEmpty(t *testing.T) {
 		Endpoint:   "",
 		Enabled:    true,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if strings.Contains(cfg, "Endpoint =") {
 		t.Error("should not include Endpoint line when empty")
 	}
@@ -193,7 +193,7 @@ func TestToWgConfig_WithEndpoint(t *testing.T) {
 		Endpoint:   "vpn.example.com:51820",
 		Enabled:    true,
 	}
-	cfg := p.ToWgConfig()
+	cfg := p.ToWgConfig("")
 	if !strings.Contains(cfg, "Endpoint = vpn.example.com:51820") {
 		t.Errorf("expected Endpoint line, got: %s", cfg)
 	}
@@ -252,10 +252,10 @@ func TestGenerateCompleteConfig_AWG2WithSettings(t *testing.T) {
 		PersistentKeepalive: 25,
 	}
 	iface := InterfaceData{
-		Protocol:  "amneziawg-2.0",
-		PublicKey: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
-		Address:   "10.9.0.1/24",
-		Host:      "awg.example.com",
+		Protocol:   "amneziawg-2.0",
+		PublicKey:  "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=",
+		Address:    "10.9.0.1/24",
+		Host:       "awg.example.com",
 		ListenPort: 51821,
 		Settings: &AWG2Settings{
 			Jc: 6, Jmin: 64, Jmax: 1280,
@@ -275,6 +275,161 @@ func TestGenerateCompleteConfig_AWG2WithSettings(t *testing.T) {
 	}
 	if !strings.Contains(cfg, "I1 = <r 100>") {
 		t.Error("expected I1 line in AWG2 config")
+	}
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Error("expected AWG 2.0 config to omit RandomTrailers/DisableCookies (AWG3-only)")
+	}
+}
+
+func TestGenerateCompleteConfig_AWG3WritesTransportProtectionFields(t *testing.T) {
+	p := &Peer{
+		Name:                "awg3-client",
+		PrivateKey:          "privatekey789",
+		Address:             "10.9.0.2/24",
+		ClientAllowedIPs:    "0.0.0.0/0",
+		PersistentKeepalive: 25,
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC=",
+		Address:    "10.9.0.1/24",
+		Host:       "awg3.example.com",
+		ListenPort: 51822,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "100000000-150000000", H2: "1200000000-1250000000",
+			H3: "2400000000-2450000000", H4: "3600000000-3650000000",
+			HeaderProtectionKey:    "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+			ContentPaddingAddition: "50-100",
+			RekeyAfterTime:         "100-115",
+			RekeyTimeout:           "4-6",
+			RejectAfterTime:        "140-165",
+			KeepaliveTimeout:       "8-12",
+			MaxHandshakeAttempts:   "15-25",
+		},
+	}
+	cfg := p.generateCompleteConfig(iface)
+
+	for _, want := range []string{
+		"HeaderProtectionKey = YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+		"ContentPaddingAddition = 50-100",
+		"RekeyAfterTime = 100-115",
+		"RekeyTimeout = 4-6",
+		"RejectAfterTime = 140-165",
+		"KeepaliveTimeout = 8-12",
+		"MaxHandshakeAttempts = 15-25",
+		"RandomTrailers = off",
+		"DisableCookies = off",
+	} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("expected client config to contain %q, got:\n%s", want, cfg)
+		}
+	}
+}
+
+func TestGenerateCompleteConfig_AWG3RandomTrailersDisableCookiesOn(t *testing.T) {
+	p := &Peer{
+		Name:                "awg3-client-on",
+		PrivateKey:          "privatekey790",
+		Address:             "10.9.0.4/24",
+		ClientAllowedIPs:    "0.0.0.0/0",
+		PersistentKeepalive: 25,
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+		Address:    "10.9.0.1/24",
+		ListenPort: 51823,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			RandomTrailers: "on",
+			DisableCookies: "on",
+		},
+	}
+	cfg := p.generateCompleteConfig(iface)
+
+	if !strings.Contains(cfg, "RandomTrailers = on") {
+		t.Errorf("expected client config to contain RandomTrailers = on, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "DisableCookies = on") {
+		t.Errorf("expected client config to contain DisableCookies = on, got:\n%s", cfg)
+	}
+}
+
+func TestGenerateCompleteConfig_AWG2OmitsTransportProtectionFields(t *testing.T) {
+	// A 2.0 interface must never emit AWG3 fields even if Settings somehow
+	// carries stale values (e.g. downgraded from 3.0) — the 2.0 wg-quick
+	// binary would reject unknown keys.
+	p := &Peer{
+		Name:                "awg2-client",
+		PrivateKey:          "privatekey321",
+		Address:             "10.9.0.3/24",
+		ClientAllowedIPs:    "0.0.0.0/0",
+		PersistentKeepalive: 25,
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-2.0",
+		PublicKey:  "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD=",
+		Address:    "10.9.0.1/24",
+		ListenPort: 51823,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			HeaderProtectionKey: "stale-key-should-not-appear",
+			RandomTrailers:      "on",
+			DisableCookies:      "on",
+		},
+	}
+	cfg := p.generateCompleteConfig(iface)
+
+	if strings.Contains(cfg, "HeaderProtectionKey") {
+		t.Errorf("expected AWG 2.0 config to omit HeaderProtectionKey, got:\n%s", cfg)
+	}
+	if strings.Contains(cfg, "RandomTrailers") || strings.Contains(cfg, "DisableCookies") {
+		t.Errorf("expected AWG 2.0 config to omit RandomTrailers/DisableCookies even when \"on\", got:\n%s", cfg)
+	}
+}
+
+func TestGenerateTemplateConfig_AWG3LabelAndFields(t *testing.T) {
+	// Regression test: generateTemplateConfig used to hardcode the protocol
+	// label as "AmneziaWG 2.0" for any AWG interface and never wrote the
+	// Transport Protection fields, so a manually-configured AWG 3.0 peer's
+	// instructional config both mislabeled itself and lacked the key needed
+	// to complete a handshake against the server.
+	p := &Peer{
+		Name:             "awg3-manual-client",
+		ClientAllowedIPs: "0.0.0.0/0",
+	}
+	iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE=",
+		Host:       "awg3.example.com",
+		ListenPort: 51824,
+		Settings: &AWG2Settings{
+			Jc: 6, Jmin: 64, Jmax: 1280,
+			S1: 32, S2: 33, S3: 20, S4: 12,
+			H1: "1-2", H2: "3-4", H3: "5-6", H4: "7-8",
+			HeaderProtectionKey: "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=",
+			RejectAfterTime:     "140-165",
+		},
+	}
+	cfg := p.generateTemplateConfig(iface)
+
+	if !strings.Contains(cfg, "Protocol: AmneziaWG 3.0") {
+		t.Errorf("expected template config to label itself AmneziaWG 3.0, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "HeaderProtectionKey = YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=") {
+		t.Errorf("expected template config to contain HeaderProtectionKey, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "RejectAfterTime = 140-165") {
+		t.Errorf("expected template config to contain RejectAfterTime, got:\n%s", cfg)
+	}
+	if !strings.Contains(cfg, "RandomTrailers = off") || !strings.Contains(cfg, "DisableCookies = off") {
+		t.Errorf("expected template config to contain RandomTrailers/DisableCookies, got:\n%s", cfg)
 	}
 }
 
@@ -590,5 +745,227 @@ func TestDerivePublicKey_AcceptsWellFormedKeyFormat(t *testing.T) {
 	wellFormed := strings.Repeat("A", 43) + "="
 	if _, err := DerivePublicKey("wg", wellFormed); err != nil {
 		t.Errorf("DerivePublicKey with well-formed key returned error: %v", err)
+	}
+}
+
+// ── PersistentKeepaliveV3 ────────────────────────────────────────────────────
+// AWG 3.1+ range override, kept as a separate additive field from the plain
+// PersistentKeepalive int (see internal/db/db.go migration v44) so v1/v2
+// peers, the JSON API contract, and old backup exports stay unaffected.
+
+// TestCreatePeer_PersistesPersistentKeepaliveV3 verifies the field round-trips
+// through CreatePeer -> GetPeer, including the SQL SELECT/scan layer.
+func TestCreatePeer_PersistesPersistentKeepaliveV3(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-pklv3-create"
+	insertTestInterface(t, ifaceID)
+
+	p, err := CreatePeer(ifaceID, PeerInput{
+		Name:                  "v3-client",
+		PublicKey:             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs:            "10.8.0.2/32",
+		PersistentKeepaliveV3: "5-25",
+	})
+	if err != nil {
+		t.Fatalf("CreatePeer: %v", err)
+	}
+	if p.PersistentKeepaliveV3 != "5-25" {
+		t.Errorf("PersistentKeepaliveV3 = %q, want %q", p.PersistentKeepaliveV3, "5-25")
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded.PersistentKeepaliveV3 != "5-25" {
+		t.Errorf("after reload: PersistentKeepaliveV3 = %q, want %q", loaded.PersistentKeepaliveV3, "5-25")
+	}
+}
+
+// TestCreatePeer_PersistentKeepaliveV3EmptyByDefault verifies that a peer
+// created without the field stays "" (not "0" or some other placeholder) —
+// this is the case for every v1/v2 peer and existing v3 peers pre-upgrade.
+func TestCreatePeer_PersistentKeepaliveV3EmptyByDefault(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-pklv3-default"
+	p := createTestPeer(t, ifaceID)
+
+	if p.PersistentKeepaliveV3 != "" {
+		t.Errorf("PersistentKeepaliveV3 = %q, want empty by default", p.PersistentKeepaliveV3)
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded.PersistentKeepaliveV3 != "" {
+		t.Errorf("after reload: PersistentKeepaliveV3 = %q, want empty", loaded.PersistentKeepaliveV3)
+	}
+}
+
+// TestUpdatePeer_SetsAndClearsPersistentKeepaliveV3 verifies UpdatePeer can
+// both set the range override and clear it back to "" (falling back to the
+// plain PersistentKeepalive int at config-render time).
+func TestUpdatePeer_SetsAndClearsPersistentKeepaliveV3(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-pklv3-update"
+	p := createTestPeer(t, ifaceID)
+
+	rangeVal := "10-30"
+	updated, err := UpdatePeer(p.ID, PeerUpdate{PersistentKeepaliveV3: &rangeVal})
+	if err != nil {
+		t.Fatalf("UpdatePeer (set): %v", err)
+	}
+	if updated.PersistentKeepaliveV3 != "10-30" {
+		t.Errorf("PersistentKeepaliveV3 = %q, want %q", updated.PersistentKeepaliveV3, "10-30")
+	}
+
+	empty := ""
+	cleared, err := UpdatePeer(p.ID, PeerUpdate{PersistentKeepaliveV3: &empty})
+	if err != nil {
+		t.Fatalf("UpdatePeer (clear): %v", err)
+	}
+	if cleared.PersistentKeepaliveV3 != "" {
+		t.Errorf("PersistentKeepaliveV3 after clear = %q, want empty", cleared.PersistentKeepaliveV3)
+	}
+}
+
+// TestToWgConfig_PersistentKeepaliveV3OnlyAppliesToV3 verifies the hub-side
+// [Peer] section uses the range override only when protocol is
+// amneziawg-3.0, and falls back to the plain int for every other protocol
+// even when PersistentKeepaliveV3 happens to be set (e.g. leftover data from
+// a downgrade v3 -> v2).
+func TestToWgConfig_PersistentKeepaliveV3OnlyAppliesToV3(t *testing.T) {
+	p := &Peer{
+		Name:                  "v3-peer",
+		PublicKey:             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs:            "10.8.0.2/32",
+		PersistentKeepalive:   25,
+		PersistentKeepaliveV3: "5-25",
+		Enabled:               true,
+	}
+
+	v3cfg := p.ToWgConfig("amneziawg-3.0")
+	if !strings.Contains(v3cfg, "PersistentKeepalive = 5-25") {
+		t.Errorf("expected AWG3 config to use range override, got:\n%s", v3cfg)
+	}
+
+	v2cfg := p.ToWgConfig("amneziawg-2.0")
+	if !strings.Contains(v2cfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected AWG2 config to fall back to plain int despite V3 field being set, got:\n%s", v2cfg)
+	}
+	if strings.Contains(v2cfg, "5-25") {
+		t.Errorf("AWG2 config must not use the V3 range override, got:\n%s", v2cfg)
+	}
+
+	wgCfg := p.ToWgConfig("wireguard-1.0")
+	if !strings.Contains(wgCfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected WireGuard 1.0 config to fall back to plain int, got:\n%s", wgCfg)
+	}
+}
+
+// TestToWgConfig_PersistentKeepaliveV3EmptyFallsBackToPlainInt verifies that
+// a v3 peer without the range override set still emits the plain int (the
+// original v1/v2 behavior), rather than omitting PersistentKeepalive entirely.
+func TestToWgConfig_PersistentKeepaliveV3EmptyFallsBackToPlainInt(t *testing.T) {
+	p := &Peer{
+		Name:                "v3-peer-no-range",
+		PublicKey:           "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs:          "10.8.0.2/32",
+		PersistentKeepalive: 25,
+		Enabled:             true,
+	}
+	cfg := p.ToWgConfig("amneziawg-3.0")
+	if !strings.Contains(cfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected fallback to plain int when V3 field is empty, got:\n%s", cfg)
+	}
+}
+
+// TestGenerateCompleteConfig_PersistentKeepaliveV3AppliesOnlyToV3 mirrors
+// TestToWgConfig_PersistentKeepaliveV3OnlyAppliesToV3 for the client-facing
+// config generator (generateCompleteConfig), which is keyed off iface.Protocol
+// rather than a bare string parameter.
+func TestGenerateCompleteConfig_PersistentKeepaliveV3AppliesOnlyToV3(t *testing.T) {
+	p := &Peer{
+		Name:                  "v3-client-cfg",
+		PrivateKey:            "privatekeyabc",
+		Address:               "10.9.0.2/24",
+		ClientAllowedIPs:      "0.0.0.0/0",
+		PersistentKeepalive:   25,
+		PersistentKeepaliveV3: "5-25",
+	}
+
+	v3iface := InterfaceData{
+		Protocol:   "amneziawg-3.0",
+		PublicKey:  "EEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEE=",
+		Address:    "10.9.0.1/24",
+		Host:       "awg3.example.com",
+		ListenPort: 51823,
+	}
+	v3cfg := p.generateCompleteConfig(v3iface)
+	if !strings.Contains(v3cfg, "PersistentKeepalive = 5-25") {
+		t.Errorf("expected AWG3 client config to use range override, got:\n%s", v3cfg)
+	}
+
+	v2iface := v3iface
+	v2iface.Protocol = "amneziawg-2.0"
+	v2cfg := p.generateCompleteConfig(v2iface)
+	if !strings.Contains(v2cfg, "PersistentKeepalive = 25\n") {
+		t.Errorf("expected AWG2 client config to fall back to plain int, got:\n%s", v2cfg)
+	}
+	if strings.Contains(v2cfg, "5-25") {
+		t.Errorf("AWG2 client config must not use the V3 range override, got:\n%s", v2cfg)
+	}
+}
+
+// TestCreatePeer_EmptyPresharedKeyRoundTrips is a regression check for issue
+// #102: a peer created with no PresharedKey (e.g. a third-party WireGuard
+// .conf import via tunnel.ImportConf, whose PeerInput has no PSK and does
+// not set AutoGeneratePSK — see PeerInput.AutoGeneratePSK's doc comment)
+// must persist and reload with PresharedKey == "", not some NULL-vs-empty-
+// -string artifact from the DB layer, so callers reliably see "no PSK" and
+// don't accidentally omit/garble the PresharedKey line on config generation.
+func TestCreatePeer_EmptyPresharedKeyRoundTrips(t *testing.T) {
+	initTestDB(t)
+	const ifaceID = "iface-empty-psk"
+	insertTestInterface(t, ifaceID)
+
+	p, err := CreatePeer(ifaceID, PeerInput{
+		Name:       "uplink-no-psk",
+		PublicKey:  "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+		AllowedIPs: "0.0.0.0/0",
+		PeerType:   "interconnect",
+		// PresharedKey and AutoGeneratePSK both left at zero value, mirroring
+		// tunnel.ImportConf's PeerInput for a .conf with no PresharedKey line.
+	})
+	if err != nil {
+		t.Fatalf("CreatePeer: %v", err)
+	}
+	if p.PresharedKey != "" {
+		t.Fatalf("PresharedKey = %q immediately after CreatePeer, want empty", p.PresharedKey)
+	}
+
+	loaded, err := GetPeer(p.ID)
+	if err != nil {
+		t.Fatalf("GetPeer: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("GetPeer returned nil")
+	}
+	if loaded.PresharedKey != "" {
+		t.Errorf("after reload: PresharedKey = %q, want empty (no NULL-vs-empty-string confusion)", loaded.PresharedKey)
+	}
+
+	// Also verify GetPeers (list path, used by e.g. GetAllPeers/interface
+	// listing) round-trips the same way — a separate SELECT/scan path.
+	peers, err := GetPeers(ifaceID)
+	if err != nil {
+		t.Fatalf("GetPeers: %v", err)
+	}
+	if len(peers) != 1 {
+		t.Fatalf("GetPeers returned %d peers, want 1", len(peers))
+	}
+	if peers[0].PresharedKey != "" {
+		t.Errorf("GetPeers: PresharedKey = %q, want empty", peers[0].PresharedKey)
 	}
 }

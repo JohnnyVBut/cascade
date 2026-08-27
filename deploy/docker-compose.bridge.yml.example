@@ -37,6 +37,11 @@ services:
     volumes:
       - ./data:/etc/wireguard/data
       - /etc/hostname:/host_hostname:ro
+      # Mount host /lib/modules read-only so `modinfo amneziawg` inside the
+      # container can report the loaded kernel module's version (dashboard
+      # AWG CLI/kernel-module mismatch check). Harmless if unused. See
+      # docker-compose.yml for the same mount.
+      - /lib/modules:/lib/modules:ro
 
     ports:
       # Web UI: published only to localhost — Caddy (host mode) proxies it.

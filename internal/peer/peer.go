@@ -10,9 +10,11 @@
 // in SQLite — they come from periodic polling of `wg/awg show dump` in TunnelInterface.
 //
 // Key generation:
-//   wg genkey                 → private key
-//   echo <priv> | wg pubkey   → public key
-//   wg genpsk                 → pre-shared key
+//
+//	wg genkey                 → private key
+//	echo <priv> | wg pubkey   → public key
+//	wg genpsk                 → pre-shared key
+//
 // For amneziawg-2.0 use "awg" binary, which accepts the same subcommands.
 //
 // QR code: SVG generated from config text using rsc.io/qr (pure Go).
@@ -31,6 +33,7 @@ import (
 	"github.com/google/uuid"
 	"rsc.io/qr"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/util"
 )
@@ -44,20 +47,27 @@ type Peer struct {
 	InterfaceID         string `json:"interfaceId"`
 	Name                string `json:"name"`
 	PublicKey           string `json:"publicKey"`
-	PrivateKey          string `json:"privateKey"`          // "" for interconnect peers
+	PrivateKey          string `json:"privateKey"` // "" for interconnect peers
 	PresharedKey        string `json:"presharedKey"`
-	Endpoint            string `json:"endpoint"`            // remote endpoint host:port
-	AllowedIPs          string `json:"allowedIPs"`          // hub-side routing (e.g. "10.8.0.2/32")
-	Address             string `json:"address"`             // tunnel IP with iface mask ("10.8.0.2/24")
-	ClientAllowedIPs    string `json:"clientAllowedIPs"`    // used in the client config [Peer] section
-	PeerType            string `json:"peerType"`            // client | interconnect
-	GroupID             string `json:"groupId"`             // client-group alias ID; "" for interconnect peers
+	Endpoint            string `json:"endpoint"`         // remote endpoint host:port
+	AllowedIPs          string `json:"allowedIPs"`       // hub-side routing (e.g. "10.8.0.2/32")
+	Address             string `json:"address"`          // tunnel IP with iface mask ("10.8.0.2/24")
+	ClientAllowedIPs    string `json:"clientAllowedIPs"` // used in the client config [Peer] section
+	PeerType            string `json:"peerType"`         // client | interconnect
+	GroupID             string `json:"groupId"`          // client-group alias ID; "" for interconnect peers
 	PersistentKeepalive int    `json:"persistentKeepalive"`
-	Enabled             bool   `json:"enabled"`
-	CreatedAt           string `json:"createdAt"`
-	UpdatedAt           string `json:"updatedAt"`
-	ExpiredAt           string `json:"expiredAt"`   // "" = no expiry
-	OneTimeLink         string `json:"oneTimeLink"` // "" = no one-time link
+	// PersistentKeepaliveV3 is an AWG 3.1+ range override ("lo-hi", e.g.
+	// "5-25") for interfaces on amneziawg-3.0 only. "" = not set, falls back
+	// to the plain PersistentKeepalive int above. Kept as a separate field
+	// (additive) rather than changing PersistentKeepalive's type, so v1/v2
+	// peers, the JSON API contract, and existing backup exports are
+	// completely unaffected — see plans/awg3-protocol-notes.md.
+	PersistentKeepaliveV3 string `json:"persistentKeepaliveV3,omitempty"`
+	Enabled               bool   `json:"enabled"`
+	CreatedAt             string `json:"createdAt"`
+	UpdatedAt             string `json:"updatedAt"`
+	ExpiredAt             string `json:"expiredAt"`   // "" = no expiry
+	OneTimeLink           string `json:"oneTimeLink"` // "" = no one-time link
 
 	// Bandwidth limits (kbps). 0 = unlimited.
 	// Applied via tc HTB (egress/download) + tc police (ingress/upload).
@@ -90,39 +100,53 @@ type Peer struct {
 
 // PeerInput is the create/update request payload.
 type PeerInput struct {
-	Name                string `json:"name"`
-	PublicKey           string `json:"publicKey"`
-	PrivateKey          string `json:"privateKey"`
-	PresharedKey        string `json:"presharedKey"`
-	Endpoint            string `json:"endpoint"`
-	AllowedIPs          string `json:"allowedIPs"`
-	Address             string `json:"address"`
-	ClientAllowedIPs    string `json:"clientAllowedIPs"`
-	PeerType            string `json:"peerType"`
-	GroupID             string `json:"groupId"`  // client-group alias ID (for client peers)
-	PersistentKeepalive int    `json:"persistentKeepalive"`
-	ExpiredAt           string `json:"expiredAt"` // RFC3339 or YYYY-MM-DD; "" = no expiry
+	Name                  string `json:"name"`
+	PublicKey             string `json:"publicKey"`
+	PrivateKey            string `json:"privateKey"`
+	PresharedKey          string `json:"presharedKey"`
+	Endpoint              string `json:"endpoint"`
+	AllowedIPs            string `json:"allowedIPs"`
+	Address               string `json:"address"`
+	ClientAllowedIPs      string `json:"clientAllowedIPs"`
+	PeerType              string `json:"peerType"`
+	GroupID               string `json:"groupId"` // client-group alias ID (for client peers)
+	PersistentKeepalive   int    `json:"persistentKeepalive"`
+	PersistentKeepaliveV3 string `json:"persistentKeepaliveV3"` // AWG 3.1+ range override, "" = unset
+	ExpiredAt             string `json:"expiredAt"`             // RFC3339 or YYYY-MM-DD; "" = no expiry
 	// Special flags (not stored directly)
 	GenerateKeys   bool   `json:"generateKeys"`   // server generates wg key pair + PSK
 	AutoAllocateIP bool   `json:"autoAllocateIP"` // caller sets AllowedIPs before passing here
-	CreatedAt      string `json:"createdAt"`       // if non-empty, overrides the auto-generated timestamp (e.g. backup import)
+	CreatedAt      string `json:"createdAt"`      // if non-empty, overrides the auto-generated timestamp (e.g. backup import)
+
+	// AutoGeneratePSK opts an interconnect peer into TunnelInterface.AddPeer's
+	// PSK auto-generation when PresharedKey is empty. Server-internal decision,
+	// not exposed to API clients (json:"-"): set true for every Cascade-authored
+	// S2S interconnect peer — internal/api/peers.go's importPeerJSON (JSON-paste
+	// import) and createPeer (manual "Add Peer", peerType=interconnect, which
+	// has no PSK field in its UI) — since in both cases the generated PSK has a
+	// real chance to reach the other side (via export-json). Must stay false
+	// for third-party WireGuard .conf imports (tunnel.ImportConf) — see issue
+	// #102: auto-generating a PSK the remote server never learns about silently
+	// breaks the handshake. Ignored for non-interconnect peers.
+	AutoGeneratePSK bool `json:"-"`
 }
 
 // PeerUpdate contains the fields that can be changed via PATCH.
 // nil pointer = do not update that field.
 type PeerUpdate struct {
-	Name                *string `json:"name"`
-	Endpoint            *string `json:"endpoint"`
-	AllowedIPs          *string `json:"allowedIPs"`
-	ClientAllowedIPs    *string `json:"clientAllowedIPs"`
-	PersistentKeepalive *int    `json:"persistentKeepalive"`
-	Enabled             *bool   `json:"enabled"`
-	ExpiredAt           *string `json:"expiredAt"`
-	OneTimeLink         *string `json:"oneTimeLink"`
-	RateDown            *int    `json:"rateDown"`
-	RateUp              *int    `json:"rateUp"`
-	GroupID             *string `json:"groupId"`          // client-group alias ID
-	PreviousGroupId     *string `json:"previousGroupId"`  // set internally by expiry policy; not exposed via API
+	Name                  *string `json:"name"`
+	Endpoint              *string `json:"endpoint"`
+	AllowedIPs            *string `json:"allowedIPs"`
+	ClientAllowedIPs      *string `json:"clientAllowedIPs"`
+	PersistentKeepalive   *int    `json:"persistentKeepalive"`
+	PersistentKeepaliveV3 *string `json:"persistentKeepaliveV3"`
+	Enabled               *bool   `json:"enabled"`
+	ExpiredAt             *string `json:"expiredAt"`
+	OneTimeLink           *string `json:"oneTimeLink"`
+	RateDown              *int    `json:"rateDown"`
+	RateUp                *int    `json:"rateUp"`
+	GroupID               *string `json:"groupId"`         // client-group alias ID
+	PreviousGroupId       *string `json:"previousGroupId"` // set internally by expiry policy; not exposed via API
 }
 
 // InterfaceData carries the interface fields needed for config/QR generation.
@@ -130,7 +154,7 @@ type PeerUpdate struct {
 type InterfaceData struct {
 	ID                      string
 	Name                    string
-	Protocol                string // "wireguard-1.0" or "amneziawg-2.0"
+	Protocol                string // "wireguard-1.0", "amneziawg-2.0", or "amneziawg-3.0"
 	PublicKey               string
 	Address                 string // CIDR e.g. "10.8.0.1/24"
 	ListenPort              int
@@ -141,7 +165,10 @@ type InterfaceData struct {
 	MTU                     int           // 0 = omit MTU line; >0 = write "MTU = N"
 }
 
-// AWG2Settings holds AmneziaWG 2.0 obfuscation parameters for config generation.
+// AWG2Settings holds AmneziaWG 2.0 obfuscation parameters for config
+// generation, plus the optional AWG 3.0 Transport Protection fields (empty
+// string = not set — interface stays AWG 2.0-only). See
+// internal/awgparams.Params and plans/awg3-protocol-notes.md.
 type AWG2Settings struct {
 	Jc   int    `json:"jc"`
 	Jmin int    `json:"jmin"`
@@ -159,6 +186,36 @@ type AWG2Settings struct {
 	I3   string `json:"i3"`
 	I4   string `json:"i4"`
 	I5   string `json:"i5"`
+
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+
+	// amneziawg-go 3.1+ static flags — "on"/"off"/"" (empty = unset, treated
+	// as "off" at config-render time, same as an interface that predates
+	// this field existing).
+	RandomTrailers string `json:"randomTrailers,omitempty"`
+	DisableCookies string `json:"disableCookies,omitempty"`
+}
+
+// HasAWG3Fields reports whether any AWG 3.0 Transport Protection field is
+// set — used to reject these fields on a non-"amneziawg-3.0" interface
+// (mirrors settings.Template.hasAWG3Fields for the same reason: templates).
+// RandomTrailers/DisableCookies only count when "on" — "off" is functionally
+// identical to unset, so treating it as a marker would reject an interface
+// for a value that has no actual effect.
+func (a *AWG2Settings) HasAWG3Fields() bool {
+	if a == nil {
+		return false
+	}
+	return a.HeaderProtectionKey != "" || a.ContentPaddingAddition != "" ||
+		a.RekeyAfterTime != "" || a.RekeyTimeout != "" || a.RejectAfterTime != "" ||
+		a.KeepaliveTimeout != "" || a.MaxHandshakeAttempts != "" ||
+		a.RandomTrailers == "on" || a.DisableCookies == "on"
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -168,7 +225,7 @@ func GetPeers(interfaceID string) ([]Peer, error) {
 	rows, err := db.DB().Query(`
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
-		       peer_type, group_id, persistent_keepalive, enabled,
+		       peer_type, group_id, persistent_keepalive, persistent_keepalive_v3, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
 		       total_rx, total_tx, rate_down, rate_up, previous_group_id,
 		       latest_handshake_at
@@ -197,7 +254,7 @@ func GetPeer(id string) (*Peer, error) {
 	row := db.DB().QueryRow(`
 		SELECT id, interface_id, name, public_key, private_key, preshared_key,
 		       endpoint, allowed_ips, address, client_allowed_ips,
-		       peer_type, group_id, persistent_keepalive, enabled,
+		       peer_type, group_id, persistent_keepalive, persistent_keepalive_v3, enabled,
 		       created_at, updated_at, expired_at, one_time_link,
 		       total_rx, total_tx, rate_down, rate_up, previous_group_id,
 		       latest_handshake_at
@@ -235,8 +292,9 @@ func CreatePeer(interfaceID string, inp PeerInput) (*Peer, error) {
 		ClientAllowedIPs:    inp.ClientAllowedIPs,
 		PeerType:            strOr(inp.PeerType, "client"),
 		GroupID:             inp.GroupID,
-		PersistentKeepalive: intOr(inp.PersistentKeepalive, 25),
-		Enabled:             true,
+		PersistentKeepalive:   intOr(inp.PersistentKeepalive, 25),
+		PersistentKeepaliveV3: strings.TrimSpace(inp.PersistentKeepaliveV3),
+		Enabled:               true,
 		CreatedAt:           createdAt,
 		UpdatedAt:           now,
 		ExpiredAt:           normaliseExpiredAt(inp.ExpiredAt),
@@ -276,6 +334,9 @@ func UpdatePeer(id string, upd PeerUpdate) (*Peer, error) {
 	}
 	if upd.PersistentKeepalive != nil {
 		p.PersistentKeepalive = *upd.PersistentKeepalive
+	}
+	if upd.PersistentKeepaliveV3 != nil {
+		p.PersistentKeepaliveV3 = strings.TrimSpace(*upd.PersistentKeepaliveV3)
 	}
 	if upd.Enabled != nil {
 		p.Enabled = *upd.Enabled
@@ -477,7 +538,10 @@ func DerivePublicKey(bin, privateKey string) (string, error) {
 
 // ToWgConfig returns the [Peer] section for the hub-side wg-quick config.
 // Returns "" for disabled peers — they are excluded from the kernel config.
-func (p *Peer) ToWgConfig() string {
+// protocol gates the AWG 3.1+ PersistentKeepaliveV3 range override — it only
+// applies on amneziawg-3.0; pass "" (or any other value) to always use the
+// plain PersistentKeepalive int.
+func (p *Peer) ToWgConfig(protocol string) string {
 	if !p.Enabled {
 		return ""
 	}
@@ -496,7 +560,9 @@ func (p *Peer) ToWgConfig() string {
 		fmt.Fprintf(&sb, "Endpoint = %s\n", p.Endpoint)
 	}
 
-	if p.PersistentKeepalive > 0 {
+	if protocol == awgparams.ProtocolAmneziaWG3 && p.PersistentKeepaliveV3 != "" {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", p.PersistentKeepaliveV3)
+	} else if p.PersistentKeepalive > 0 {
 		fmt.Fprintf(&sb, "PersistentKeepalive = %d\n", p.PersistentKeepalive)
 	}
 
@@ -546,8 +612,8 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		fmt.Fprintf(&sb, "MTU = %d\n", iface.MTU)
 	}
 
-	// AmneziaWG 2.0 obfuscation parameters (must match exactly on both sides).
-	if iface.Protocol == "amneziawg-2.0" && iface.Settings != nil {
+	// AmneziaWG obfuscation parameters (must match exactly on both sides).
+	if awgparams.IsAmneziaWG(iface.Protocol) && iface.Settings != nil {
 		s := iface.Settings
 		fmt.Fprintf(&sb, "Jc = %d\n", s.Jc)
 		fmt.Fprintf(&sb, "Jmin = %d\n", s.Jmin)
@@ -560,11 +626,27 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		fmt.Fprintf(&sb, "H2 = %s\n", s.H2)
 		fmt.Fprintf(&sb, "H3 = %s\n", s.H3)
 		fmt.Fprintf(&sb, "H4 = %s\n", s.H4)
-		if s.I1 != "" { fmt.Fprintf(&sb, "I1 = %s\n", s.I1) }
-		if s.I2 != "" { fmt.Fprintf(&sb, "I2 = %s\n", s.I2) }
-		if s.I3 != "" { fmt.Fprintf(&sb, "I3 = %s\n", s.I3) }
-		if s.I4 != "" { fmt.Fprintf(&sb, "I4 = %s\n", s.I4) }
-		if s.I5 != "" { fmt.Fprintf(&sb, "I5 = %s\n", s.I5) }
+		if s.I1 != "" {
+			fmt.Fprintf(&sb, "I1 = %s\n", s.I1)
+		}
+		if s.I2 != "" {
+			fmt.Fprintf(&sb, "I2 = %s\n", s.I2)
+		}
+		if s.I3 != "" {
+			fmt.Fprintf(&sb, "I3 = %s\n", s.I3)
+		}
+		if s.I4 != "" {
+			fmt.Fprintf(&sb, "I4 = %s\n", s.I4)
+		}
+		if s.I5 != "" {
+			fmt.Fprintf(&sb, "I5 = %s\n", s.I5)
+		}
+		// AWG 3.0 Transport Protection — HeaderProtectionKey in particular
+		// MUST match the server or handshakes are silently dropped, since
+		// the server unwraps headers using this key before any WG parsing.
+		if iface.Protocol == awgparams.ProtocolAmneziaWG3 {
+			writeAWG3Fields(&sb, s)
+		}
 	}
 
 	sb.WriteString("\n[Peer]\n")
@@ -586,7 +668,11 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 		clientAllowedIPs = "0.0.0.0/0, ::/0"
 	}
 	fmt.Fprintf(&sb, "AllowedIPs = %s\n", clientAllowedIPs)
-	fmt.Fprintf(&sb, "PersistentKeepalive = %d\n", p.PersistentKeepalive)
+	if iface.Protocol == awgparams.ProtocolAmneziaWG3 && p.PersistentKeepaliveV3 != "" {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", p.PersistentKeepaliveV3)
+	} else {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %d\n", p.PersistentKeepalive)
+	}
 
 	return sb.String()
 }
@@ -595,7 +681,10 @@ func (p *Peer) generateCompleteConfig(iface InterfaceData) string {
 func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	proto := "WireGuard 1.0"
 	bin := "wg-quick"
-	if iface.Protocol == "amneziawg-2.0" {
+	if iface.Protocol == awgparams.ProtocolAmneziaWG3 {
+		proto = "AmneziaWG 3.0"
+		bin = "awg-quick"
+	} else if awgparams.IsAmneziaWG(iface.Protocol) {
 		proto = "AmneziaWG 2.0"
 		bin = "awg-quick"
 	}
@@ -636,17 +725,30 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	}
 	fmt.Fprintf(&sb, "DNS = %s\n\n", dns)
 
-	if iface.Protocol == "amneziawg-2.0" && iface.Settings != nil {
+	if awgparams.IsAmneziaWG(iface.Protocol) && iface.Settings != nil {
 		s := iface.Settings
-		sb.WriteString("# AmneziaWG 2.0 Parameters (MUST match EXACTLY on both sides!)\n")
+		fmt.Fprintf(&sb, "# %s Parameters (MUST match EXACTLY on both sides!)\n", proto)
 		fmt.Fprintf(&sb, "Jc = %d\nJmin = %d\nJmax = %d\n", s.Jc, s.Jmin, s.Jmax)
 		fmt.Fprintf(&sb, "S1 = %d\nS2 = %d\nS3 = %d\nS4 = %d\n", s.S1, s.S2, s.S3, s.S4)
 		fmt.Fprintf(&sb, "H1 = %s\nH2 = %s\nH3 = %s\nH4 = %s\n", s.H1, s.H2, s.H3, s.H4)
-		if s.I1 != "" { fmt.Fprintf(&sb, "I1 = %s\n", s.I1) }
-		if s.I2 != "" { fmt.Fprintf(&sb, "I2 = %s\n", s.I2) }
-		if s.I3 != "" { fmt.Fprintf(&sb, "I3 = %s\n", s.I3) }
-		if s.I4 != "" { fmt.Fprintf(&sb, "I4 = %s\n", s.I4) }
-		if s.I5 != "" { fmt.Fprintf(&sb, "I5 = %s\n", s.I5) }
+		if s.I1 != "" {
+			fmt.Fprintf(&sb, "I1 = %s\n", s.I1)
+		}
+		if s.I2 != "" {
+			fmt.Fprintf(&sb, "I2 = %s\n", s.I2)
+		}
+		if s.I3 != "" {
+			fmt.Fprintf(&sb, "I3 = %s\n", s.I3)
+		}
+		if s.I4 != "" {
+			fmt.Fprintf(&sb, "I4 = %s\n", s.I4)
+		}
+		if s.I5 != "" {
+			fmt.Fprintf(&sb, "I5 = %s\n", s.I5)
+		}
+		if iface.Protocol == awgparams.ProtocolAmneziaWG3 {
+			writeAWG3Fields(&sb, s)
+		}
 		sb.WriteString("\n")
 	}
 
@@ -667,7 +769,11 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 		clientAllowedIPs = "0.0.0.0/0, ::/0"
 	}
 	fmt.Fprintf(&sb, "AllowedIPs = %s\n", clientAllowedIPs)
-	fmt.Fprintf(&sb, "PersistentKeepalive = %d\n\n", p.PersistentKeepalive)
+	if iface.Protocol == awgparams.ProtocolAmneziaWG3 && p.PersistentKeepaliveV3 != "" {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n\n", p.PersistentKeepaliveV3)
+	} else {
+		fmt.Fprintf(&sb, "PersistentKeepalive = %d\n\n", p.PersistentKeepalive)
+	}
 
 	sb.WriteString("# ═══════════════════════════════════════════════════════════════\n")
 	sb.WriteString("# 1. Generate keys: wg genkey | tee privatekey | wg pubkey > publickey\n")
@@ -677,6 +783,55 @@ func (p *Peer) generateTemplateConfig(iface InterfaceData) string {
 	sb.WriteString("# ═══════════════════════════════════════════════════════════════\n")
 
 	return sb.String()
+}
+
+// writeAWG3Fields appends AWG 3.0 Transport Protection fields to a client
+// [Interface] block. HeaderProtectionKey in particular must match the
+// server exactly — the server unwraps headers with this key before any
+// WireGuard handshake parsing happens, so an omitted/mismatched key causes
+// handshakes to be silently dropped rather than fail with a visible error.
+//
+// Field names/format must stay in sync with internal/tunnel/interface.go's
+// writeAWG3Fields (same name, separate function — internal/peer cannot
+// import internal/tunnel, which already imports internal/peer).
+func writeAWG3Fields(sb *strings.Builder, s *AWG2Settings) {
+	if s.HeaderProtectionKey != "" {
+		fmt.Fprintf(sb, "HeaderProtectionKey = %s\n", s.HeaderProtectionKey)
+	}
+	if s.ContentPaddingAddition != "" {
+		fmt.Fprintf(sb, "ContentPaddingAddition = %s\n", s.ContentPaddingAddition)
+	}
+	if s.RekeyAfterTime != "" {
+		fmt.Fprintf(sb, "RekeyAfterTime = %s\n", s.RekeyAfterTime)
+	}
+	if s.RekeyTimeout != "" {
+		fmt.Fprintf(sb, "RekeyTimeout = %s\n", s.RekeyTimeout)
+	}
+	if s.RejectAfterTime != "" {
+		fmt.Fprintf(sb, "RejectAfterTime = %s\n", s.RejectAfterTime)
+	}
+	if s.KeepaliveTimeout != "" {
+		fmt.Fprintf(sb, "KeepaliveTimeout = %s\n", s.KeepaliveTimeout)
+	}
+	if s.MaxHandshakeAttempts != "" {
+		fmt.Fprintf(sb, "MaxHandshakeAttempts = %s\n", s.MaxHandshakeAttempts)
+	}
+	// RandomTrailers/DisableCookies: amneziawg-go defaults both to off when
+	// absent, so an empty/unset field renders as the explicit "off" —
+	// written unconditionally either way so the field is always present in
+	// the client config. Keep in sync with the server-side writeAWG3Fields
+	// above (internal/tunnel/interface.go).
+	fmt.Fprintf(sb, "RandomTrailers = %s\n", onOffOrDefault(s.RandomTrailers))
+	fmt.Fprintf(sb, "DisableCookies = %s\n", onOffOrDefault(s.DisableCookies))
+}
+
+// onOffOrDefault normalizes a possibly-empty (legacy/never-set) AWG3 static
+// flag to its explicit "on"/"off" wire value, defaulting to "off".
+func onOffOrDefault(v string) string {
+	if v == "on" {
+		return "on"
+	}
+	return "off"
 }
 
 // ── QR code ───────────────────────────────────────────────────────────────────
@@ -737,10 +892,11 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 	var enabled int
 
 	var latestHandshakeAt string
+	var pklv3 sql.NullString
 	err := s.Scan(
 		&p.ID, &p.InterfaceID, &p.Name, &p.PublicKey, &p.PrivateKey, &p.PresharedKey,
 		&p.Endpoint, &p.AllowedIPs, &p.Address, &p.ClientAllowedIPs,
-		&p.PeerType, &p.GroupID, &p.PersistentKeepalive, &enabled,
+		&p.PeerType, &p.GroupID, &p.PersistentKeepalive, &pklv3, &enabled,
 		&p.CreatedAt, &p.UpdatedAt, &p.ExpiredAt, &p.OneTimeLink,
 		&p.TotalRx, &p.TotalTx,
 		&p.RateDown, &p.RateUp,
@@ -753,6 +909,7 @@ func scanPeerRow(s peerScanner) (*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
+	p.PersistentKeepaliveV3 = pklv3.String
 
 	p.Enabled = enabled != 0
 	p.DownloadableConfig = p.PrivateKey != ""
@@ -775,14 +932,14 @@ func insertPeer(p Peer) error {
 		INSERT INTO peers
 		    (id, interface_id, name, public_key, private_key, preshared_key,
 		     endpoint, allowed_ips, address, client_allowed_ips,
-		     peer_type, group_id, persistent_keepalive, enabled,
+		     peer_type, group_id, persistent_keepalive, persistent_keepalive_v3, enabled,
 		     created_at, updated_at, expired_at, one_time_link,
 		     rate_down, rate_up, previous_group_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		p.ID, p.InterfaceID, p.Name, p.PublicKey, p.PrivateKey, p.PresharedKey,
 		p.Endpoint, p.AllowedIPs, p.Address, p.ClientAllowedIPs,
-		p.PeerType, p.GroupID, p.PersistentKeepalive, boolInt(p.Enabled),
+		p.PeerType, p.GroupID, p.PersistentKeepalive, nullIfEmpty(p.PersistentKeepaliveV3), boolInt(p.Enabled),
 		p.CreatedAt, p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
 		p.RateDown, p.RateUp, p.PreviousGroupId,
 	)
@@ -794,12 +951,14 @@ func updatePeer(p Peer) error {
 		UPDATE peers
 		SET name = ?, endpoint = ?, allowed_ips = ?, address = ?,
 		    client_allowed_ips = ?, group_id = ?, persistent_keepalive = ?,
+		    persistent_keepalive_v3 = ?,
 		    enabled = ?, updated_at = ?, expired_at = ?, one_time_link = ?,
 		    rate_down = ?, rate_up = ?, previous_group_id = ?
 		WHERE id = ?
 	`,
 		p.Name, p.Endpoint, p.AllowedIPs, p.Address,
 		p.ClientAllowedIPs, p.GroupID, p.PersistentKeepalive,
+		nullIfEmpty(p.PersistentKeepaliveV3),
 		boolInt(p.Enabled), p.UpdatedAt, p.ExpiredAt, p.OneTimeLink,
 		p.RateDown, p.RateUp, p.PreviousGroupId,
 		p.ID,
@@ -841,6 +1000,15 @@ func isValidEndpoint(ep string) bool {
 		}
 	}
 	return len(port) > 0
+}
+
+// nullIfEmpty converts "" to SQL NULL so persistent_keepalive_v3 stays
+// unset (rather than an empty-string row value) for peers that don't use it.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 func boolInt(b bool) int {

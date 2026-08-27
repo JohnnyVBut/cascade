@@ -1,8 +1,9 @@
 // Package db manages the SQLite database lifecycle.
 //
 // Two files:
-//   <dataDir>/cascade.db — config, users, peers, rules (included in backups)
-//   <dataDir>/metrics.db — metrics_history only (large, exclude from backups)
+//
+//	<dataDir>/cascade.db — config, users, peers, rules (included in backups)
+//	<dataDir>/metrics.db — metrics_history only (large, exclude from backups)
 //
 // Design decisions:
 //   - modernc.org/sqlite: pure Go, no CGO → static binary (CGO_ENABLED=0)
@@ -70,10 +71,10 @@ func Init(dataDir string) error {
 
 	// Performance and safety pragmas.
 	pragmas := []string{
-		`PRAGMA journal_mode=WAL`,      // concurrent reads, faster writes
-		`PRAGMA foreign_keys=ON`,       // enforce FK constraints
-		`PRAGMA busy_timeout=5000`,     // wait up to 5s on lock instead of SQLITE_BUSY
-		`PRAGMA synchronous=NORMAL`,    // safe with WAL, faster than FULL
+		`PRAGMA journal_mode=WAL`,   // concurrent reads, faster writes
+		`PRAGMA foreign_keys=ON`,    // enforce FK constraints
+		`PRAGMA busy_timeout=5000`,  // wait up to 5s on lock instead of SQLITE_BUSY
+		`PRAGMA synchronous=NORMAL`, // safe with WAL, faster than FULL
 	}
 	for _, p := range pragmas {
 		if _, err := db.Exec(p); err != nil {
@@ -217,7 +218,7 @@ CREATE TABLE IF NOT EXISTS interfaces (
     name         TEXT NOT NULL DEFAULT '',
     address      TEXT NOT NULL DEFAULT '',    -- CIDR e.g. "10.8.0.1/24"
     listen_port  INTEGER NOT NULL DEFAULT 555,
-    protocol     TEXT NOT NULL DEFAULT 'wireguard-1.0',  -- or "amneziawg-2.0"
+    protocol     TEXT NOT NULL DEFAULT 'wireguard-1.0',  -- or "amneziawg-2.0" / "amneziawg-3.0"
     enabled      INTEGER NOT NULL DEFAULT 0,
     disable_routes INTEGER NOT NULL DEFAULT 0,
     private_key  TEXT NOT NULL DEFAULT '',
@@ -802,6 +803,65 @@ ALTER TABLE peers ADD COLUMN latest_handshake_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE interfaces ADD COLUMN dns TEXT NOT NULL DEFAULT '';
 `,
 	},
+	{
+		version: 41,
+		sql: `
+-- AWG 3.0 Transport Protection fields. All nullable — NULL means "not
+-- requested" (interface/template stays AWG 2.0-only), matching how the
+-- existing AWG2 columns (jc, jmin, jmax, ...) use NULL for WireGuard 1.0.
+ALTER TABLE templates ADD COLUMN header_protection_key    TEXT;
+ALTER TABLE templates ADD COLUMN content_padding_addition TEXT;
+ALTER TABLE templates ADD COLUMN rekey_after_time         TEXT;
+ALTER TABLE templates ADD COLUMN rekey_timeout            TEXT;
+ALTER TABLE templates ADD COLUMN reject_after_time        TEXT;
+ALTER TABLE templates ADD COLUMN keepalive_timeout        TEXT;
+ALTER TABLE templates ADD COLUMN max_handshake_attempts   TEXT;
+
+ALTER TABLE interfaces ADD COLUMN header_protection_key    TEXT;
+ALTER TABLE interfaces ADD COLUMN content_padding_addition TEXT;
+ALTER TABLE interfaces ADD COLUMN rekey_after_time         TEXT;
+ALTER TABLE interfaces ADD COLUMN rekey_timeout            TEXT;
+ALTER TABLE interfaces ADD COLUMN reject_after_time        TEXT;
+ALTER TABLE interfaces ADD COLUMN keepalive_timeout        TEXT;
+ALTER TABLE interfaces ADD COLUMN max_handshake_attempts   TEXT;
+`,
+	},
+	{
+		version: 42,
+		sql: `
+-- Templates are scoped to an AWG obfuscation-param version ("2.0" or
+-- "3.0"). A "2.0" template must not have any AWG 3.0 Transport Protection
+-- field set (enforced in application code, not a CHECK constraint here —
+-- SQLite's ALTER TABLE can't add one retroactively without a table rebuild).
+-- Existing rows default to "2.0" — they predate AWG 3.0 support entirely.
+ALTER TABLE templates ADD COLUMN version TEXT NOT NULL DEFAULT '2.0';
+`,
+	},
+	{
+		version: 43,
+		sql: `
+-- amneziawg-go 3.1+ static flags. NULL/empty means "not set", rendered as
+-- the explicit "off" default at config-render time (see onOffOrDefault in
+-- internal/tunnel/interface.go and internal/peer/peer.go).
+ALTER TABLE templates ADD COLUMN random_trailers TEXT;
+ALTER TABLE templates ADD COLUMN disable_cookies TEXT;
+
+ALTER TABLE interfaces ADD COLUMN random_trailers TEXT;
+ALTER TABLE interfaces ADD COLUMN disable_cookies TEXT;
+`,
+	},
+	{
+		version: 44,
+		sql: `
+-- AWG 3.1+ PersistentKeepalive range override ("lo-hi", e.g. "5-25").
+-- Additive field kept separate from the existing persistent_keepalive
+-- INTEGER column so v1/v2 peers, the JSON API contract, and old backup
+-- exports are completely unaffected. NULL/empty = not set, falls back to
+-- the plain persistent_keepalive int. Only consulted when the peer's
+-- interface protocol is amneziawg-3.0.
+ALTER TABLE peers ADD COLUMN persistent_keepalive_v3 TEXT;
+`,
+	},
 }
 
 func runMigrations(db *sql.DB) error {
@@ -855,4 +915,17 @@ func runMigrations(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+// NullIfEmpty maps an empty string to SQL NULL, for optional TEXT columns
+// where NULL means "not set" — e.g. the AWG 3.0 Transport Protection
+// columns on templates/interfaces (migration v41), which follow the same
+// NULL-means-not-applicable convention as the existing AWG2 columns.
+// Shared so callers (internal/settings, internal/tunnel, ...) don't each
+// carry their own copy that could silently drift apart.
+func NullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
