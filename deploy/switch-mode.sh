@@ -93,9 +93,17 @@ apply_kernel() {
     apt-get update -qq
   fi
 
-  BEFORE_VER="$(dpkg-query -W -f='${Version}' amneziawg 2>/dev/null || echo "")"
-  apt-get install -y amneziawg
-  AFTER_VER="$(dpkg-query -W -f='${Version}' amneziawg 2>/dev/null || echo "")"
+  # Track amneziawg-dkms specifically, not just the amneziawg metapackage.
+  # The metapackage's own version can stay unchanged across a PPA update
+  # (its dependency on amneziawg-dkms isn't pinned to an exact version), so
+  # `apt-get install amneziawg` alone can report "already newest" while a
+  # newer amneziawg-dkms — the package that actually rebuilds the .ko via
+  # DKMS — sits available but unpulled. Confirmed in the wild: amneziawg
+  # stayed at the same version while amneziawg-dkms had a newer build
+  # sitting in the PPA the whole time.
+  BEFORE_VER="$(dpkg-query -W -f='${Version}' amneziawg-dkms 2>/dev/null || echo "")"
+  apt-get install -y amneziawg amneziawg-dkms
+  AFTER_VER="$(dpkg-query -W -f='${Version}' amneziawg-dkms 2>/dev/null || echo "")"
 
   if lsmod | grep -q amneziawg 2>/dev/null && [[ "$BEFORE_VER" == "$AFTER_VER" ]]; then
     ok "amneziawg already loaded and up to date (${AFTER_VER})"
