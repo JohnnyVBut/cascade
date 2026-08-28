@@ -389,6 +389,27 @@ sudo bash deploy/switch-mode.sh --userspace
 sudo bash deploy/switch-mode.sh --kernel
 ```
 
+**`switch-mode.sh --kernel` fails to install `amneziawg`/`amneziawg-dkms` (e.g. `apt-get`
+reports "not enough free space"):** on a long-unpatched VPS, dozens of pending system
+upgrades plus Docker's build cache can quietly fill the disk. Free space and retry:
+```bash
+df -h /
+docker image prune -af && docker builder prune -af
+journalctl --vacuum-size=100M
+apt-get autoremove -y
+sudo bash deploy/switch-mode.sh --kernel
+```
+
+**Kernel/CLI version mismatch shown in the dashboard:**
+```bash
+docker exec cascade awg --version
+modinfo -F version amneziawg
+```
+If these differ, re-run `sudo bash deploy/switch-mode.sh --kernel` — as of this fix it tracks
+`amneziawg-dkms`'s own version (not just the `amneziawg` metapackage) and reloads the module
+when a newer build is available. If it still reports "already up to date" but the versions
+above genuinely differ, check disk space per the item above first.
+
 **Re-run setup (e.g. after reboot or cert renewal):**
 ```bash
 sudo bash deploy/setup.sh
