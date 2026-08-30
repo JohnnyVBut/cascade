@@ -484,6 +484,7 @@ If Cascade is useful to you, consider supporting its development:
 - Based on [wg-easy](https://github.com/wg-easy/wg-easy)
 - [AmneziaVPN](https://github.com/amnezia-vpn) for the AmneziaWG protocol
 - [Vadim-Khristenko/AmneziaWG-Architect](https://github.com/Vadim-Khristenko/AmneziaWG-Architect) — math and code for AWG 2.0 obfuscation profile generation (CPS signatures, H-ranges, browser fingerprint packet sizing)
+- [@Locman91](https://github.com/Locman91) — detailed bug reports and testing, including the root-cause writeup behind the [issue #105](https://github.com/JohnnyVBut/cascade/issues/105) MSS/NAT rule-leak fix
 
 ## 📄 License
 
