@@ -227,6 +227,53 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 	if upd.AWG2 != nil {
 		t.AWG2 = upd.AWG2
 	}
+
+	needsRestart := addressChanged || listenPortChanged || natDisabledChanged ||
+		mtuChanged || mssChanged || disableRoutesChanged
+
+	// Fixes #105: PostDown must run against the config file as it was BEFORE
+	// this update, not after. PostUp/PostDown for MASQUERADE and TCPMSS are
+	// keyed by the current value of Address/MSS/NatDisabled — e.g.
+	// "-A POSTROUTING -s <old subnet> -j MASQUERADE" / "-D ... -s <old subnet>
+	// ...". If RegenerateConfig() overwrites the file with the NEW settings
+	// before Stop() runs `awg-quick down`, PostDown ends up trying to remove
+	// a rule that doesn't exist yet (the new one), while the real old rule —
+	// added by the previous PostUp — is never touched and leaks forever
+	// (confirmed in the wild: repeated MSS/NAT changes accumulate stale
+	// TCPMSS/MASQUERADE rules that even a Restart doesn't clear, since each
+	// Restart repeats the same overwrite-before-down mistake).
+	//
+	// Fix: when a running interface needs a full restart, stop it FIRST —
+	// while the on-disk config still matches the old settings, so PostDown
+	// correctly tears down exactly what the old PostUp added — and only then
+	// persist/regenerate the new config and start it back up. This entire
+	// sequence stays in the same background goroutine (behind reloadMu, as
+	// before) so the API call itself isn't slowed down by the extra down/up
+	// round trip.
+	if needsRestart && t.Enabled {
+		go func() {
+			t.reloadMu.Lock()
+			defer t.reloadMu.Unlock()
+			if err := t.Stop(); err != nil {
+				log.Printf("tunnel: Update %s: stop before restart failed: %v", t.ID, err)
+				// Continue anyway — leaving the interface down with the old
+				// settings applied would be worse than a possible stale rule.
+			}
+			if err := t.save(); err != nil {
+				log.Printf("tunnel: Update %s: save failed: %v", t.ID, err)
+				return
+			}
+			if err := t.RegenerateConfig(); err != nil {
+				log.Printf("tunnel: Update %s: regenerate config failed: %v", t.ID, err)
+				return
+			}
+			if err := t.Start(); err != nil {
+				log.Printf("tunnel: Update %s: restart failed: %v", t.ID, err)
+			}
+		}()
+		return nil
+	}
+
 	if err := t.save(); err != nil {
 		return err
 	}
@@ -234,21 +281,7 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 		return err
 	}
 	if t.Enabled {
-		needsRestart := addressChanged || listenPortChanged || natDisabledChanged ||
-			mtuChanged || mssChanged || disableRoutesChanged
-		if needsRestart {
-			// Full wg-quick down → up required to apply kernel-level changes.
-			// reloadMu must be held: concurrent awg syncconf + awg-quick up = deadlock (FIX-8/9).
-			go func() {
-				t.reloadMu.Lock()
-				defer t.reloadMu.Unlock()
-				if err := t.Restart(); err != nil {
-					log.Printf("tunnel: Update %s: restart failed: %v", t.ID, err)
-				}
-			}()
-		} else {
-			t.Reload() // hot-reload via syncconf — safe for Name, PublicHost, AWG2 params
-		}
+		t.Reload() // hot-reload via syncconf — safe for Name, PublicHost, AWG2 params
 	}
 	return nil
 }
