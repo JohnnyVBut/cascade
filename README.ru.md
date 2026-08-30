@@ -485,7 +485,7 @@ curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/pee
 - Основано на [wg-easy](https://github.com/wg-easy/wg-easy)
 - [AmneziaVPN](https://github.com/amnezia-vpn) за протокол AmneziaWG
 - [Vadim-Khristenko/AmneziaWG-Architect](https://github.com/Vadim-Khristenko/AmneziaWG-Architect) — математика и код для генерации профилей обфускации AWG 2.0 (CPS-сигнатуры, H-диапазоны, подгонка размера пакетов под browser fingerprint)
-- [@Locman91](https://github.com/Locman91) — подробные багрепорты и тестирование, включая разбор причины бага в [issue #105](https://github.com/JohnnyVBut/cascade/issues/105) (утечка MSS/NAT-правил)
+- [@Locman91](https://github.com/Locman91) — подробные багрепорты и тестирование, лёгшие в основу нескольких фиксов: [#99](https://github.com/JohnnyVBut/cascade/issues/99) (генерация конфига по One Time Link и дублирование peer), [#102](https://github.com/JohnnyVBut/cascade/issues/102) (автогенерация PresharedKey ломала handshake для uplink), [#105](https://github.com/JohnnyVBut/cascade/issues/105) (утечка MSS/NAT-правил при обновлении интерфейса)
 
 ## 📄 Лицензия
 
