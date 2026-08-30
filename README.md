@@ -428,7 +428,7 @@ Cascade exposes a full REST API — everything the web UI does, your scripts can
 
 ```bash
 # Authenticate
-curl -c cookies.txt -X POST http://127.0.0.1:8888/api/login \
+curl -c cookies.txt -X POST http://127.0.0.1:8888/api/session \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"yourpassword"}'
 
