@@ -254,22 +254,7 @@ func (t *TunnelInterface) Update(upd InterfaceUpdate) error {
 		go func() {
 			t.reloadMu.Lock()
 			defer t.reloadMu.Unlock()
-			if err := t.Stop(); err != nil {
-				log.Printf("tunnel: Update %s: stop before restart failed: %v", t.ID, err)
-				// Continue anyway — leaving the interface down with the old
-				// settings applied would be worse than a possible stale rule.
-			}
-			if err := t.save(); err != nil {
-				log.Printf("tunnel: Update %s: save failed: %v", t.ID, err)
-				return
-			}
-			if err := t.RegenerateConfig(); err != nil {
-				log.Printf("tunnel: Update %s: regenerate config failed: %v", t.ID, err)
-				return
-			}
-			if err := t.Start(); err != nil {
-				log.Printf("tunnel: Update %s: restart failed: %v", t.ID, err)
-			}
+			t.restartWithNewSettings()
 		}()
 		return nil
 	}
@@ -968,6 +953,36 @@ func (t *TunnelInterface) Restart() error {
 		return err
 	}
 	return t.Start()
+}
+
+// restartWithNewSettings stops the interface — while the on-disk config
+// still reflects the settings as they were BEFORE this call, so PostDown
+// correctly tears down exactly what the previous PostUp added (fixes #105:
+// MASQUERADE/TCPMSS rules keyed by the old subnet/MSS value used to leak
+// because the config was rewritten before Stop() ran) — then persists and
+// regenerates the config with the new settings and starts back up.
+//
+// Must be called with reloadMu held (Update's caller does this via its
+// background goroutine; extracted into its own method rather than left
+// inline so tests can invoke the exact same sequence synchronously, without
+// racing the goroutine's own reloadMu.Lock() to observe completion).
+func (t *TunnelInterface) restartWithNewSettings() {
+	if err := t.Stop(); err != nil {
+		log.Printf("tunnel: Update %s: stop before restart failed: %v", t.ID, err)
+		// Continue anyway — leaving the interface down with the old
+		// settings applied would be worse than a possible stale rule.
+	}
+	if err := t.save(); err != nil {
+		log.Printf("tunnel: Update %s: save failed: %v", t.ID, err)
+		return
+	}
+	if err := t.RegenerateConfig(); err != nil {
+		log.Printf("tunnel: Update %s: regenerate config failed: %v", t.ID, err)
+		return
+	}
+	if err := t.Start(); err != nil {
+		log.Printf("tunnel: Update %s: restart failed: %v", t.ID, err)
+	}
 }
 
 // Reload enqueues a hot-reload (awg/wg syncconf) in a background goroutine.

@@ -14,15 +14,23 @@
 // The fix reorders Update() so that, for a running interface that needs a
 // full restart, Stop() runs FIRST — while the on-disk config still reflects
 // the OLD settings — and only then does save()/RegenerateConfig()/Start()
-// run, inside the same background goroutine. This test cannot exercise the
-// real awg-quick/iptables side (RegenerateConfig writes to
-// /etc/amnezia/amneziawg, not writable in this sandbox or most CI
-// containers without root — see import_conf_psk_test.go's doc comment for
-// the established pattern), so it verifies the directly observable contract
-// change instead: Update() must return immediately for the needsRestart+
-// Enabled case, without surfacing save()/RegenerateConfig() errors
-// synchronously — those now happen inside the deferred goroutine, after
-// Stop() — while still applying the in-memory field change right away.
+// run, via the extracted restartWithNewSettings() method, inside the same
+// background goroutine.
+//
+// These tests call restartWithNewSettings() directly (synchronously, no
+// goroutine) rather than going through Update()'s real `go func(){...}()`
+// path: racing a second reloadMu.Lock()/Unlock() in the test against the
+// goroutine's own first Lock() to detect completion is not reliable — Go's
+// sync.Mutex does not guarantee the goroutine wins that race before the
+// test's own Lock() call does, and on a real Linux runner (unlike this
+// sandbox, where util.Exec no-ops non-Linux commands) Stop()'s wg-quick
+// subprocess actually executes, taking long enough that the un-awaited
+// background goroutine can still be mid-flight — including its own
+// t.save() DB call — after the test function returns and t.Cleanup() closes
+// the database, causing a real "db.Init() must be called before db.DB()"
+// panic (confirmed: this exact panic occurred in CI once on a first version
+// of this test file that raced the lock instead of calling
+// restartWithNewSettings() directly).
 package tunnel
 
 import (
@@ -32,7 +40,7 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/peer"
 )
 
-func TestUpdate_EnabledNeedsRestart_ReturnsImmediatelyWithoutSyncError(t *testing.T) {
+func TestRestartWithNewSettings_PersistsAndStartsAfterStop(t *testing.T) {
 	initTunnelTestDB(t)
 
 	iface := &TunnelInterface{
@@ -52,31 +60,51 @@ func TestUpdate_EnabledNeedsRestart_ReturnsImmediatelyWithoutSyncError(t *testin
 		t.Fatalf("save: %v", err)
 	}
 
-	newMSS := 1260
-	// Before the fix, Update() ran save()/RegenerateConfig() synchronously
-	// for ANY change, so a RegenerateConfig failure (guaranteed here — no
-	// writable /etc/amnezia/amneziawg) would surface as a returned error.
-	// After the fix, an MSS change on an enabled interface (needsRestart triggers
-	// on mssChanged, see Update's doc comment) is handled entirely inside the
-	// background goroutine, so the call must return nil immediately.
-	if err := iface.Update(InterfaceUpdate{MSS: &newMSS}); err != nil {
-		t.Fatalf("Update() returned a synchronous error %v — the needsRestart+Enabled "+
-			"path must defer save()/RegenerateConfig() to the background goroutine "+
-			"(so Stop() can run first against the still-old config), not run them "+
-			"before returning", err)
+	// Mirror what Update() does before spawning the goroutine: mutate the
+	// in-memory field first (this part is synchronous and unconditional in
+	// Update(), regardless of whether a restart is needed).
+	iface.MSS = 1260
+
+	// Call the exact sequence Update()'s goroutine runs, synchronously.
+	// Stop() is expected to fail here (no real wg-quick/awg-quick on the
+	// test runner — see util.Exec's non-Linux no-op vs a real Linux CI
+	// runner where the subprocess actually executes and fails with "command
+	// not found") — restartWithNewSettings() must tolerate that and still
+	// persist + regenerate + attempt Start(), matching its documented
+	// "continue anyway" behavior.
+	iface.reloadMu.Lock()
+	iface.restartWithNewSettings()
+	iface.reloadMu.Unlock()
+
+	if iface.MSS != 1260 {
+		t.Errorf("MSS = %d, want 1260", iface.MSS)
 	}
 
-	// Wait for the deferred goroutine (Stop -> save -> RegenerateConfig -> Start)
-	// to finish: it holds reloadMu for its entire duration, so acquiring and
-	// releasing the same lock blocks until it's done, without an arbitrary sleep.
-	iface.reloadMu.Lock()
-	iface.reloadMu.Unlock() //nolint:staticcheck // synchronization barrier, not a real critical section
-
-	if iface.MSS != newMSS {
-		t.Errorf("MSS = %d, want %d — the in-memory field must update synchronously "+
-			"even though persistence is deferred", iface.MSS, newMSS)
+	// Re-load from the DB to confirm save() actually ran (not just the
+	// in-memory field from the assignment above).
+	reloaded, err := LoadInterface("wg20")
+	if err != nil {
+		t.Fatalf("LoadInterface: %v", err)
+	}
+	if reloaded.MSS != 1260 {
+		t.Errorf("persisted MSS = %d, want 1260 — save() must run even when Stop() fails", reloaded.MSS)
 	}
 }
+
+// Note: Update()'s real needsRestart+Enabled branch (which spawns
+// `go func(){ t.reloadMu.Lock(); defer Unlock(); t.restartWithNewSettings() }()`)
+// is intentionally NOT exercised end-to-end here. Detecting completion of
+// that goroutine from a test would require racing a second reloadMu.Lock()
+// against the goroutine's own first Lock() — as this file's doc comment
+// explains, Go's sync.Mutex does not guarantee the goroutine wins that race,
+// and an un-awaited goroutine can still be mid-flight (including its own
+// t.save() DB call) when the test function returns and t.Cleanup() closes
+// the database, which is exactly the "db.Init() must be called before
+// db.DB()" panic seen in CI on an earlier version of this file. The two
+// tests above cover the same logic deterministically instead: the exact
+// sequence Update() defers (via restartWithNewSettings(), called directly)
+// and the synchronous branch (via Update() itself, which never spawns a
+// goroutine when the interface is disabled).
 
 // TestUpdate_DisabledNeedsRestart_PersistsSynchronously covers the other
 // branch: when the interface isn't running, there's nothing to Stop() and no
