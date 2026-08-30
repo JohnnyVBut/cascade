@@ -4,9 +4,9 @@
 // Critical constraints (from CLAUDE.md):
 //   - FIX-11: NEVER use "ip -j" — text parsing only (hangs on some kernels).
 //   - FIX-13: RestoreAll() must be called AFTER InterfaceManager initialises all
-//             WireGuard interfaces; otherwise "ip route add dev wgX" fails.
+//     WireGuard interfaces; otherwise "ip route add dev wgX" fails.
 //   - FIX-15: Kernel errors from "ip route" are surfaced as HTTP 400 with
-//             the exact stderr message (e.g. "RTNETLINK answers: Invalid argument").
+//     the exact stderr message (e.g. "RTNETLINK answers: Invalid argument").
 //
 // Persistence: SQLite `routes` table (see internal/db migration v3).
 package routing
@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -37,20 +36,20 @@ import (
 type Route struct {
 	ID             string `json:"id"`
 	Description    string `json:"description"`
-	Destination    string `json:"destination"`    // CIDR or "default"
-	Gateway        string `json:"gateway"`         // manual next-hop IP; empty if using GatewayID
-	Dev            string `json:"dev"`             // interface name; empty if gateway-only
-	Metric         *int   `json:"metric"`          // nil = no explicit metric
-	Table          string `json:"table"`           // routing table name or number; default "main"
+	Destination    string `json:"destination"` // CIDR or "default"
+	Gateway        string `json:"gateway"`     // manual next-hop IP; empty if using GatewayID
+	Dev            string `json:"dev"`         // interface name; empty if gateway-only
+	Metric         *int   `json:"metric"`      // nil = no explicit metric
+	Table          string `json:"table"`       // routing table name or number; default "main"
 	Enabled        bool   `json:"enabled"`
-	GatewayID      string `json:"gatewayId"`       // linked Gateway — resolves via/dev dynamically
-	GatewayGroupID string `json:"gatewayGroupId"`  // linked GatewayGroup — failover between tiers
+	GatewayID      string `json:"gatewayId"`      // linked Gateway — resolves via/dev dynamically
+	GatewayGroupID string `json:"gatewayGroupId"` // linked GatewayGroup — failover between tiers
 	CreatedAt      string `json:"createdAt"`
 }
 
 // RoutingTable is a kernel routing table discovered via ip rule show + rt_tables.
 type RoutingTable struct {
-	ID   *int   `json:"id"`   // nil for the synthetic "all" entry
+	ID   *int   `json:"id"` // nil for the synthetic "all" entry
 	Name string `json:"name"`
 }
 
@@ -83,10 +82,10 @@ type RouteResult struct {
 // the via/dev are not stored in the DB but derived from the gateway's current IP/interface.
 // When a gateway status changes, affected routes are updated via "ip route replace".
 type Manager struct {
-	gwMgr         *gateway.Manager // nil until SubscribeToMonitor is called
-	mu            sync.Mutex
-	fallbackActive map[string]bool         // routeID → true when not on primary gateway
-	restoreTimers  map[string]*time.Timer  // routeID → pending primary-restore timer
+	gwMgr          *gateway.Manager // nil until SubscribeToMonitor is called
+	mu             sync.Mutex
+	fallbackActive map[string]bool        // routeID → true when not on primary gateway
+	restoreTimers  map[string]*time.Timer // routeID → pending primary-restore timer
 }
 
 // New returns a Manager. db.Init() must have been called first.
@@ -206,20 +205,14 @@ func (m *Manager) handleGatewayStatusChange(gatewayID, newStatus, prevStatus str
 
 // routeReferencesGateway returns true if the route is directly linked to
 // gatewayID or if gatewayID is a member of the route's gateway group.
+// Delegates the group-membership check to gateway.Manager.GroupContainsGateway
+// — shared with internal/firewall's identical check.
 func (m *Manager) routeReferencesGateway(r *Route, gatewayID string) bool {
 	if r.GatewayID == gatewayID {
 		return true
 	}
 	if r.GatewayGroupID != "" && m.gwMgr != nil {
-		grp, err := m.gwMgr.GetGroup(r.GatewayGroupID)
-		if err != nil || grp == nil {
-			return false
-		}
-		for _, mem := range grp.Gateways {
-			if mem.GatewayID == gatewayID {
-				return true
-			}
-		}
+		return m.gwMgr.GroupContainsGateway(r.GatewayGroupID, gatewayID)
 	}
 	return false
 }
@@ -227,7 +220,9 @@ func (m *Manager) routeReferencesGateway(r *Route, gatewayID string) bool {
 // resolveGatewayVia picks the best available via/dev for a gateway-aware route.
 // For GatewayID: returns that gateway's IP + interface.
 // For GatewayGroupID: picks the lowest-tier gateway that is not "down".
-//   Falls back to the lowest-tier gateway if all are down (gateway of last resort).
+//
+//	Falls back to the lowest-tier gateway if all are down (gateway of last resort).
+//
 // For plain routes (no gateway reference): returns r.Gateway, r.Dev.
 func (m *Manager) resolveGatewayVia(r *Route) (via, dev string, err error) {
 	if r.GatewayID != "" && m.gwMgr != nil {
@@ -275,60 +270,11 @@ func (m *Manager) primaryGatewayVia(r *Route) (via, dev string, err error) {
 }
 
 // resolveGroupGateway picks the best available gateway from a gateway group.
-// Iterates tiers from lowest (highest priority) upward.
-// Within a tier picks the first healthy/degraded/unknown member.
-// Falls back to the tier1 gateway if all members are "down".
+// Delegates to gateway.Manager.ResolveGroupGateway — shared with
+// internal/firewall's PBR rule resolution so static routes and PBR rules
+// fail over identically. Do not reimplement the tier-walk here.
 func (m *Manager) resolveGroupGateway(groupID string) (via, dev string, err error) {
-	grp, err := m.gwMgr.GetGroup(groupID)
-	if err != nil || grp == nil || len(grp.Gateways) == 0 {
-		return "", "", fmt.Errorf("gateway group %s not found or empty", groupID)
-	}
-
-	mon := m.gwMgr.Monitor()
-
-	// Sort members by tier ascending (lowest = highest priority).
-	sorted := make([]gateway.GatewayGroupMember, len(grp.Gateways))
-	copy(sorted, grp.Gateways)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Tier < sorted[j].Tier })
-
-	// Group members by tier.
-	type tierEntry struct {
-		tier    int
-		members []gateway.GatewayGroupMember
-	}
-	var tiers []tierEntry
-	for _, mem := range sorted {
-		if len(tiers) == 0 || tiers[len(tiers)-1].tier != mem.Tier {
-			tiers = append(tiers, tierEntry{tier: mem.Tier})
-		}
-		tiers[len(tiers)-1].members = append(tiers[len(tiers)-1].members, mem)
-	}
-
-	var fallbackGW *gateway.Gateway // tier1 gateway, used if all tiers down
-
-	for _, te := range tiers {
-		for _, mem := range te.members {
-			gw, err := m.gwMgr.GetGateway(mem.GatewayID)
-			if err != nil || gw == nil {
-				continue
-			}
-			if fallbackGW == nil {
-				fallbackGW = gw // remember tier1 as last resort
-			}
-			st := mon.GetStatus(mem.GatewayID)
-			// Use this gateway unless it is explicitly "down" or "admin_down".
-			// "unknown" = not enough probes yet → treat as available.
-			if st.Status != "down" && st.Status != "admin_down" {
-				return gw.GatewayIP, gw.Interface, nil
-			}
-		}
-	}
-
-	// All gateways are "down" — route via tier1 as gateway of last resort.
-	if fallbackGW != nil {
-		return fallbackGW.GatewayIP, fallbackGW.Interface, nil
-	}
-	return "", "", fmt.Errorf("no valid gateway found in group %s", groupID)
+	return m.gwMgr.ResolveGroupGateway(groupID)
 }
 
 // kernelReplace runs "ip route replace ..." — idempotent unlike "ip route add".

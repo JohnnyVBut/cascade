@@ -3,20 +3,23 @@
 //
 // Architecture (mirrors FirewallManager.js):
 //
-//   FIREWALL_FORWARD (filter table) — ACCEPT/DROP/REJECT for every rule
-//   FIREWALL_MANGLE  (mangle table) — MARK (PBR rules) or RETURN (non-PBR rules)
+//	FIREWALL_FORWARD (filter table) — ACCEPT/DROP/REJECT for every rule
+//	FIREWALL_MANGLE  (mangle table) — MARK (PBR rules) or RETURN (non-PBR rules)
 //
 // Rules are processed in order; the first match wins.
 // PBR rules: packets get fwmark → ip rule lookup table N → table N has
-//   "default via <gatewayIP> dev <iface>" → routed through that gateway.
+//
+//	"default via <gatewayIP> dev <iface>" → routed through that gateway.
+//
 // Non-PBR rules: RETURN in mangle prevents subsequent PBR rules from marking.
 //
 // Gateway fallback (FIX-15b):
-//   When a gateway goes down, the routing table entry is replaced with either
-//   a blackhole route (drop) or the system default gateway (failover),
-//   depending on the rule's fallbackToDefault flag.
-//   Recovery is delayed 30 s (anti-flap) and triggered by the GatewayMonitor
-//   StatusChange callback registered in Init().
+//
+//	When a gateway goes down, the routing table entry is replaced with either
+//	a blackhole route (drop) or the system default gateway (failover),
+//	depending on the rule's fallbackToDefault flag.
+//	Recovery is delayed 30 s (anti-flap) and triggered by the GatewayMonitor
+//	StatusChange callback registered in Init().
 //
 // Storage: SQLite `firewall_rules` table.
 // Source/destination endpoint objects are stored as JSON columns.
@@ -59,12 +62,12 @@ type Endpoint struct {
 // RuleType is "rule" (default) or "separator" (visual divider, ignored by kernel).
 type Rule struct {
 	ID                string   `json:"id"`
-	RuleType          string   `json:"ruleType"`          // "rule" | "separator"
+	RuleType          string   `json:"ruleType"` // "rule" | "separator"
 	Name              string   `json:"name"`
 	Enabled           bool     `json:"enabled"`
 	Order             int      `json:"order"`
-	Interface         string   `json:"interface"`         // any | wg10 | eth0 ...
-	Protocol          string   `json:"protocol"`          // any | tcp | udp | tcp/udp | icmp
+	Interface         string   `json:"interface"` // any | wg10 | eth0 ...
+	Protocol          string   `json:"protocol"`  // any | tcp | udp | tcp/udp | icmp
 	Source            Endpoint `json:"source"`
 	Destination       Endpoint `json:"destination"`
 	Action            string   `json:"action"`            // accept | drop | reject
@@ -74,7 +77,7 @@ type Rule struct {
 	FallbackToDefault bool     `json:"fallbackToDefault"` // fallback to default gw (vs blackhole)
 	Log               bool     `json:"log"`
 	Comment           string   `json:"comment"`
-	SeparatorColor    string   `json:"separatorColor"`    // separator tint: ""=gray | red|orange|yellow|green|cyan|blue|purple
+	SeparatorColor    string   `json:"separatorColor"` // separator tint: ""=gray | red|orange|yellow|green|cyan|blue|purple
 	CreatedAt         string   `json:"createdAt"`
 }
 
@@ -142,8 +145,23 @@ type Manager struct {
 	rebuildMu sync.Mutex // serialises rebuildChains calls
 
 	fallbackMu     sync.Mutex
-	fallbackActive map[string]bool         // rule ID → currently in fallback/blackhole
-	restoreTimers  map[string]*time.Timer  // rule ID → 30 s anti-flap restore timer
+	fallbackActive map[string]bool        // rule ID → currently in fallback/blackhole
+	restoreTimers  map[string]*time.Timer // rule ID → 30 s anti-flap restore timer
+
+	// ruleApplyMu serializes triggerFallback/restoreRoute per rule ID, so the
+	// "ip route replace" exec call and the fallbackActive flag update happen
+	// atomically with respect to other goroutines acting on the same rule
+	// (e.g. two gateways in the same group flapping within the same window).
+	ruleApplyMu sync.Map // ruleID (string) → *sync.Mutex
+}
+
+// lockRule serializes route application for one rule ID. Call the returned
+// func to unlock — typically via defer right after acquiring it.
+func (m *Manager) lockRule(ruleID string) func() {
+	v, _ := m.ruleApplyMu.LoadOrStore(ruleID, &sync.Mutex{})
+	mu := v.(*sync.Mutex)
+	mu.Lock()
+	return mu.Unlock
 }
 
 // New creates a Manager. Call Init() after db.Init().
@@ -995,8 +1013,8 @@ func (m *Manager) rebuildChains() error {
 	m.fallbackMu.Unlock()
 
 	// Flush custom chains.
-	util.Exec("iptables-nft -t filter -F FIREWALL_FORWARD", 5*time.Second, true)  //nolint
-	util.Exec("iptables-nft -t mangle -F FIREWALL_MANGLE", 5*time.Second, true)   //nolint
+	util.Exec("iptables-nft -t filter -F FIREWALL_FORWARD", 5*time.Second, true) //nolint
+	util.Exec("iptables-nft -t mangle -F FIREWALL_MANGLE", 5*time.Second, true)  //nolint
 
 	// Remove per-rule subchains from previous run (FW*/FM* created by applyRuleKernelSubchain).
 	m.cleanupSubchains()
@@ -1064,8 +1082,8 @@ func (m *Manager) cleanupRoutingRules() error {
 			continue
 		}
 		fwmark := *r.Fwmark
-		util.Exec(fmt.Sprintf("ip rule del fwmark %d lookup %d", fwmark, fwmark), 5*time.Second, false)    //nolint
-		util.Exec(fmt.Sprintf("ip route flush table %d", fwmark), 5*time.Second, false)                    //nolint
+		util.Exec(fmt.Sprintf("ip rule del fwmark %d lookup %d", fwmark, fwmark), 5*time.Second, false) //nolint
+		util.Exec(fmt.Sprintf("ip route flush table %d", fwmark), 5*time.Second, false)                 //nolint
 	}
 	return nil
 }
@@ -1550,7 +1568,10 @@ type resolvedGW struct {
 }
 
 // resolveGateway finds the active gateway for a PBR rule.
-// For a group, picks the first-tier member (lowest tier number).
+// For a group, delegates to gateway.Manager.ResolveGroupGateway — the same
+// health-aware tier walk used by static routes — so a PBR rule fails over to
+// the next healthy tier instead of always pinning to tier 1 regardless of
+// status (see GitHub issue #97).
 func (m *Manager) resolveGateway(rule *Rule) (resolvedGW, error) {
 	if rule.GatewayID != "" {
 		gw, err := m.gm.GetGateway(rule.GatewayID)
@@ -1561,25 +1582,11 @@ func (m *Manager) resolveGateway(rule *Rule) (resolvedGW, error) {
 	}
 
 	if rule.GatewayGroupID != "" {
-		grp, err := m.gm.GetGroup(rule.GatewayGroupID)
-		if err != nil || grp == nil {
-			return resolvedGW{}, fmt.Errorf("gateway group %s not found", rule.GatewayGroupID)
+		gatewayIP, iface, err := m.gm.ResolveGroupGateway(rule.GatewayGroupID)
+		if err != nil {
+			return resolvedGW{}, err
 		}
-		if len(grp.Gateways) == 0 {
-			return resolvedGW{}, fmt.Errorf("gateway group %s is empty", rule.GatewayGroupID)
-		}
-		// Sort by tier (lowest = highest priority), pick first.
-		best := grp.Gateways[0]
-		for _, m := range grp.Gateways[1:] {
-			if m.Tier < best.Tier {
-				best = m
-			}
-		}
-		gw, err := m.gm.GetGateway(best.GatewayID)
-		if err != nil || gw == nil {
-			return resolvedGW{}, fmt.Errorf("gateway %s not found in group", best.GatewayID)
-		}
-		return resolvedGW{gatewayIP: gw.GatewayIP, iface: gw.Interface}, nil
+		return resolvedGW{gatewayIP: gatewayIP, iface: iface}, nil
 	}
 
 	return resolvedGW{}, fmt.Errorf("rule has no gateway or gateway group")
@@ -1612,6 +1619,11 @@ func (m *Manager) handleGatewayStatusChange(gatewayID, newStatus, oldStatus stri
 }
 
 // onGatewayDown triggers fallback for all PBR rules using the downed gateway.
+// For a GatewayGroupID rule whose group still has a usable tier (not all
+// down), re-resolves and re-applies the route instead of leaving it pinned to
+// the gateway that just went down — otherwise the kernel route keeps pointing
+// at a dead next-hop and traffic silently falls through to the main routing
+// table instead of failing over to the next tier (GitHub issue #97).
 func (m *Manager) onGatewayDown(gatewayID string) error {
 	rules, err := m.GetRules()
 	if err != nil {
@@ -1625,17 +1637,69 @@ func (m *Manager) onGatewayDown(gatewayID string) error {
 			m.triggerFallback(&rule, fmt.Sprintf("gateway %s down", gatewayID))
 			continue
 		}
-		if rule.GatewayGroupID != "" {
+		if rule.GatewayGroupID != "" && m.gm.GroupContainsGateway(rule.GatewayGroupID, gatewayID) {
 			allDown, _ := m.isGroupAllDown(rule.GatewayGroupID)
 			if allDown {
 				m.triggerFallback(&rule, fmt.Sprintf("all gateways in group %s down", rule.GatewayGroupID))
+				continue
+			}
+			if err := m.failoverToNextTier(&rule, gatewayID); err != nil {
+				log.Printf("firewall: rule %q: failover after gateway %s down: %v", rule.Name, gatewayID, err)
 			}
 		}
 	}
 	return nil
 }
 
-// onGatewayUp schedules a 30 s delayed route restore for all rules in fallback.
+// failoverToNextTier re-resolves and re-applies a PBR rule's route after one
+// member of its gateway group goes down while the group as a whole still has
+// a usable tier. Distinct from restoreRoute's "recovered to primary" case —
+// this is a "switched to a healthy backup tier" event — so it logs and is
+// named separately for operator clarity when reading logs (see issue #97,
+// where distinguishing failover-to-backup from a full recovery was the
+// operator's own point of confusion while diagnosing this bug).
+// pbrRouteExec runs the "ip route replace" commands that install a PBR
+// rule's active/fallback/blackhole route (triggerFallback, restoreRoute,
+// failoverToNextTier). A package-level var — not a method — purely so tests
+// can substitute a stub and assert on the gateway-failover state machine
+// (fallbackActive, which tier got applied) without a real "ip" binary or
+// NET_ADMIN. Production always uses the default value, util.Exec.
+var pbrRouteExec = util.Exec
+
+func (m *Manager) failoverToNextTier(rule *Rule, downedGatewayID string) error {
+	unlock := m.lockRule(rule.ID)
+	defer unlock()
+
+	// Cancel any pending anti-flap restore timer for this rule — it was
+	// scheduled against a now-stale resolution and would otherwise fire later
+	// and redundantly re-apply whatever resolveGateway returns at that time.
+	m.fallbackMu.Lock()
+	if t, ok := m.restoreTimers[rule.ID]; ok {
+		t.Stop()
+		delete(m.restoreTimers, rule.ID)
+	}
+	m.fallbackMu.Unlock()
+
+	gw, err := m.resolveGateway(rule)
+	if err != nil {
+		return err
+	}
+	fwmark := *rule.Fwmark
+	cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	if _, err := pbrRouteExec(cmd, 10*time.Second, true); err != nil {
+		return err
+	}
+	log.Printf("firewall: rule %q: FAILED OVER to %s (gateway %s went down)", rule.Name, gw.gatewayIP, downedGatewayID)
+	return nil
+}
+
+// onGatewayUp schedules a 30 s delayed route restore. Two cases:
+//   - the rule is in full fallback (blackhole/default) — restore to whatever
+//     tier resolveGateway now picks;
+//   - the rule's group contains this gateway but was never in full fallback
+//     (it failed over to a lower tier per onGatewayDown without blackholing) —
+//     re-resolve so a recovered higher tier reclaims priority instead of the
+//     route staying pinned to the lower tier forever (GitHub issue #97).
 func (m *Manager) onGatewayUp(gatewayID string) error {
 	rules, err := m.GetRules()
 	if err != nil {
@@ -1649,14 +1713,20 @@ func (m *Manager) onGatewayUp(gatewayID string) error {
 		inFallback := m.fallbackActive[rule.ID]
 		m.fallbackMu.Unlock()
 
-		if !inFallback {
+		inGroup := rule.GatewayGroupID != "" && m.gm.GroupContainsGateway(rule.GatewayGroupID, gatewayID)
+		if !inFallback && !inGroup {
 			continue
 		}
 
 		shouldSchedule := rule.GatewayID == gatewayID
 		if !shouldSchedule && rule.GatewayGroupID != "" {
-			allDown, _ := m.isGroupAllDown(rule.GatewayGroupID)
-			if !allDown { // at least one member is back up
+			if inFallback {
+				allDown, _ := m.isGroupAllDown(rule.GatewayGroupID)
+				if !allDown { // at least one member is back up
+					shouldSchedule = true
+				}
+			} else if inGroup {
+				// Not blackholed — just re-pin to the now-current best tier.
 				shouldSchedule = true
 			}
 		}
@@ -1685,6 +1755,9 @@ func (m *Manager) onGatewayUp(gatewayID string) error {
 
 // triggerFallback installs a blackhole or default-gateway route for table N.
 func (m *Manager) triggerFallback(rule *Rule, reason string) {
+	unlock := m.lockRule(rule.ID)
+	defer unlock()
+
 	m.fallbackMu.Lock()
 	if m.fallbackActive[rule.ID] {
 		m.fallbackMu.Unlock()
@@ -1706,14 +1779,14 @@ func (m *Manager) triggerFallback(rule *Rule, reason string) {
 			return
 		}
 		cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
-		if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
+		if _, err := pbrRouteExec(cmd, 10*time.Second, true); err != nil {
 			log.Printf("firewall: triggerFallback: %v", err)
 			return
 		}
 		log.Printf("firewall: rule %q: fallback → default via %s (%s)", rule.Name, gw.gatewayIP, reason)
 	} else {
 		cmd := fmt.Sprintf("ip route replace blackhole default table %d", fwmark)
-		if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
+		if _, err := pbrRouteExec(cmd, 10*time.Second, true); err != nil {
 			log.Printf("firewall: triggerFallback: blackhole: %v", err)
 			return
 		}
@@ -1727,13 +1800,16 @@ func (m *Manager) triggerFallback(rule *Rule, reason string) {
 
 // restoreRoute reinstates the original gateway route after recovery.
 func (m *Manager) restoreRoute(rule *Rule) error {
+	unlock := m.lockRule(rule.ID)
+	defer unlock()
+
 	gw, err := m.resolveGateway(rule)
 	if err != nil {
 		return err
 	}
 	fwmark := *rule.Fwmark
 	cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
-	if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
+	if _, err := pbrRouteExec(cmd, 10*time.Second, true); err != nil {
 		return err
 	}
 

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -204,7 +205,10 @@ func (m *Manager) UpdateGateway(id string, inp GatewayInput) (*Gateway, error) {
 	return &gw, nil
 }
 
-// DeleteGateway stops the monitor, removes the gateway from SQLite.
+// DeleteGateway stops the monitor, removes the gateway from SQLite, and
+// prunes any saved dashboard/diagnostics widgets referencing it — both in
+// the same transaction, so a crash between the two can't leave widgets
+// pointing at an already-deleted gateway forever (see #96).
 func (m *Manager) DeleteGateway(id string) error {
 	gw, err := m.GetGateway(id)
 	if err != nil {
@@ -216,12 +220,86 @@ func (m *Manager) DeleteGateway(id string) error {
 
 	m.monitor.Stop(id)
 
-	if _, err := db.DB().Exec(`DELETE FROM gateways WHERE id = ?`, id); err != nil {
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op once committed
+
+	if _, err := tx.Exec(`DELETE FROM gateways WHERE id = ?`, id); err != nil {
+		return err
+	}
+
+	pruneDashboardWidgetsForGateway(tx, id)
+
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
 	log.Printf("gateway-manager: deleted gateway %q (%s)", gw.Name, id)
 	return nil
+}
+
+// pruneDashboardWidgetsForGateway removes references to a deleted gateway's
+// "gateway:<id>" metric key from every user's saved dashboard/diagnostics
+// widgets. Without this, a stale widget keeps its dead gateway ID forever —
+// dashboard_widgets is persisted in SQLite, so it survives process restarts
+// and reboots, unlike the live gateway list.
+//
+// Runs inside the caller's transaction (see DeleteGateway) so the gateway
+// row delete and the widget cleanup commit atomically. Per-row failures
+// (bad JSON, a failed UPDATE) are logged and skipped rather than aborting
+// the whole batch — this is best-effort cleanup, not something that should
+// block the gateway deletion itself from succeeding.
+func pruneDashboardWidgetsForGateway(tx *sql.Tx, id string) {
+	graphKey := "gateway:" + id
+
+	// Prefilter with LIKE before paying for a JSON decode per row — on an
+	// install with many users/pages, most dashboard_widgets rows won't
+	// mention this gateway at all.
+	rows, err := tx.Query(`SELECT user_id, page, widgets FROM dashboard_widgets WHERE widgets LIKE '%' || ? || '%'`, graphKey)
+	if err != nil {
+		log.Printf("gateway-manager: prune widgets: query failed: %v", err)
+		return
+	}
+	type widgetRow struct{ userID, page, widgetsJSON string }
+	var candidates []widgetRow
+	for rows.Next() {
+		var r widgetRow
+		if err := rows.Scan(&r.userID, &r.page, &r.widgetsJSON); err != nil {
+			log.Printf("gateway-manager: prune widgets: scan failed: %v", err)
+			continue
+		}
+		candidates = append(candidates, r)
+	}
+	// Must fully drain and close rows before issuing further statements on
+	// this same transaction/connection — modernc.org/sqlite (like most Go
+	// SQL drivers) can't interleave an open *sql.Rows with further tx.Exec
+	// calls, and this project also runs with a single shared DB connection
+	// (db.SetMaxOpenConns(1)), so there's no second connection to fall back
+	// on. Buffer into candidates first, then close, then iterate+update.
+	rows.Close()
+
+	for _, r := range candidates {
+		var widgets []map[string]interface{}
+		if err := json.Unmarshal([]byte(r.widgetsJSON), &widgets); err != nil {
+			log.Printf("gateway-manager: prune widgets: unmarshal failed for user %s/%s: %v", r.userID, r.page, err)
+			continue
+		}
+		changed := FilterGraphRefs(widgets, func(key string) bool { return key == graphKey })
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(widgets)
+		if err != nil {
+			log.Printf("gateway-manager: prune widgets: marshal failed for user %s/%s: %v", r.userID, r.page, err)
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE dashboard_widgets SET widgets = ? WHERE user_id = ? AND page = ?`,
+			string(out), r.userID, r.page); err != nil {
+			log.Printf("gateway-manager: prune widgets: update failed for user %s/%s: %v", r.userID, r.page, err)
+		}
+	}
 }
 
 // GetGatewayWithStatus combines gateway data with live monitoring status.
@@ -288,6 +366,79 @@ func (m *Manager) GetGroup(id string) (*GatewayGroup, error) {
 		return nil, nil
 	}
 	return grp, err
+}
+
+// ResolveGroupGateway picks the active gateway for a group: the lowest-tier
+// member whose live monitor status is not "down"/"admin_down". A member
+// reporting "unknown" (no probe results yet, e.g. freshly added) is treated
+// as available/optimistic-by-default, not skipped. Falls back to the tier-1
+// gateway (gateway of last resort) if every member is down.
+// Shared by internal/routing and internal/firewall so both PBR rules and
+// static routes fail over identically — do not duplicate this logic.
+func (m *Manager) ResolveGroupGateway(groupID string) (gatewayIP, iface string, err error) {
+	grp, err := m.GetGroup(groupID)
+	if err != nil || grp == nil || len(grp.Gateways) == 0 {
+		return "", "", fmt.Errorf("gateway group %s not found or empty", groupID)
+	}
+
+	sorted := make([]GatewayGroupMember, len(grp.Gateways))
+	copy(sorted, grp.Gateways)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Tier < sorted[j].Tier })
+
+	type tierEntry struct {
+		tier    int
+		members []GatewayGroupMember
+	}
+	var tiers []tierEntry
+	for _, mem := range sorted {
+		if len(tiers) == 0 || tiers[len(tiers)-1].tier != mem.Tier {
+			tiers = append(tiers, tierEntry{tier: mem.Tier})
+		}
+		tiers[len(tiers)-1].members = append(tiers[len(tiers)-1].members, mem)
+	}
+
+	var fallbackGW *Gateway // tier1 gateway, used if all tiers down
+
+	for _, te := range tiers {
+		for _, mem := range te.members {
+			gw, gerr := m.GetGateway(mem.GatewayID)
+			if gerr != nil || gw == nil {
+				continue
+			}
+			if fallbackGW == nil {
+				fallbackGW = gw // remember tier1 as last resort
+			}
+			st := m.monitor.GetStatus(mem.GatewayID)
+			// Use this gateway unless it is explicitly "down" or "admin_down".
+			// "unknown" = not enough probes yet → treat as available.
+			if st.Status != "down" && st.Status != "admin_down" {
+				return gw.GatewayIP, gw.Interface, nil
+			}
+		}
+	}
+
+	// All gateways are "down" — route via tier1 as gateway of last resort.
+	if fallbackGW != nil {
+		return fallbackGW.GatewayIP, fallbackGW.Interface, nil
+	}
+	return "", "", fmt.Errorf("no usable gateway in group %s", groupID)
+}
+
+// GroupContainsGateway reports whether gatewayID is a member of groupID.
+// Shared by internal/routing and internal/firewall — both need this exact
+// membership check to decide whether a gateway status change affects one of
+// their gateway-group-referencing rules/routes.
+func (m *Manager) GroupContainsGateway(groupID, gatewayID string) bool {
+	grp, err := m.GetGroup(groupID)
+	if err != nil || grp == nil {
+		return false
+	}
+	for _, mem := range grp.Gateways {
+		if mem.GatewayID == gatewayID {
+			return true
+		}
+	}
+	return false
 }
 
 // GatewayGroupInput is the create/update request payload.
