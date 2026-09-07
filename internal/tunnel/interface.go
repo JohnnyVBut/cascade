@@ -33,7 +33,9 @@ import (
 	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/peer"
+	"github.com/JohnnyVBut/cascade/internal/routing"
 	"github.com/JohnnyVBut/cascade/internal/tc"
 	"github.com/JohnnyVBut/cascade/internal/util"
 	"github.com/JohnnyVBut/cascade/internal/validate"
@@ -952,7 +954,41 @@ func (t *TunnelInterface) Restart() error {
 	if err := t.Stop(); err != nil {
 		return err
 	}
-	return t.Start()
+	if err := t.Start(); err != nil {
+		return err
+	}
+	t.reapplyDependents()
+	return nil
+}
+
+// reapplyDependents restores state that "awg-quick down" (inside Stop())
+// silently wipes from the kernel and that only the /start and /restart HTTP
+// handlers used to know to restore afterward (see internal/api/interfaces.go's
+// "wg-quick down removes all routes... Restore static routes" comments there).
+// Any OTHER path that brings the interface down and back up — Restart(),
+// restartWithNewSettings(), doReload()'s AWG-deadlock fallback,
+// KernelRemovePeer's kernel-mode restart — went through Stop()/Start() as
+// plain Go method calls, never through those HTTP handlers, so none of them
+// got this restoration. Confirmed in the wild: a PATCH that changes MTU (or
+// any other needsRestart-triggering field) on an interface with static
+// routes bound to it left the route visible in the Static Routes UI/DB but
+// silently gone from the kernel routing table — RebuildChains/
+// ReapplyForDevice were simply never called from inside internal/tunnel.
+//
+// Best-effort and nil-safe: routing/firewall aren't guaranteed initialized
+// yet by the time this runs (cmd/awg-easy/main.go calls tunnel.Init() before
+// routing.SetInstance(), and unit tests never call SetInstance at all) — skip
+// silently rather than panic via Get(), since a missed reapply here is no
+// worse than the pre-fix behavior for those callers.
+func (t *TunnelInterface) reapplyDependents() {
+	if fw := firewall.TryGet(); fw != nil {
+		if err := fw.RebuildChains(); err != nil {
+			log.Printf("tunnel: %s: rebuild firewall chains after restart: %v", t.ID, err)
+		}
+	}
+	if rt := routing.TryGet(); rt != nil {
+		rt.ReapplyForDevice(t.ID)
+	}
 }
 
 // restartWithNewSettings stops the interface — while the on-disk config
@@ -982,7 +1018,9 @@ func (t *TunnelInterface) restartWithNewSettings() {
 	}
 	if err := t.Start(); err != nil {
 		log.Printf("tunnel: Update %s: restart failed: %v", t.ID, err)
+		return
 	}
+	t.reapplyDependents()
 }
 
 // Reload enqueues a hot-reload (awg/wg syncconf) in a background goroutine.
