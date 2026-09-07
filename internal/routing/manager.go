@@ -1137,3 +1137,11 @@ func Get() *Manager {
 	}
 	return instance
 }
+
+// TryGet returns the package-level Manager singleton, or nil if not yet
+// initialized. Prefer this over Get() in code that may legitimately run
+// before SetInstance — e.g. tests, or internal/tunnel's restart path, which
+// runs earlier in main()'s init order (tunnel.Init before routing.SetInstance,
+// see cmd/awg-easy/main.go) and unconditionally in unit tests that never call
+// SetInstance at all.
+func TryGet() *Manager { return instance }
