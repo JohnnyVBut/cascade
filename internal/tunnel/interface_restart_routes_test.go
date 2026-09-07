@@ -11,14 +11,18 @@
 //
 // The fix added TunnelInterface.reapplyDependents(), called at the end of
 // both Restart() and restartWithNewSettings(). This test doesn't exercise
-// the real "ip route replace" side (util.Exec no-ops on non-Linux — see
-// internal/util/exec.go — and even on Linux this sandbox/most CI containers
-// lack NET_ADMIN), but it does exercise the real routing.Manager code path
-// end-to-end (GetRoutes -> resolveGatewayVia -> kernelReplace attempt) to
-// prove reapplyDependents() is wired up and doesn't silently no-op or panic
-// when routing.SetInstance has actually been called (unlike the
-// TryGet()-returns-nil case already covered by every other test in this
-// package, none of which call routing.SetInstance at all).
+// a real reapplied route end-to-end: routing.Manager.AddRoute applies to the
+// kernel ("ip route add ... dev <id>") BEFORE persisting — see its own
+// "Apply to kernel first — fail fast before persisting" comment — so on a
+// real Linux CI runner (unlike this sandbox, where util.Exec no-ops
+// non-Linux commands) that call fails outright with "Cannot find device"
+// for a fake interface ID that was never actually brought up (confirmed:
+// this exact failure happened in CI on an earlier version of this test that
+// called AddRoute). What this test verifies instead: reapplyDependents()
+// reaches real routing.Manager code (GetRoutes, at minimum) rather than
+// silently no-op'ing or panicking when routing.SetInstance has actually been
+// called — unlike the TryGet()-returns-nil case already covered by every
+// other test in this package, none of which call routing.SetInstance at all.
 package tunnel
 
 import (
@@ -33,8 +37,7 @@ func TestRestartWithNewSettings_ReapplyDependents_DoesNotPanicWithRoutingInitial
 	initTunnelTestDB(t)
 
 	// Real routing.Manager, not a stub — proves reapplyDependents() reaches
-	// actual routing code (GetRoutes/resolveGatewayVia/kernelReplace) rather
-	// than short-circuiting somewhere before it.
+	// actual routing code rather than short-circuiting somewhere before it.
 	rm := routing.New()
 	routing.SetInstance(rm)
 	t.Cleanup(func() { routing.SetInstance(nil) }) // don't leak into other test files' package-level state
@@ -55,27 +58,15 @@ func TestRestartWithNewSettings_ReapplyDependents_DoesNotPanicWithRoutingInitial
 		t.Fatalf("save: %v", err)
 	}
 
-	// A plain static route bound directly to this interface's device (no
-	// GatewayID/GatewayGroupID needed — Dev alone is enough to exercise
-	// ReapplyForDevice's dev-matching branch for a non-gateway route).
-	if _, err := rm.AddRoute(routing.Route{
-		Description: "test route",
-		Destination: "10.50.0.0/24",
-		Dev:         iface.ID,
-		Enabled:     true,
-	}); err != nil {
-		t.Fatalf("AddRoute: %v", err)
-	}
-
 	iface.reloadMu.Lock()
 	iface.restartWithNewSettings()
 	iface.reloadMu.Unlock()
-	// No explicit assertion beyond "did not panic" — kernelReplace's actual
-	// "ip route replace" is a no-op in this sandbox (see doc comment above),
-	// so there's no observable kernel-state difference to check here. The
-	// real guarantee this test provides is that reapplyDependents() runs
-	// routing.Manager's real code (not just a nil TryGet() short-circuit)
-	// without error or panic when routing IS initialized.
+	// No explicit assertion beyond "did not panic" — with zero routes in the
+	// DB, ReapplyForDevice's GetRoutes() legitimately returns an empty set
+	// and there's nothing further to check. The guarantee this test provides
+	// is that reapplyDependents() runs routing.Manager's real code (not just
+	// a nil TryGet() short-circuit) without error or panic when routing IS
+	// initialized.
 
 	// Also exercise plain Restart() — the doReload()/KernelRemovePeer fallback
 	// path that had the identical bug. Tolerate a RegenerateConfig failure
