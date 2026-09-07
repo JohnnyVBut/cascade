@@ -226,6 +226,115 @@ AllowedIPs = 0.0.0.0/0
 	}
 }
 
+// TestParseWGConf_AWG3Detection is a regression test: client .conf exports
+// for a v3 interface include Transport Protection fields (HeaderProtectionKey
+// etc. — see writeAWG3Fields in internal/peer/peer.go). Before this fix,
+// ParseWGConf silently dropped those fields and hardcoded Protocol to
+// amneziawg-2.0, so re-importing a v3 client's own .conf as an uplink
+// interface would create a v2 interface missing HeaderProtectionKey — the
+// resulting handshake against the real v3 server would be silently dropped.
+func TestParseWGConf_AWG3Detection(t *testing.T) {
+	conf := `[Interface]
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Address = 10.9.0.5/24
+Jc = 6
+Jmin = 64
+Jmax = 1280
+S1 = 32
+S2 = 33
+S3 = 12
+S4 = 12
+H1 = 100000000-150000000
+H2 = 1200000000-1250000000
+H3 = 2400000000-2450000000
+H4 = 3600000000-3650000000
+HeaderProtectionKey = YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+ContentPaddingAddition = 50-100
+RekeyAfterTime = 100-115
+RekeyTimeout = 4-6
+RejectAfterTime = 140-165
+KeepaliveTimeout = 8-12
+MaxHandshakeAttempts = 15-25
+RandomTrailers = on
+DisableCookies = on
+
+[Peer]
+PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+Endpoint = awg3.example.com:51822
+AllowedIPs = 0.0.0.0/0
+`
+	c, err := ParseWGConf(conf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Protocol != "amneziawg-3.0" {
+		t.Errorf("AWG3 not detected: Protocol = %q, want amneziawg-3.0", c.Protocol)
+	}
+	if c.AWG2 == nil {
+		t.Fatal("AWG2 settings should not be nil")
+	}
+	if c.AWG2.HeaderProtectionKey != "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=" {
+		t.Errorf("HeaderProtectionKey = %q", c.AWG2.HeaderProtectionKey)
+	}
+	if c.AWG2.ContentPaddingAddition != "50-100" {
+		t.Errorf("ContentPaddingAddition = %q", c.AWG2.ContentPaddingAddition)
+	}
+	if c.AWG2.RekeyAfterTime != "100-115" {
+		t.Errorf("RekeyAfterTime = %q", c.AWG2.RekeyAfterTime)
+	}
+	if c.AWG2.RekeyTimeout != "4-6" {
+		t.Errorf("RekeyTimeout = %q", c.AWG2.RekeyTimeout)
+	}
+	if c.AWG2.RejectAfterTime != "140-165" {
+		t.Errorf("RejectAfterTime = %q", c.AWG2.RejectAfterTime)
+	}
+	if c.AWG2.KeepaliveTimeout != "8-12" {
+		t.Errorf("KeepaliveTimeout = %q", c.AWG2.KeepaliveTimeout)
+	}
+	if c.AWG2.MaxHandshakeAttempts != "15-25" {
+		t.Errorf("MaxHandshakeAttempts = %q", c.AWG2.MaxHandshakeAttempts)
+	}
+	if c.AWG2.RandomTrailers != "on" {
+		t.Errorf("RandomTrailers = %q, want on", c.AWG2.RandomTrailers)
+	}
+	if c.AWG2.DisableCookies != "on" {
+		t.Errorf("DisableCookies = %q, want on", c.AWG2.DisableCookies)
+	}
+}
+
+// TestParseWGConf_AWG3DetectionViaOffFlagsOnly verifies that a v3 config
+// where RandomTrailers/DisableCookies are both "off" (but present, since
+// writeAWG3Fields always writes them for a v3 interface) is still detected
+// as v3 rather than falling back to v2 — presence, not value, is the marker.
+func TestParseWGConf_AWG3DetectionViaOffFlagsOnly(t *testing.T) {
+	conf := `[Interface]
+PrivateKey = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+Address = 10.9.0.5/24
+Jc = 6
+S1 = 32
+S3 = 12
+S4 = 12
+H1 = 100000000-150000000
+RandomTrailers = off
+DisableCookies = off
+
+[Peer]
+PublicKey = BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=
+Endpoint = awg3.example.com:51822
+AllowedIPs = 0.0.0.0/0
+`
+	c, err := ParseWGConf(conf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Protocol != "amneziawg-3.0" {
+		t.Errorf("Protocol = %q, want amneziawg-3.0 (off-only flags should still mark v3)", c.Protocol)
+	}
+	if c.AWG2.RandomTrailers != "" {
+		t.Errorf("RandomTrailers = %q, want empty (off stored as unset, not the literal string)", c.AWG2.RandomTrailers)
+	}
+}
+
 func TestParseWGConf_CommentsAndBlankLines(t *testing.T) {
 	conf := `# This is a comment
 ; This is also a comment

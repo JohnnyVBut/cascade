@@ -35,6 +35,14 @@ services:
       # Mount host /etc/hostname read-only so the app can display the real
       # server hostname (os.Hostname() inside Docker returns a container hash).
       - /etc/hostname:/host_hostname:ro
+      # Mount host /lib/modules read-only so `modinfo amneziawg` inside the
+      # container can read the loaded kernel module's .ko file and report its
+      # version (dashboard AWG CLI/kernel-module mismatch check). The kernel
+      # itself is already shared with the host (--network host doesn't grant
+      # this on its own — /lib/modules is a filesystem path, not kernel
+      # state). Harmless in userspace mode or if the module isn't installed —
+      # modinfo just reports "" and the check is skipped either way.
+      - /lib/modules:/lib/modules:ro
 
     # --network host: container shares host network namespace.
     # Required for WireGuard/AWG tunnel interfaces and iptables management.

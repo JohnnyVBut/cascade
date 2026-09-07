@@ -26,6 +26,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/firewall"
 	"github.com/JohnnyVBut/cascade/internal/peer"
 	"github.com/JohnnyVBut/cascade/internal/routing"
@@ -170,13 +171,13 @@ func getInterface(c *fiber.Ctx) error {
 // Body: { name, protocol?, address?, listenPort?, disableRoutes?, settings? }
 func createInterface(c *fiber.Ctx) error {
 	var body struct {
-		Name          string              `json:"name"`
-		Protocol      string              `json:"protocol"`
-		Address       string              `json:"address"`
-		ListenPort    int                 `json:"listenPort"`
-		DisableRoutes bool                `json:"disableRoutes"`
-		DNS           string              `json:"dns"`
-		AWG2          *peer.AWG2Settings  `json:"settings"`
+		Name          string             `json:"name"`
+		Protocol      string             `json:"protocol"`
+		Address       string             `json:"address"`
+		ListenPort    int                `json:"listenPort"`
+		DisableRoutes bool               `json:"disableRoutes"`
+		DNS           string             `json:"dns"`
+		AWG2          *peer.AWG2Settings `json:"settings"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid JSON body")
@@ -190,11 +191,16 @@ func createInterface(c *fiber.Ctx) error {
 	}
 
 	awg2 := body.AWG2
-	if body.Protocol == "amneziawg-2.0" && awg2 == nil {
+	if awgparams.IsAmneziaWG(body.Protocol) && awg2 == nil {
 		var awg2Err error
-		awg2, awg2Err = mgr().BuildAWG2Params()
+		awg2, awg2Err = mgr().BuildAWG2Params(body.Protocol)
 		if awg2Err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "build AWG2 params: "+awg2Err.Error())
+		}
+	}
+	if awg2 != nil {
+		if err := requireAWG3ProtocolForFields(body.Protocol, awg2); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 	}
 	t, err := mgr().CreateInterface(tunnel.CreateInput{
@@ -311,6 +317,15 @@ func updateInterface(c *fiber.Ctx) error {
 		a, err := mapToAWG2(v)
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "invalid settings: "+err.Error())
+		}
+		// AWG 3.0 fields are only valid on this interface's own protocol —
+		// PATCH doesn't change protocol, so check against its current value.
+		existing := mgr().GetInterface(id)
+		if existing == nil {
+			return fiber.NewError(fiber.StatusNotFound, "interface not found")
+		}
+		if err := requireAWG3ProtocolForFields(existing.Protocol, a); err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 		upd.AWG2 = a
 	}
@@ -800,7 +815,51 @@ func mapToAWG2(v any) (*peer.AWG2Settings, error) {
 	a.I3 = strField("i3")
 	a.I4 = strField("i4")
 	a.I5 = strField("i5")
+	a.HeaderProtectionKey = strField("headerProtectionKey")
+	// Same format as any other WireGuard key (32 random bytes, base64) — see
+	// awgparams.genHeaderProtectionKey(). Validate eagerly: this is a real
+	// cipher key, not cosmetic padding, and it's cheap to catch a malformed
+	// value here rather than let it silently save and break the tunnel once
+	// it's wired into config generation.
+	if a.HeaderProtectionKey != "" {
+		if err := validate.WGKey(a.HeaderProtectionKey); err != nil {
+			return nil, fiber.NewError(fiber.StatusBadRequest, "invalid headerProtectionKey: "+err.Error())
+		}
+		// The header-protection cipher's nonce comes from the first 12 bytes
+		// of the S3/S4 padding buffer — amneziawg-go and the kernel module
+		// both refuse to bring the interface up otherwise ("S%d must be more
+		// then 12 to use headerProtection"). Catch it here rather than let a
+		// mismatched S3/S4 (e.g. from an older AWG2-only template applied
+		// before headerProtectionKey was added in a later edit) silently
+		// generate a config that fails far from this actual cause.
+		if a.S3 < 12 || a.S4 < 12 {
+			return nil, fiber.NewError(fiber.StatusBadRequest,
+				"headerProtectionKey requires S3 and S4 to both be at least 12")
+		}
+	}
+	a.ContentPaddingAddition = strField("contentPaddingAddition")
+	a.RekeyAfterTime = strField("rekeyAfterTime")
+	a.RekeyTimeout = strField("rekeyTimeout")
+	a.RejectAfterTime = strField("rejectAfterTime")
+	a.KeepaliveTimeout = strField("keepaliveTimeout")
+	a.MaxHandshakeAttempts = strField("maxHandshakeAttempts")
+	a.RandomTrailers = strField("randomTrailers")
+	a.DisableCookies = strField("disableCookies")
 	return a, nil
+}
+
+// requireAWG3ProtocolForFields rejects AWG 3.0 Transport Protection fields
+// on any interface whose protocol isn't "amneziawg-3.0" — mirrors the same
+// rule enforced for templates (settings.CreateTemplate/UpdateTemplate).
+// Without this, a "2.0" interface could get a headerProtectionKey (etc.)
+// written into its config purely because mapToAWG2/the request body parser
+// don't know or care about the target interface's declared protocol.
+func requireAWG3ProtocolForFields(protocol string, a *peer.AWG2Settings) error {
+	if a.HasAWG3Fields() && protocol != awgparams.ProtocolAmneziaWG3 {
+		return fmt.Errorf("AWG 3.0 Transport Protection fields require protocol %q, got %q",
+			awgparams.ProtocolAmneziaWG3, protocol)
+	}
+	return awgparams.ValidateHeaderProtectionKeyPadding(a.HeaderProtectionKey, a.S3, a.S4)
 }
 
 // peerDefaults returns global peer defaults from settings (DNS, clientAllowedIPs, keepalive).

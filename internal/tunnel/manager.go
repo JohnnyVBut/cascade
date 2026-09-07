@@ -42,10 +42,10 @@ type Manager struct {
 // CreateInput is the payload for Manager.CreateInterface.
 type CreateInput struct {
 	Name          string
-	Protocol      string             // default: "wireguard-1.0"
-	Address       string             // CIDR e.g. "10.8.0.1/24"
-	ListenPort    int                // 0 = auto-assign; if PortPool is also set, pool takes priority
-	PortPool      string             // when non-empty and ListenPort==0: select port from pool under lock
+	Protocol      string // default: "wireguard-1.0"
+	Address       string // CIDR e.g. "10.8.0.1/24"
+	ListenPort    int    // 0 = auto-assign; if PortPool is also set, pool takes priority
+	PortPool      string // when non-empty and ListenPort==0: select port from pool under lock
 	DisableRoutes bool
 	AWG2          *peer.AWG2Settings // required for amneziawg-2.0
 	DNS           string             // per-interface DNS override; empty = use global
@@ -191,13 +191,21 @@ func (m *Manager) CreateInterface(inp CreateInput) (*TunnelInterface, error) {
 	if inp.Protocol == "" {
 		inp.Protocol = "wireguard-1.0"
 	}
-	if inp.Protocol == "amneziawg-2.0" && inp.AWG2 == nil {
-		return nil, fmt.Errorf("AWG2 settings are required for amneziawg-2.0 protocol")
+	if awgparams.IsAmneziaWG(inp.Protocol) && inp.AWG2 == nil {
+		return nil, fmt.Errorf("AWG2 settings are required for protocol %q", inp.Protocol)
+	}
+	if inp.AWG2 != nil {
+		// Callers that bypass the API handlers (e.g. ImportConf, fed directly
+		// from a parsed .conf file) don't get requireAWG3ProtocolForFields'
+		// validation, so it must also be enforced here.
+		if err := awgparams.ValidateHeaderProtectionKeyPadding(inp.AWG2.HeaderProtectionKey, inp.AWG2.S3, inp.AWG2.S4); err != nil {
+			return nil, err
+		}
 	}
 
 	// Key generation uses the protocol-specific binary (wg vs awg).
 	syncBin := "wg"
-	if inp.Protocol == "amneziawg-2.0" {
+	if awgparams.IsAmneziaWG(inp.Protocol) {
 		syncBin = "awg"
 	}
 	keys, err := peer.GenerateKeys(syncBin)
@@ -287,8 +295,8 @@ func (m *Manager) QuickCreate(name, protocol string) (*QuickCreateResult, error)
 
 	// Build AWG2 params before acquiring the lock (may hit the DB / generator).
 	var awg2 *peer.AWG2Settings
-	if protocol == "amneziawg-2.0" {
-		awg2, err = m.buildAWG2Params()
+	if awgparams.IsAmneziaWG(protocol) {
+		awg2, err = m.buildAWG2Params(protocol)
 		if err != nil {
 			return nil, fmt.Errorf("build AWG2 params: %w", err)
 		}
@@ -320,10 +328,10 @@ func (m *Manager) QuickCreate(name, protocol string) (*QuickCreateResult, error)
 
 // ImportConfResult is returned by Manager.ImportConf.
 type ImportConfResult struct {
-	Interface       *TunnelInterface
-	Peer            *peer.Peer
-	Started         bool
-	StartError      error
+	Interface  *TunnelInterface
+	Peer       *peer.Peer
+	Started    bool
+	StartError error
 	// ConflictWarning is set when the imported address subnet overlaps with
 	// an existing interface (the address was converted to /32 to avoid conflicts).
 	ConflictWarning string
@@ -375,7 +383,7 @@ func (m *Manager) ImportConf(name, confContent string) (*ImportConfResult, error
 
 	// Derive public key from private key using the appropriate binary.
 	syncBin := "wg"
-	if parsed.Protocol == "amneziawg-2.0" {
+	if awgparams.IsAmneziaWG(parsed.Protocol) {
 		syncBin = "awg"
 	}
 	keys, err := peer.DerivePublicKey(syncBin, parsed.PrivateKey)
@@ -485,7 +493,7 @@ func (m *Manager) ImportConfAsServer(name, confContent string) (*ImportConfAsSer
 
 	// Override auto-generated key pair with keys from the .conf file.
 	syncBin := "wg"
-	if parsed.Protocol == "amneziawg-2.0" {
+	if awgparams.IsAmneziaWG(parsed.Protocol) {
 		syncBin = "awg"
 	}
 	keys, err := peer.DerivePublicKey(syncBin, parsed.PrivateKey)
@@ -939,24 +947,43 @@ func ipToUint32(ip net.IP) uint32 {
 	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3])
 }
 
-// BuildAWG2Params returns AWG2 params from the default template or a random profile.
-// Exported so API handlers can reuse the same logic as QuickCreate.
-func (m *Manager) BuildAWG2Params() (*peer.AWG2Settings, error) {
-	return m.buildAWG2Params()
+// BuildAWG2Params returns AWG2 params from the default template (scoped to
+// protocol's version) or a random profile. Exported so API handlers can
+// reuse the same logic as QuickCreate.
+func (m *Manager) BuildAWG2Params(protocol string) (*peer.AWG2Settings, error) {
+	return m.buildAWG2Params(protocol)
 }
 
-// buildAWG2Params returns AWG2 params for QuickCreate.
-// Priority: default template → random generated profile.
-func (m *Manager) buildAWG2Params() (*peer.AWG2Settings, error) {
-	p, err := settings.ApplyDefaultTemplate()
+// buildAWG2Params returns AWG2 params for QuickCreate/manual creation.
+// Priority: default template matching protocol's version → random generated
+// profile. A "3.0" interface with no matching default template falls back to
+// a random profile with ALL Transport Protection toggles enabled (not just
+// plain AWG2 params) — the user asked for a v3 interface, so the fallback
+// should actually be v3, not silently degrade to v2.
+func (m *Manager) buildAWG2Params(protocol string) (*peer.AWG2Settings, error) {
+	wantVersion := "2.0"
+	if protocol == awgparams.ProtocolAmneziaWG3 {
+		wantVersion = "3.0"
+	}
+
+	p, err := settings.ApplyDefaultTemplate(wantVersion)
 	if err != nil {
 		return nil, fmt.Errorf("apply default template: %w", err)
 	}
 	if p != nil {
 		return awg2ParamsFromTemplate(p), nil
 	}
-	// No default template — generate a random profile.
-	generated := awgparams.Generate(awgparams.Options{Profile: "random", Intensity: "medium"})
+
+	// No default template for this version — generate a random profile.
+	opts := awgparams.Options{Profile: "random", Intensity: "medium"}
+	if protocol == awgparams.ProtocolAmneziaWG3 {
+		opts.HeaderProtection = true
+		opts.ContentPadding = true
+		opts.RandomizeTimers = true
+		opts.RandomTrailers = true
+		opts.DisableCookies = true
+	}
+	generated := awgparams.Generate(opts)
 	return awg2ParamsFromGenerated(&generated), nil
 }
 
@@ -979,6 +1006,16 @@ func awg2ParamsFromTemplate(p *settings.AWG2Params) *peer.AWG2Settings {
 		I3:   p.I3,
 		I4:   p.I4,
 		I5:   p.I5,
+
+		HeaderProtectionKey:    p.HeaderProtectionKey,
+		ContentPaddingAddition: p.ContentPaddingAddition,
+		RekeyAfterTime:         p.RekeyAfterTime,
+		RekeyTimeout:           p.RekeyTimeout,
+		RejectAfterTime:        p.RejectAfterTime,
+		KeepaliveTimeout:       p.KeepaliveTimeout,
+		MaxHandshakeAttempts:   p.MaxHandshakeAttempts,
+		RandomTrailers:         p.RandomTrailers,
+		DisableCookies:         p.DisableCookies,
 	}
 }
 
@@ -1001,6 +1038,16 @@ func awg2ParamsFromGenerated(p *awgparams.Params) *peer.AWG2Settings {
 		I3:   p.I3,
 		I4:   p.I4,
 		I5:   p.I5,
+
+		HeaderProtectionKey:    p.HeaderProtectionKey,
+		ContentPaddingAddition: p.ContentPaddingAddition,
+		RekeyAfterTime:         p.RekeyAfterTime,
+		RekeyTimeout:           p.RekeyTimeout,
+		RejectAfterTime:        p.RejectAfterTime,
+		KeepaliveTimeout:       p.KeepaliveTimeout,
+		MaxHandshakeAttempts:   p.MaxHandshakeAttempts,
+		RandomTrailers:         p.RandomTrailers,
+		DisableCookies:         p.DisableCookies,
 	}
 }
 

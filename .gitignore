@@ -40,3 +40,4 @@ docker-compose.bridge.yml
 /awg-easy
 /cascade
 /wiresteer
+docker-compose.override.yml

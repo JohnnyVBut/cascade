@@ -31,6 +31,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JohnnyVBut/cascade/internal/db"
 	"github.com/JohnnyVBut/cascade/internal/remoteclient"
 	"github.com/JohnnyVBut/cascade/internal/settings"
 	"github.com/JohnnyVBut/cascade/internal/util"
@@ -533,9 +534,25 @@ func statusFromRate(total int, rate, thHealthy, thDegraded float64) string {
 
 // globalThresholds reads current gateway thresholds from Settings.
 // If gwWindowSeconds is non-zero, it overrides the global window.
-// Falls back to hardcoded defaults if Settings.GetSettings() fails.
+// Falls back to hardcoded defaults if Settings.GetSettings() fails — or if
+// the database isn't initialized (or already closed) at all. The db check
+// is not redundant with settings.GetSettings()'s own error return: that
+// error path only fires for an actual query failure, but db.DB() (which
+// GetSettings calls) panics outright when uninitialized rather than
+// returning an error, defeating this function's fallback for the one caller
+// that can legitimately race db's lifecycle — Monitor.Start's probe
+// goroutine fires its first probe immediately and asynchronously, so it can
+// still be in flight after a short-lived process (or a unit test's
+// t.Cleanup) has already called db.Close(). Confirmed in the wild: this
+// exact race panicked a test binary in CI.
 func globalThresholds(gwWindowSeconds int) (windowSec int, healthy, degraded float64) {
-	s, err := settings.GetSettings()
+	var s *settings.GlobalSettings
+	var err error
+	if db.TryDB() != nil {
+		s, err = settings.GetSettings()
+	} else {
+		err = fmt.Errorf("database not initialized")
+	}
 	if err != nil {
 		// Fallback to hardcoded defaults (mirrors Settings.js DEFAULTS).
 		windowSec = 30

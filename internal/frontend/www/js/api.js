@@ -304,10 +304,10 @@ class API {
   // AWG2 Templates API
   // ============================================================
 
-  async getTemplates() {
+  async getTemplates(version) {
     return this.call({
       method: 'get',
-      path: '/templates',
+      path: version ? `/templates?version=${encodeURIComponent(version)}` : '/templates',
     });
   }
 
@@ -363,13 +363,18 @@ class API {
    * @param {number} [opts.iterCount]  — счётчик попыток
    * @param {number} [opts.jc]         — базовое Jc
    * @param {string} [opts.saveName]   — если задан, сохраняет как шаблон
+   * @param {boolean} [opts.headerProtection] — AWG 3.0: генерировать HeaderProtectionKey
+   * @param {boolean} [opts.contentPadding]   — AWG 3.0: генерировать ContentPaddingAddition
+   * @param {boolean} [opts.randomizeTimers]  — AWG 3.0: генерировать таймер-оверрайды
    * @returns {{ params, profiles[, template] }}
    */
-  async generateTemplate({ profile, intensity, host, browser, iterCount, jc, saveName } = {}) {
+  async generateTemplate({ profile, intensity, host, browser, iterCount, jc, saveName,
+    headerProtection, contentPadding, randomizeTimers } = {}) {
     return this.call({
       method: 'post',
       path: '/templates/generate',
-      body: { profile, intensity, host, browser, iterCount, jc, saveName },
+      body: { profile, intensity, host, browser, iterCount, jc, saveName,
+        headerProtection, contentPadding, randomizeTimers },
     });
   }
 

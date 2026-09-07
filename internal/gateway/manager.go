@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -54,6 +55,7 @@ func (m *Manager) Init() error {
 	for _, gw := range gateways {
 		m.monitor.Start(gw)
 	}
+	m.selfHealStaleGroupMembers()
 	log.Printf("gateway-manager: init complete (%d gateways)", len(gateways))
 	return nil
 }
@@ -204,7 +206,10 @@ func (m *Manager) UpdateGateway(id string, inp GatewayInput) (*Gateway, error) {
 	return &gw, nil
 }
 
-// DeleteGateway stops the monitor, removes the gateway from SQLite.
+// DeleteGateway stops the monitor, removes the gateway from SQLite, and
+// prunes any saved dashboard/diagnostics widgets referencing it — both in
+// the same transaction, so a crash between the two can't leave widgets
+// pointing at an already-deleted gateway forever (see #96).
 func (m *Manager) DeleteGateway(id string) error {
 	gw, err := m.GetGateway(id)
 	if err != nil {
@@ -216,12 +221,212 @@ func (m *Manager) DeleteGateway(id string) error {
 
 	m.monitor.Stop(id)
 
-	if _, err := db.DB().Exec(`DELETE FROM gateways WHERE id = ?`, id); err != nil {
+	tx, err := db.DB().Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() // no-op once committed
+
+	if _, err := tx.Exec(`DELETE FROM gateways WHERE id = ?`, id); err != nil {
+		return err
+	}
+
+	pruneDashboardWidgetsForGateway(tx, id)
+	pruneGatewayFromGroups(tx, id)
+
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 
 	log.Printf("gateway-manager: deleted gateway %q (%s)", gw.Name, id)
 	return nil
+}
+
+// pruneDashboardWidgetsForGateway removes references to a deleted gateway's
+// "gateway:<id>" metric key from every user's saved dashboard/diagnostics
+// widgets. Without this, a stale widget keeps its dead gateway ID forever —
+// dashboard_widgets is persisted in SQLite, so it survives process restarts
+// and reboots, unlike the live gateway list.
+//
+// Runs inside the caller's transaction (see DeleteGateway) so the gateway
+// row delete and the widget cleanup commit atomically. Per-row failures
+// (bad JSON, a failed UPDATE) are logged and skipped rather than aborting
+// the whole batch — this is best-effort cleanup, not something that should
+// block the gateway deletion itself from succeeding.
+func pruneDashboardWidgetsForGateway(tx *sql.Tx, id string) {
+	graphKey := "gateway:" + id
+
+	// Prefilter with LIKE before paying for a JSON decode per row — on an
+	// install with many users/pages, most dashboard_widgets rows won't
+	// mention this gateway at all.
+	rows, err := tx.Query(`SELECT user_id, page, widgets FROM dashboard_widgets WHERE widgets LIKE '%' || ? || '%'`, graphKey)
+	if err != nil {
+		log.Printf("gateway-manager: prune widgets: query failed: %v", err)
+		return
+	}
+	type widgetRow struct{ userID, page, widgetsJSON string }
+	var candidates []widgetRow
+	for rows.Next() {
+		var r widgetRow
+		if err := rows.Scan(&r.userID, &r.page, &r.widgetsJSON); err != nil {
+			log.Printf("gateway-manager: prune widgets: scan failed: %v", err)
+			continue
+		}
+		candidates = append(candidates, r)
+	}
+	// Must fully drain and close rows before issuing further statements on
+	// this same transaction/connection — modernc.org/sqlite (like most Go
+	// SQL drivers) can't interleave an open *sql.Rows with further tx.Exec
+	// calls, and this project also runs with a single shared DB connection
+	// (db.SetMaxOpenConns(1)), so there's no second connection to fall back
+	// on. Buffer into candidates first, then close, then iterate+update.
+	rows.Close()
+
+	for _, r := range candidates {
+		var widgets []map[string]interface{}
+		if err := json.Unmarshal([]byte(r.widgetsJSON), &widgets); err != nil {
+			log.Printf("gateway-manager: prune widgets: unmarshal failed for user %s/%s: %v", r.userID, r.page, err)
+			continue
+		}
+		changed := FilterGraphRefs(widgets, func(key string) bool { return key == graphKey })
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(widgets)
+		if err != nil {
+			log.Printf("gateway-manager: prune widgets: marshal failed for user %s/%s: %v", r.userID, r.page, err)
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE dashboard_widgets SET widgets = ? WHERE user_id = ? AND page = ?`,
+			string(out), r.userID, r.page); err != nil {
+			log.Printf("gateway-manager: prune widgets: update failed for user %s/%s: %v", r.userID, r.page, err)
+		}
+	}
+}
+
+// pruneGatewayFromGroups removes gatewayID from every gateway_groups.members
+// list that references it. Without this, deleting a gateway that's a member
+// of a group leaves a "ghost" entry behind — GetGroup/ResolveGroupGateway
+// still see a GatewayGroupMember pointing at an ID that no longer exists in
+// the gateways table, which GetGateway/GroupContainsGateway then silently
+// skip or misreport (see GitHub issue #106: a deleted gateway kept showing
+// up as a group member indefinitely, surviving even the v0.9.7 update that
+// only fixed the analogous dashboard-widget staleness, issue #96 — a
+// different storage location for the same class of dangling reference).
+//
+// Runs inside the caller's transaction (see DeleteGateway) so the gateway
+// row delete and the group membership cleanup commit atomically.
+func pruneGatewayFromGroups(tx *sql.Tx, gatewayID string) {
+	rows, err := tx.Query(`SELECT id, members FROM gateway_groups WHERE members LIKE '%' || ? || '%'`, gatewayID)
+	if err != nil {
+		log.Printf("gateway-manager: prune groups: query failed: %v", err)
+		return
+	}
+	type groupRow struct{ id, membersJSON string }
+	var candidates []groupRow
+	for rows.Next() {
+		var r groupRow
+		if err := rows.Scan(&r.id, &r.membersJSON); err != nil {
+			log.Printf("gateway-manager: prune groups: scan failed: %v", err)
+			continue
+		}
+		candidates = append(candidates, r)
+	}
+	// Drain and close rows before issuing further statements on this same
+	// transaction — see pruneDashboardWidgetsForGateway's identical comment;
+	// same single-connection (SetMaxOpenConns(1)) constraint applies here.
+	rows.Close()
+
+	for _, r := range candidates {
+		var members []GatewayGroupMember
+		if err := json.Unmarshal([]byte(r.membersJSON), &members); err != nil {
+			log.Printf("gateway-manager: prune groups: unmarshal failed for group %s: %v", r.id, err)
+			continue
+		}
+		filtered := members[:0]
+		changed := false
+		for _, mem := range members {
+			if mem.GatewayID == gatewayID {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, mem)
+		}
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(filtered)
+		if err != nil {
+			log.Printf("gateway-manager: prune groups: marshal failed for group %s: %v", r.id, err)
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE gateway_groups SET members = ? WHERE id = ?`, string(out), r.id); err != nil {
+			log.Printf("gateway-manager: prune groups: update failed for group %s: %v", r.id, err)
+		}
+	}
+}
+
+// selfHealStaleGroupMembers removes any GatewayGroupMember from every group
+// whose GatewayID no longer exists in the gateways table. Deleting a gateway
+// prunes group membership going forward (see pruneGatewayFromGroups), but
+// rows written before that fix shipped — or by any other path that could
+// leave a dangling reference — never got cleaned up on their own. Called
+// once from Init() so this runs automatically on every startup/update with
+// no user action required, mirroring how getDashboardWidgets self-heals
+// stale widget refs on read (issue #96) — except this runs proactively at
+// startup rather than lazily on the next read, since group membership isn't
+// naturally re-read on every page load the way dashboard widgets are.
+//
+// Best-effort: errors are logged, never returned — a failed self-heal here
+// must not block server startup.
+func (m *Manager) selfHealStaleGroupMembers() {
+	groups, err := m.GetGroups()
+	if err != nil {
+		log.Printf("gateway-manager: self-heal group members: list groups failed: %v", err)
+		return
+	}
+	if len(groups) == 0 {
+		return
+	}
+
+	live := make(map[string]bool)
+	gateways, err := m.GetGateways()
+	if err != nil {
+		log.Printf("gateway-manager: self-heal group members: list gateways failed: %v", err)
+		return
+	}
+	for _, gw := range gateways {
+		live[gw.ID] = true
+	}
+
+	healed := 0
+	for _, grp := range groups {
+		filtered := grp.Gateways[:0]
+		changed := false
+		for _, mem := range grp.Gateways {
+			if !live[mem.GatewayID] {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, mem)
+		}
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(filtered)
+		if err != nil {
+			log.Printf("gateway-manager: self-heal group members: marshal failed for group %s: %v", grp.ID, err)
+			continue
+		}
+		if _, err := db.DB().Exec(`UPDATE gateway_groups SET members = ? WHERE id = ?`, string(out), grp.ID); err != nil {
+			log.Printf("gateway-manager: self-heal group members: update failed for group %s: %v", grp.ID, err)
+			continue
+		}
+		healed++
+	}
+	if healed > 0 {
+		log.Printf("gateway-manager: self-heal: removed stale member(s) from %d gateway group(s)", healed)
+	}
 }
 
 // GetGatewayWithStatus combines gateway data with live monitoring status.
@@ -288,6 +493,79 @@ func (m *Manager) GetGroup(id string) (*GatewayGroup, error) {
 		return nil, nil
 	}
 	return grp, err
+}
+
+// ResolveGroupGateway picks the active gateway for a group: the lowest-tier
+// member whose live monitor status is not "down"/"admin_down". A member
+// reporting "unknown" (no probe results yet, e.g. freshly added) is treated
+// as available/optimistic-by-default, not skipped. Falls back to the tier-1
+// gateway (gateway of last resort) if every member is down.
+// Shared by internal/routing and internal/firewall so both PBR rules and
+// static routes fail over identically — do not duplicate this logic.
+func (m *Manager) ResolveGroupGateway(groupID string) (gatewayIP, iface string, err error) {
+	grp, err := m.GetGroup(groupID)
+	if err != nil || grp == nil || len(grp.Gateways) == 0 {
+		return "", "", fmt.Errorf("gateway group %s not found or empty", groupID)
+	}
+
+	sorted := make([]GatewayGroupMember, len(grp.Gateways))
+	copy(sorted, grp.Gateways)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Tier < sorted[j].Tier })
+
+	type tierEntry struct {
+		tier    int
+		members []GatewayGroupMember
+	}
+	var tiers []tierEntry
+	for _, mem := range sorted {
+		if len(tiers) == 0 || tiers[len(tiers)-1].tier != mem.Tier {
+			tiers = append(tiers, tierEntry{tier: mem.Tier})
+		}
+		tiers[len(tiers)-1].members = append(tiers[len(tiers)-1].members, mem)
+	}
+
+	var fallbackGW *Gateway // tier1 gateway, used if all tiers down
+
+	for _, te := range tiers {
+		for _, mem := range te.members {
+			gw, gerr := m.GetGateway(mem.GatewayID)
+			if gerr != nil || gw == nil {
+				continue
+			}
+			if fallbackGW == nil {
+				fallbackGW = gw // remember tier1 as last resort
+			}
+			st := m.monitor.GetStatus(mem.GatewayID)
+			// Use this gateway unless it is explicitly "down" or "admin_down".
+			// "unknown" = not enough probes yet → treat as available.
+			if st.Status != "down" && st.Status != "admin_down" {
+				return gw.GatewayIP, gw.Interface, nil
+			}
+		}
+	}
+
+	// All gateways are "down" — route via tier1 as gateway of last resort.
+	if fallbackGW != nil {
+		return fallbackGW.GatewayIP, fallbackGW.Interface, nil
+	}
+	return "", "", fmt.Errorf("no usable gateway in group %s", groupID)
+}
+
+// GroupContainsGateway reports whether gatewayID is a member of groupID.
+// Shared by internal/routing and internal/firewall — both need this exact
+// membership check to decide whether a gateway status change affects one of
+// their gateway-group-referencing rules/routes.
+func (m *Manager) GroupContainsGateway(groupID, gatewayID string) bool {
+	grp, err := m.GetGroup(groupID)
+	if err != nil || grp == nil {
+		return false
+	}
+	for _, mem := range grp.Gateways {
+		if mem.GatewayID == gatewayID {
+			return true
+		}
+	}
+	return false
 }
 
 // GatewayGroupInput is the create/update request payload.

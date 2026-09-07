@@ -258,3 +258,153 @@ func TestPutSettings_NoAuth_Returns401(t *testing.T) {
 		t.Errorf("no auth: expected 401, got %d", resp.StatusCode)
 	}
 }
+
+// ── POST /api/templates/generate — AWG 3.0 Transport Protection toggles ───────
+
+func TestGenerateTemplate_HeaderProtection_True_PopulatesKey(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"headerProtection": true,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body=%v", resp.StatusCode, decodeBody(resp))
+	}
+	body := decodeBody(resp)
+	params, ok := body["params"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected params object in response, got %v", body)
+	}
+	hpk, _ := params["headerProtectionKey"].(string)
+	if hpk == "" {
+		t.Error("headerProtectionKey should be non-empty when headerProtection=true")
+	}
+}
+
+func TestGenerateTemplate_HeaderProtection_False_KeyOmitted(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"headerProtection": false,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body=%v", resp.StatusCode, decodeBody(resp))
+	}
+	body := decodeBody(resp)
+	params, ok := body["params"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected params object in response, got %v", body)
+	}
+	// omitempty on Params.HeaderProtectionKey means the key must be entirely
+	// absent from the JSON, not present with an empty string.
+	if _, present := params["headerProtectionKey"]; present {
+		t.Errorf("headerProtectionKey key should be absent when headerProtection=false, got %v", params["headerProtectionKey"])
+	}
+}
+
+func TestGenerateTemplate_ContentPadding_True_PopulatesField(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"contentPadding": true,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body=%v", resp.StatusCode, decodeBody(resp))
+	}
+	params := decodeBody(resp)["params"].(map[string]any)
+	if v, _ := params["contentPaddingAddition"].(string); v == "" {
+		t.Error("contentPaddingAddition should be non-empty when contentPadding=true")
+	}
+}
+
+func TestGenerateTemplate_ContentPadding_False_FieldOmitted(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"contentPadding": false,
+	})
+	params := decodeBody(resp)["params"].(map[string]any)
+	if _, present := params["contentPaddingAddition"]; present {
+		t.Errorf("contentPaddingAddition should be absent when contentPadding=false, got %v", params["contentPaddingAddition"])
+	}
+}
+
+func TestGenerateTemplate_RandomizeTimers_True_PopulatesFields(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"randomizeTimers": true,
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body=%v", resp.StatusCode, decodeBody(resp))
+	}
+	params := decodeBody(resp)["params"].(map[string]any)
+	for _, key := range []string{"rekeyAfterTime", "rekeyTimeout", "rejectAfterTime", "keepaliveTimeout", "maxHandshakeAttempts"} {
+		v, _ := params[key].(string)
+		if v == "" {
+			t.Errorf("%s should be non-empty when randomizeTimers=true", key)
+		}
+	}
+}
+
+func TestGenerateTemplate_RandomizeTimers_False_FieldsOmitted(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"randomizeTimers": false,
+	})
+	params := decodeBody(resp)["params"].(map[string]any)
+	for _, key := range []string{"rekeyAfterTime", "rekeyTimeout", "rejectAfterTime", "keepaliveTimeout", "maxHandshakeAttempts"} {
+		if _, present := params[key]; present {
+			t.Errorf("%s should be absent when randomizeTimers=false, got %v", key, params[key])
+		}
+	}
+}
+
+func TestGenerateTemplate_SaveName_HeaderProtection_PersistsInResponseAndRefetch(t *testing.T) {
+	sta := newSettingsTestApp(t)
+	ta := &testApp{app: sta.app, adminToken: sta.token}
+
+	resp := ta.do("POST", "/api/templates/generate", sta.token, map[string]any{
+		"version":          "3.0",
+		"headerProtection": true,
+		"saveName":         "AWG3-Saved",
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d; body=%v", resp.StatusCode, decodeBody(resp))
+	}
+	body := decodeBody(resp)
+	tmpl, ok := body["template"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected template object in response, got %v", body)
+	}
+	hpk, _ := tmpl["headerProtectionKey"].(string)
+	if hpk == "" {
+		t.Fatal("saved template should have non-empty headerProtectionKey in response")
+	}
+	id, _ := tmpl["id"].(string)
+	if id == "" {
+		t.Fatal("saved template response missing id")
+	}
+
+	// Re-fetch via GET /api/templates/:id and confirm the field persisted.
+	getResp := ta.do("GET", "/api/templates/"+id, sta.token, nil)
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET template: expected 200, got %d", getResp.StatusCode)
+	}
+	getBody := decodeBody(getResp)
+	refetched, ok := getBody["template"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected template object in GET response, got %v", getBody)
+	}
+	refetchedKey, _ := refetched["headerProtectionKey"].(string)
+	if refetchedKey != hpk {
+		t.Errorf("re-fetched headerProtectionKey = %q, want %q (from generate response)", refetchedKey, hpk)
+	}
+}

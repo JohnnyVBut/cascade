@@ -11,6 +11,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
 COMPOSE_FILE="$REPO_DIR/docker-compose.yml"
+OVERRIDE_FILE="$REPO_DIR/docker-compose.override.yml"
+
+# Local dev builds (./build.sh) are only picked up via docker-compose.override.yml
+# (image: cascade:latest instead of the base file's ghcr.io/... image). Plain
+# `docker compose up/down` (no -f) merges it in automatically, but an explicit
+# `-f docker-compose.yml` — which this script used to hardcode — disables that
+# automatic merge, silently falling back to the GHCR image and discarding
+# whatever was actually running. Build the -f arg list to mirror what a bare
+# `docker compose up/down` would do, override included when present.
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [[ -f "$OVERRIDE_FILE" ]]; then
+  COMPOSE_ARGS+=(-f "$OVERRIDE_FILE")
+fi
 
 G='\033[0;32m'; Y='\033[1;33m'; R='\033[0;31m'; B='\033[0;34m'; N='\033[0m'
 ok()   { echo -e "  ${G}✓${N} $*"; }
@@ -64,20 +77,44 @@ apply_userspace() {
 apply_kernel() {
   info "Switching to kernel module mode..."
   rm -f /etc/modprobe.d/amneziawg-blacklist.conf
-  if lsmod | grep -q amneziawg 2>/dev/null; then
-    ok "amneziawg already loaded"
-  elif dpkg -l amneziawg &>/dev/null 2>&1; then
-    modprobe amneziawg
-    echo "amneziawg" > /etc/modules-load.d/amneziawg.conf
-    ok "amneziawg loaded"
-  else
+
+  # Always resync the package to the latest PPA version, even if a module is
+  # already loaded — `apt-get install` is a no-op when already current, but
+  # upgrades it when the PPA has moved on. This is what makes --kernel a real
+  # "re-sync the kernel module" step after a container update (see README's
+  # AWG3-protocol-jump warning); merely checking `lsmod` would silently keep
+  # a stale pre-3.0 module loaded and never touch it.
+  if ! dpkg -l amneziawg &>/dev/null 2>&1; then
     info "Installing amneziawg kernel module (ppa:amnezia/ppa)..."
     add-apt-repository -y ppa:amnezia/ppa > /dev/null 2>&1
     apt-get update -qq
-    apt-get install -y amneziawg
+  else
+    info "Checking for amneziawg kernel module updates (ppa:amnezia/ppa)..."
+    apt-get update -qq
+  fi
+
+  # Track amneziawg-dkms specifically, not just the amneziawg metapackage.
+  # The metapackage's own version can stay unchanged across a PPA update
+  # (its dependency on amneziawg-dkms isn't pinned to an exact version), so
+  # `apt-get install amneziawg` alone can report "already newest" while a
+  # newer amneziawg-dkms — the package that actually rebuilds the .ko via
+  # DKMS — sits available but unpulled. Confirmed in the wild: amneziawg
+  # stayed at the same version while amneziawg-dkms had a newer build
+  # sitting in the PPA the whole time.
+  BEFORE_VER="$(dpkg-query -W -f='${Version}' amneziawg-dkms 2>/dev/null || echo "")"
+  apt-get install -y amneziawg amneziawg-dkms
+  AFTER_VER="$(dpkg-query -W -f='${Version}' amneziawg-dkms 2>/dev/null || echo "")"
+
+  if lsmod | grep -q amneziawg 2>/dev/null && [[ "$BEFORE_VER" == "$AFTER_VER" ]]; then
+    ok "amneziawg already loaded and up to date (${AFTER_VER})"
+  else
+    if lsmod | grep -q amneziawg 2>/dev/null; then
+      info "Package updated (${BEFORE_VER:-none} → ${AFTER_VER}) — reloading module..."
+      modprobe -r amneziawg 2>/dev/null || warn "Could not unload old module — a reboot may be required to pick up the new version"
+    fi
     modprobe amneziawg
     echo "amneziawg" > /etc/modules-load.d/amneziawg.conf
-    ok "amneziawg installed and loaded"
+    ok "amneziawg ${AFTER_VER} loaded"
   fi
 }
 
@@ -121,10 +158,13 @@ fi
 update_env
 
 # Restart container if running
-if $COMPOSE_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | grep -q .; then
+if $COMPOSE_CMD "${COMPOSE_ARGS[@]}" ps --quiet 2>/dev/null | grep -q .; then
   info "Restarting Cascade container..."
-  $COMPOSE_CMD -f "$COMPOSE_FILE" down
-  $COMPOSE_CMD -f "$COMPOSE_FILE" up -d
+  if [[ -f "$OVERRIDE_FILE" ]]; then
+    info "Using docker-compose.override.yml (local build) alongside docker-compose.yml"
+  fi
+  $COMPOSE_CMD "${COMPOSE_ARGS[@]}" down
+  $COMPOSE_CMD "${COMPOSE_ARGS[@]}" up -d
   ok "Container restarted"
 
   sleep 2
@@ -141,7 +181,7 @@ if $COMPOSE_CMD -f "$COMPOSE_FILE" ps --quiet 2>/dev/null | grep -q .; then
   fi
 else
   info "Container is not running — start with:"
-  echo "  $COMPOSE_CMD -f docker-compose.yml up -d"
+  echo "  $COMPOSE_CMD ${COMPOSE_ARGS[*]} up -d"
 fi
 
 echo ""

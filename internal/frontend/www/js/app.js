@@ -266,6 +266,12 @@ new Vue({
         h1: '', h2: '', h3: '', h4: '',
         i1: '', i2: '', i3: '', i4: '', i5: '',
       },
+      awg3: {
+        headerProtectionKey: '', contentPaddingAddition: '',
+        rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+        keepaliveTimeout: '', maxHandshakeAttempts: '',
+        randomTrailers: 'on', disableCookies: 'on',
+      },
     },
     showPeerCreate: false, // manual peer create modal
     showQuickPeerCreate: false, // quick peer create dialog
@@ -284,6 +290,12 @@ new Vue({
         h1: '', h2: '', h3: '', h4: '',
         i1: '', i2: '', i3: '', i4: '', i5: '',
       },
+      awg3: {
+        headerProtectionKey: '', contentPaddingAddition: '',
+        rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+        keepaliveTimeout: '', maxHandshakeAttempts: '',
+        randomTrailers: 'on', disableCookies: 'on',
+      },
     },
     peerCreate: {
       mode: 'generate',     // 'generate' | 'manual'
@@ -294,6 +306,7 @@ new Vue({
       allowedIPs: '',
       clientAllowedIPs: '',
       persistentKeepalive: 25,
+      persistentKeepaliveV3: '', // AWG 3.1+ range override (e.g. "5-25"), only used when interface protocol is amneziawg-3.0
       groupId: '',          // client-group alias ID
       expiredAt: '',        // YYYY-MM-DD or empty
       showQR: false,
@@ -324,6 +337,7 @@ new Vue({
       _peer: null,          // original peer reference (for type checks + API call)
       name: '',
       persistentKeepalive: 0,
+      persistentKeepaliveV3: '', // AWG 3.1+ range override (e.g. "5-25"), only used when interface protocol is amneziawg-3.0
       endpoint: '',         // interconnect only
       allowedIPs: '',       // interconnect only (editable)
       clientAllowedIPs: '', // client only
@@ -363,19 +377,25 @@ new Vue({
     },
     settingsSaved: false,
     templates: [],
+    templateVersionFilter: 'all', // 'all' | '2.0' | '3.0'
     showTemplateModal: false,
     templateEditTarget: null, // null = create, object = edit
     templateForm: {
       name: '',
       isDefault: false,
+      version: '2.0',
       host: '',
       jc: 6, jmin: 10, jmax: 50,
       s1: 64, s2: 67, s3: 64, s4: 4,
       h1: '', h2: '', h3: '', h4: '',
       i1: '', i2: '', i3: '', i4: '', i5: '',
+      headerProtectionKey: '', contentPaddingAddition: '',
+      rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+      keepaliveTimeout: '', maxHandshakeAttempts: '',
+      randomTrailers: '', disableCookies: '',
     },
 
-    // Generate AWG2 modal
+    // Generate AWG2/3.0 modal
     showGenerateModal: false,
     generateForm: {
       profile: 'random',
@@ -383,6 +403,12 @@ new Vue({
       host: '',
       browser: '',
       saveName: '',
+      version: '2.0',       // explicit — NOT inferred from the toggles below
+      headerProtection: false,
+      contentPadding: false,
+      randomizeTimers: false,
+      randomTrailers: true,
+      disableCookies: true,
     },
     generatedParams: null,
     generatingParams: false,
@@ -1314,10 +1340,10 @@ new Vue({
           return;
         }
 
-        if (this.interfaceCreate.protocol === 'amneziawg-2.0') {
-          if (!this.interfaceCreate.settings.h1 || !this.interfaceCreate.settings.h2 ||
-              !this.interfaceCreate.settings.h3 || !this.interfaceCreate.settings.h4) {
-            this.showToast('Please set H1-H4 parameters for AWG 2.0 (select a profile or enter manually)', 'error');
+        if (this.isAmneziaWG(this.interfaceCreate.protocol)) {
+          const s = this.interfaceCreate.settings;
+          if (!s.h1 || !s.h2 || !s.h3 || !s.h4) {
+            this.showToast('Please set H1-H4 parameters for AmneziaWG (select a profile or enter manually)', 'error');
             return;
           }
         }
@@ -1333,6 +1359,10 @@ new Vue({
 
         if (this.interfaceCreate.protocol === 'amneziawg-2.0') {
           payload.settings = this.interfaceCreate.settings;
+        } else if (this.interfaceCreate.protocol === 'amneziawg-3.0') {
+          // AWG 3.0 carries the base obfuscation params PLUS the Transport
+          // Protection fields — omitting the base fields would zero them out.
+          payload.settings = { ...this.interfaceCreate.settings, ...this.interfaceCreate.awg3 };
         }
 
         const newIface = await this.api.createTunnelInterface(payload);
@@ -1377,7 +1407,8 @@ new Vue({
         const iface = data.interface || {};
         const addr  = iface.address    || '';
         const port  = iface.listenPort || '';
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : '';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : '';
 
         if (data.started) {
           this.showToast(`✅ ${iface.id} created & started\n${addr} · UDP ${port}${proto}`, 'success');
@@ -1430,7 +1461,8 @@ new Vue({
         this.loadFirewallInterfaces();
 
         const iface = res.interface || {};
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : ' · WG1';
         if (res.conflictWarning) {
           this.showToast(`⚠️ ${res.conflictWarning}`, 'error');
         }
@@ -1492,7 +1524,8 @@ new Vue({
         this.loadFirewallInterfaces();
 
         const iface = res.interface || {};
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : ' · WG1';
         const failed = (res.peersFailed || []).length;
 
         if (res.started) {
@@ -1555,7 +1588,8 @@ new Vue({
         this.loadNatInterfaces();
         this.loadFirewallInterfaces();
         const iface = res.interface || {};
-        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2' : ' · WG1';
+        const proto = iface.protocol === 'amneziawg-2.0' ? ' · AWG2'
+          : iface.protocol === 'amneziawg-3.0' ? ' · AWG3' : ' · WG1';
         const msg = res.started
           ? `✅ Interface restored: ${iface.id} · ${iface.address}${proto} · ${res.peersCreated} peers`
           : `⚠️ Interface restored but failed to start: ${res.startError || ''}`;
@@ -1590,7 +1624,7 @@ new Vue({
           i4:   params.i4   ?? this.interfaceCreate.settings.i4,
           i5:   params.i5   ?? this.interfaceCreate.settings.i5,
         });
-        this.showToast('AWG2 params generated ✓', 'success');
+        this.showToast('AWG params generated ✓', 'success');
       } catch (err) {
         console.error('generateAndFillInterfaceParams failed:', err);
         this.showToast(`Failed to generate params: ${err.message}`, 'error');
@@ -1609,7 +1643,20 @@ new Vue({
           h1: '', h2: '', h3: '', h4: '',
           i1: '', i2: '', i3: '', i4: '', i5: '',
         },
+        awg3: {
+          headerProtectionKey: '', contentPaddingAddition: '',
+          rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+          keepaliveTimeout: '', maxHandshakeAttempts: '',
+          randomTrailers: 'on', disableCookies: 'on',
+        },
       };
+    },
+
+    // templatesForVersion filters the loaded template list to a given AWG
+    // version ("2.0"/"3.0") — templates predating the version column default
+    // to "2.0" server-side, so untagged templates are treated as 2.0 here too.
+    templatesForVersion(version) {
+      return (this.templates || []).filter(t => (t.version || '2.0') === version);
     },
 
     // ========================================================================
@@ -1679,6 +1726,17 @@ new Vue({
           h1:   s.h1   || '',  h2:   s.h2   || '',  h3:   s.h3  || '',  h4: s.h4 || '',
           i1:   s.i1   || '',  i2:   s.i2   || '',  i3:   s.i3  || '',  i4: s.i4 || '',  i5: s.i5 || '',
         },
+        awg3: {
+          headerProtectionKey:    s.headerProtectionKey    || '',
+          contentPaddingAddition: s.contentPaddingAddition || '',
+          rekeyAfterTime:         s.rekeyAfterTime         || '',
+          rekeyTimeout:           s.rekeyTimeout           || '',
+          rejectAfterTime:        s.rejectAfterTime        || '',
+          keepaliveTimeout:       s.keepaliveTimeout       || '',
+          maxHandshakeAttempts:   s.maxHandshakeAttempts   || '',
+          randomTrailers:         s.randomTrailers         || '',
+          disableCookies:         s.disableCookies         || '',
+        },
       };
       this.showInterfaceEdit = true;
     },
@@ -1701,19 +1759,31 @@ new Vue({
         i1:   tmpl.i1 || '', i2: tmpl.i2 || '', i3: tmpl.i3 || '',
         i4:   tmpl.i4 || '', i5: tmpl.i5 || '',
       };
+      // 2.0 templates never carry these — fields stay empty, which is fine.
+      this.interfaceEdit.awg3 = {
+        headerProtectionKey: tmpl.headerProtectionKey || '',
+        contentPaddingAddition: tmpl.contentPaddingAddition || '',
+        rekeyAfterTime: tmpl.rekeyAfterTime || '',
+        rekeyTimeout: tmpl.rekeyTimeout || '',
+        rejectAfterTime: tmpl.rejectAfterTime || '',
+        keepaliveTimeout: tmpl.keepaliveTimeout || '',
+        maxHandshakeAttempts: tmpl.maxHandshakeAttempts || '',
+        randomTrailers: tmpl.randomTrailers || '',
+        disableCookies: tmpl.disableCookies || '',
+      };
     },
 
     async saveInterfaceEdit() {
-      const { id, name, address, listenPort, disableRoutes, natDisabled, dns, publicHost, mtu, mss, protocol, settings } = this.interfaceEdit;
+      const { id, name, address, listenPort, disableRoutes, natDisabled, dns, publicHost, mtu, mss, protocol, settings, awg3 } = this.interfaceEdit;
 
       if (!name) { this.showToast('Please enter a name', 'error'); return; }
       if (!address || !address.includes('/')) {
         this.showToast('Please enter Tunnel Address in CIDR format (e.g. 10.100.0.1/24)', 'error');
         return;
       }
-      if (protocol === 'amneziawg-2.0') {
+      if (this.isAmneziaWG(protocol)) {
         if (!settings.h1 || !settings.h2 || !settings.h3 || !settings.h4) {
-          this.showToast('Please set H1-H4 parameters for AWG 2.0 (select a profile or enter manually)', 'error');
+          this.showToast('Please set H1-H4 parameters for AmneziaWG (select a profile or enter manually)', 'error');
           return;
         }
       }
@@ -1731,6 +1801,10 @@ new Vue({
       };
       if (protocol === 'amneziawg-2.0') {
         payload.settings = { ...settings };
+      } else if (protocol === 'amneziawg-3.0') {
+        // AWG 3.0 carries the base obfuscation params PLUS the Transport
+        // Protection fields — omitting the base fields would zero them out.
+        payload.settings = { ...settings, ...awg3 };
       }
 
       try {
@@ -1846,7 +1920,7 @@ new Vue({
         return;
       }
 
-      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, groupId, expiredAt } = this.peerCreate;
+      const { mode, peerType, name, publicKey, endpoint, allowedIPs, clientAllowedIPs, persistentKeepalive, persistentKeepaliveV3, groupId, expiredAt } = this.peerCreate;
 
       // Validation
       if (!name || name.trim() === '') {
@@ -1874,6 +1948,7 @@ new Vue({
         clientAllowedIPs: clientAllowedIPs || undefined,
         endpoint: endpoint || undefined,
         persistentKeepalive: persistentKeepalive || 25,
+        persistentKeepaliveV3: (persistentKeepaliveV3 || '').trim(),
         ...(peerType === 'client' && groupId ? { groupId } : {}),
         ...(expiredAt ? { expiredAt } : {}),
       };
@@ -1891,7 +1966,7 @@ new Vue({
         this.showPeerCreate = false;
         this.inlineGroupShow = false;
         this.inlineGroupInput = '';
-        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, groupId: this.defaultGroupId(), expiredAt: '', showQR: false };
+        this.peerCreate = { mode: 'generate', peerType: 'client', name: '', publicKey: '', endpoint: '', allowedIPs: '', clientAllowedIPs: '', persistentKeepalive: 25, persistentKeepaliveV3: '', groupId: this.defaultGroupId(), expiredAt: '', showQR: false };
 
         await this.refreshPeers();
         await this.loadTunnelInterfaces();
@@ -4056,6 +4131,15 @@ new Vue({
       }
     },
 
+    // Open the manual "Add Client/Peer" modal for the currently active interface.
+    openManualPeerCreate() {
+      this.peerCreate.peerType = 'client';
+      this.peerCreate.groupId = this.defaultGroupId();
+      const iface = this.currentInterface;
+      this.peerCreate.persistentKeepaliveV3 = (iface && iface.protocol === 'amneziawg-3.0') ? '5-25' : '';
+      this.showPeerCreate = true;
+    },
+
     // Open Quick Create peer modal for a specific interface from dashboard
     dashOpenAddPeer(iface) {
       if (iface.disableRoutes) return; // S2S interfaces don't support quick-create clients
@@ -4068,10 +4152,25 @@ new Vue({
 
     // Human-readable protocol label for dashboard badges
     dashProtoLabel(protocol) {
-      if (protocol === 'wireguard') return 'WG1.0';
+      if (protocol === 'wireguard' || protocol === 'wireguard-1.0') return 'WG1.0';
       if (protocol === 'amneziawg-2.0') return 'AWG2.0';
+      if (protocol === 'amneziawg-3.0') return 'AWG3.0';
       if (protocol === 'amneziawg') return 'AWG';
       return protocol || 'WG';
+    },
+
+    // isAmneziaWG mirrors the backend's awgparams.IsAmneziaWG — true for
+    // both AWG 2.0 and 3.0, false for plain WireGuard.
+    isAmneziaWG(protocol) {
+      return protocol === 'amneziawg-2.0' || protocol === 'amneziawg-3.0';
+    },
+
+    // awgVersion maps a full protocol string to its AWG template version
+    // ("2.0"/"3.0"), or null for non-AWG protocols (e.g. wireguard-1.0).
+    awgVersion(protocol) {
+      if (protocol === 'amneziawg-2.0') return '2.0';
+      if (protocol === 'amneziawg-3.0') return '3.0';
+      return null;
     },
 
     // ── End Dashboard ──────────────────────────────────────────────────────────
@@ -4947,12 +5046,14 @@ new Vue({
       if (!name) return;
 
       try {
+        const iface = this.tunnelInterfaces.find(i => i.id === this.activeInterfaceId);
         const payload = {
           name,
           autoAllocateIP: true,
           generateKeys: true,
           expiredAt: this.peerCreateExpiredDate || undefined,
           groupId: this.peerCreateGroupId || this.defaultGroupId() || undefined,
+          ...(iface && iface.protocol === 'amneziawg-3.0' ? { persistentKeepaliveV3: '5-25' } : {}),
         };
 
         const res = await this.api.createTunnelInterfacePeer({
@@ -5107,6 +5208,7 @@ new Vue({
         _peer: peer,
         name: peer.name || '',
         persistentKeepalive: peer.persistentKeepalive || 0,
+        persistentKeepaliveV3: peer.persistentKeepaliveV3 || '',
         endpoint: peer.endpoint || '',
         allowedIPs: peer.allowedIPs || '',
         clientAllowedIPs: peer.clientAllowedIPs || '',
@@ -5116,6 +5218,15 @@ new Vue({
         expiredAt: peer.expiredAt ? (typeof peer.expiredAt === 'string' ? peer.expiredAt.slice(0, 10) : new Date(peer.expiredAt).toISOString().slice(0, 10)) : '',
       };
       this.showPeerEditModal = true;
+    },
+
+    // Returns the tunnel interface object for the peer currently open in the
+    // edit modal, or null. Used to gate the AWG 3.1+ keepalive-range field.
+    peerEditInterface() {
+      const peer = this.peerEditForm._peer;
+      if (!peer) return null;
+      const ifaceId = this._peerIfaceId(peer);
+      return this.tunnelInterfaces.find(i => i.id === ifaceId) || null;
     },
 
     // Format kbps rate for display. 0 = unlimited.
@@ -5155,6 +5266,7 @@ new Vue({
       const updates = {
         name: this.peerEditForm.name,
         persistentKeepalive: Number(this.peerEditForm.persistentKeepalive) || 0,
+        persistentKeepaliveV3: (this.peerEditForm.persistentKeepaliveV3 || '').trim(),
       };
       if (isInterconnect) {
         updates.endpoint = this.peerEditForm.endpoint;
@@ -5523,10 +5635,18 @@ new Vue({
       this.templateForm = {
         name: '',
         isDefault: false,
+        version: '2.0',
         jc: 6, jmin: 10, jmax: 50,
         s1: 64, s2: 67, s3: 64, s4: 4,
         h1: '', h2: '', h3: '', h4: '',
         i1: '', i2: '', i3: '', i4: '', i5: '',
+        headerProtectionKey: '', contentPaddingAddition: '',
+        rekeyAfterTime: '', rekeyTimeout: '', rejectAfterTime: '',
+        keepaliveTimeout: '', maxHandshakeAttempts: '',
+        // This modal always creates a 2.0 template (no version selector here)
+        // — 'on' would fail backend validation (hasAWG3Fields requires
+        // version="3.0"). Interface create/edit still default these to 'on'.
+        randomTrailers: '', disableCookies: '',
       };
       this.randomiseTemplateH();
       this.templateEditTarget = null;
@@ -5537,6 +5657,12 @@ new Vue({
       this.templateForm = { ...tmpl };
       this.templateEditTarget = tmpl;
       this.showTemplateModal = true;
+    },
+
+    // filteredTemplates returns this.templates narrowed by templateVersionFilter.
+    filteredTemplates() {
+      if (this.templateVersionFilter === 'all') return this.templates || [];
+      return this.templatesForVersion(this.templateVersionFilter);
     },
 
     async saveTemplate() {
@@ -5574,18 +5700,30 @@ new Vue({
 
     /**
      * Экспортировать профиль обфускации в JSON файл.
-     * Скачивает файл с AWG2 параметрами шаблона.
-     * Формат: { name, jc, jmin, jmax, s1-s4, h1-h4, i1-i5 }.
+     * Скачивает файл со всеми параметрами шаблона, включая version и AWG 3.0
+     * Transport Protection поля — без version импорт на другом сервере всегда
+     * создавал бы шаблон как "2.0" (backend-дефолт), теряя AWG3-профиль.
      * Поля meta (id, isDefault, createdAt) не включаются — они специфичны для этого сервера.
      */
     exportTemplateJSON(tmpl) {
       const params = {
         name: tmpl.name,
+        version: tmpl.version || '2.0',
+        host: tmpl.host || null,
         jc: tmpl.jc, jmin: tmpl.jmin, jmax: tmpl.jmax,
         s1: tmpl.s1, s2: tmpl.s2, s3: tmpl.s3, s4: tmpl.s4,
         h1: tmpl.h1, h2: tmpl.h2, h3: tmpl.h3, h4: tmpl.h4,
         i1: tmpl.i1 || null, i2: tmpl.i2 || null, i3: tmpl.i3 || null,
         i4: tmpl.i4 || null, i5: tmpl.i5 || null,
+        headerProtectionKey: tmpl.headerProtectionKey || null,
+        contentPaddingAddition: tmpl.contentPaddingAddition || null,
+        rekeyAfterTime: tmpl.rekeyAfterTime || null,
+        rekeyTimeout: tmpl.rekeyTimeout || null,
+        rejectAfterTime: tmpl.rejectAfterTime || null,
+        keepaliveTimeout: tmpl.keepaliveTimeout || null,
+        maxHandshakeAttempts: tmpl.maxHandshakeAttempts || null,
+        randomTrailers: tmpl.randomTrailers || null,
+        disableCookies: tmpl.disableCookies || null,
       };
       const blob = new Blob([JSON.stringify(params, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -5630,19 +5768,34 @@ new Vue({
     // ── Generate AWG2 modal ───────────────────────────────────────────────────
 
     openGenerateModal() {
-      this.generateForm = { profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '' };
+      this.generateForm = {
+        profile: 'random', intensity: 'medium', host: '', browser: '', saveName: '',
+        version: '2.0',
+        headerProtection: false, contentPadding: false, randomizeTimers: false,
+        randomTrailers: true, disableCookies: true,
+      };
       this.generatedParams = null;
       this.showGenerateModal = true;
     },
 
     async generateParams() {
       this.generatingParams = true;
+      // AWG 3.0 Transport Protection toggles only apply to a 3.0 profile —
+      // sending them for 2.0 would produce non-empty randomTrailers/
+      // disableCookies params that fail template save validation later.
+      const isV3 = this.generateForm.version === '3.0';
       try {
         const res = await this.api.generateTemplate({
           profile:   this.generateForm.profile,
           intensity: this.generateForm.intensity,
           host:      this.generateForm.host || undefined,
           browser:   this.generateForm.browser || undefined,
+          version:   this.generateForm.version,
+          headerProtection: isV3 && this.generateForm.headerProtection,
+          contentPadding:   isV3 && this.generateForm.contentPadding,
+          randomizeTimers:  isV3 && this.generateForm.randomizeTimers,
+          randomTrailers:   isV3 && this.generateForm.randomTrailers,
+          disableCookies:   isV3 && this.generateForm.disableCookies,
         });
         this.generatedParams = res.params;
         if (!this.generateProfiles.length && res.profiles) {
@@ -5663,7 +5816,11 @@ new Vue({
         return;
       }
       try {
-        await this.api.createTemplate({ name, ...this.generatedParams });
+        await this.api.createTemplate({
+          name,
+          version: this.generateForm.version,
+          ...this.generatedParams,
+        });
         await this.loadSettings();
         this.showGenerateModal = false;
         this.showToast(`Profile "${name}" saved`, 'success');
@@ -5678,12 +5835,22 @@ new Vue({
       this.templateForm = {
         name: this.generateForm.saveName || '',
         isDefault: false,
+        version: this.generateForm.version,
         host: this.generateForm.host || '',
         jc: p.jc, jmin: p.jmin, jmax: p.jmax,
         s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4,
         h1: p.h1, h2: p.h2, h3: p.h3, h4: p.h4,
         i1: p.i1 || '', i2: p.i2 || '', i3: p.i3 || '',
         i4: p.i4 || '', i5: p.i5 || '',
+        headerProtectionKey: p.headerProtectionKey || '',
+        contentPaddingAddition: p.contentPaddingAddition || '',
+        rekeyAfterTime: p.rekeyAfterTime || '',
+        rekeyTimeout: p.rekeyTimeout || '',
+        rejectAfterTime: p.rejectAfterTime || '',
+        keepaliveTimeout: p.keepaliveTimeout || '',
+        maxHandshakeAttempts: p.maxHandshakeAttempts || '',
+        randomTrailers: p.randomTrailers || '',
+        disableCookies: p.disableCookies || '',
       };
       this.templateEditTarget = null;
       this.showGenerateModal = false;
@@ -5706,6 +5873,18 @@ new Vue({
         h1: tmpl.h1,    h2: tmpl.h2,      h3: tmpl.h3,   h4: tmpl.h4,
         i1: tmpl.i1 || '', i2: tmpl.i2 || '', i3: tmpl.i3 || '',
         i4: tmpl.i4 || '', i5: tmpl.i5 || '',
+      };
+      // 2.0 templates never carry these — fields stay empty, which is fine.
+      this.interfaceCreate.awg3 = {
+        headerProtectionKey: tmpl.headerProtectionKey || '',
+        contentPaddingAddition: tmpl.contentPaddingAddition || '',
+        rekeyAfterTime: tmpl.rekeyAfterTime || '',
+        rekeyTimeout: tmpl.rekeyTimeout || '',
+        rejectAfterTime: tmpl.rejectAfterTime || '',
+        keepaliveTimeout: tmpl.keepaliveTimeout || '',
+        maxHandshakeAttempts: tmpl.maxHandshakeAttempts || '',
+        randomTrailers: tmpl.randomTrailers || '',
+        disableCookies: tmpl.disableCookies || '',
       };
     },
 
@@ -6601,8 +6780,13 @@ new Vue({
       let remoteIfaceId = '';
       try {
         const body = { name: w.remoteIfaceName, address: subnet.remoteAddr, disableRoutes: true, protocol: w.protocol };
-        // Pass AWG2 settings from local interface so remote doesn't need to generate them independently.
-        if (w.protocol === 'amneziawg-2.0' && localSettings) body.settings = localSettings;
+        // Pass AWG2/AWG3 settings from local interface so remote doesn't independently
+        // generate its own random obfuscation params — for AWG3 in particular,
+        // HeaderProtectionKey MUST match exactly on both sides or handshakes are
+        // silently dropped (see writeAWG3Fields in internal/peer/peer.go).
+        if ((w.protocol === 'amneziawg-2.0' || w.protocol === 'amneziawg-3.0') && localSettings) {
+          body.settings = localSettings;
+        }
         const res = await this.api.remoteCall({ remoteId: rid, method: 'post', path: '/tunnel-interfaces', body });
         const remoteIface = res.interface || res;
         remoteIfaceId = remoteIface.id || '';

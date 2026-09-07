@@ -16,7 +16,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/JohnnyVBut/cascade/internal/awgparams"
 	"github.com/JohnnyVBut/cascade/internal/db"
+	"github.com/JohnnyVBut/cascade/internal/validate"
 )
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -65,7 +67,8 @@ type Template struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	IsDefault bool   `json:"isDefault"`
-	Host      string `json:"host"`  // self-stealing SNI host (empty = not set)
+	Version   string `json:"version"` // "2.0" (default) | "3.0" — scopes which AWG3 fields may be set
+	Host      string `json:"host"`    // self-stealing SNI host (empty = not set)
 	Jc        int    `json:"jc"`
 	Jmin      int    `json:"jmin"`
 	Jmax      int    `json:"jmax"`
@@ -73,7 +76,7 @@ type Template struct {
 	S2        int    `json:"s2"`
 	S3        int    `json:"s3"`
 	S4        int    `json:"s4"`
-	H1        string `json:"h1"`  // "start-end" range string (FIX-4)
+	H1        string `json:"h1"` // "start-end" range string (FIX-4)
 	H2        string `json:"h2"`
 	H3        string `json:"h3"`
 	H4        string `json:"h4"`
@@ -83,9 +86,23 @@ type Template struct {
 	I4        string `json:"i4"`
 	I5        string `json:"i5"`
 	CreatedAt string `json:"createdAt"`
+
+	// AWG 3.0 Transport Protection — empty string = not set (template stays
+	// AWG 2.0-only). See internal/awgparams.Params and plans/awg3-protocol-notes.md.
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+
+	// amneziawg-go 3.1+ static flags — "on"/"off"/"" (empty = unset).
+	RandomTrailers string `json:"randomTrailers,omitempty"`
+	DisableCookies string `json:"disableCookies,omitempty"`
 }
 
-// AWG2Params is a flat set of AWG2 params returned by ApplyTemplate.
+// AWG2Params is a flat set of AWG2/AWG3 params returned by ApplyTemplate.
 type AWG2Params struct {
 	Jc   int    `json:"jc"`
 	Jmin int    `json:"jmin"`
@@ -103,13 +120,26 @@ type AWG2Params struct {
 	I3   string `json:"i3"`
 	I4   string `json:"i4"`
 	I5   string `json:"i5"`
+
+	// AWG 3.0 Transport Protection — empty string = not set.
+	HeaderProtectionKey    string `json:"headerProtectionKey,omitempty"`
+	ContentPaddingAddition string `json:"contentPaddingAddition,omitempty"`
+	RekeyAfterTime         string `json:"rekeyAfterTime,omitempty"`
+	RekeyTimeout           string `json:"rekeyTimeout,omitempty"`
+	RejectAfterTime        string `json:"rejectAfterTime,omitempty"`
+	KeepaliveTimeout       string `json:"keepaliveTimeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"maxHandshakeAttempts,omitempty"`
+
+	// amneziawg-go 3.1+ static flags — "on"/"off"/"" (empty = unset).
+	RandomTrailers string `json:"randomTrailers,omitempty"`
+	DisableCookies string `json:"disableCookies,omitempty"`
 }
 
 // PeerDefaults are passed to InterfaceManager when creating a new peer.
 type PeerDefaults struct {
-	DNS                string `json:"dns"`
-	PersistentKeepalive int   `json:"persistentKeepalive"`
-	ClientAllowedIPs   string `json:"clientAllowedIPs"`
+	DNS                 string `json:"dns"`
+	PersistentKeepalive int    `json:"persistentKeepalive"`
+	ClientAllowedIPs    string `json:"clientAllowedIPs"`
 }
 
 // defaults mirrors DEFAULTS in Settings.js.
@@ -121,7 +151,7 @@ var defaults = GlobalSettings{
 	GatewayHealthyThreshold:    95,
 	GatewayDegradedThreshold:   90,
 	PublicIPMode:               "auto",
-	ChartType:                  2,              // area by default
+	ChartType:                  2, // area by default
 	Lang:                       "en",
 	SubnetPool:                 "192.168.0.0/16",
 	PortPool:                   "51831-65535",
@@ -212,13 +242,57 @@ func GetPeerDefaults() (*PeerDefaults, error) {
 // ── Templates ─────────────────────────────────────────────────────────────────
 
 // GetTemplates returns all templates ordered by created_at.
-func GetTemplates() ([]Template, error) {
-	rows, err := db.DB().Query(`
-		SELECT id, name, is_default, host,
-		       jc, jmin, jmax, s1, s2, s3, s4,
-		       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at
-		FROM templates ORDER BY created_at ASC
-	`)
+const templateColumns = `id, name, is_default, host,
+	       jc, jmin, jmax, s1, s2, s3, s4,
+	       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
+	       header_protection_key, content_padding_addition,
+	       rekey_after_time, rekey_timeout, reject_after_time,
+	       keepalive_timeout, max_handshake_attempts, version,
+	       random_trailers, disable_cookies`
+
+// scanTemplate scans one row's worth of templateColumns into t.
+func scanTemplate(t *Template, scan func(...any) error) error {
+	var isDefault int
+	var hpk, cpa, rat, rt, rejat, kt, mha sql.NullString
+	var rtr, dc sql.NullString
+	if err := scan(
+		&t.ID, &t.Name, &isDefault, &t.Host,
+		&t.Jc, &t.Jmin, &t.Jmax,
+		&t.S1, &t.S2, &t.S3, &t.S4,
+		&t.H1, &t.H2, &t.H3, &t.H4,
+		&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
+		&t.CreatedAt,
+		&hpk, &cpa, &rat, &rt, &rejat, &kt, &mha,
+		&t.Version,
+		&rtr, &dc,
+	); err != nil {
+		return err
+	}
+	t.IsDefault = isDefault == 1
+	t.HeaderProtectionKey = hpk.String
+	t.ContentPaddingAddition = cpa.String
+	t.RekeyAfterTime = rat.String
+	t.RekeyTimeout = rt.String
+	t.RejectAfterTime = rejat.String
+	t.KeepaliveTimeout = kt.String
+	t.MaxHandshakeAttempts = mha.String
+	t.RandomTrailers = rtr.String
+	t.DisableCookies = dc.String
+	return nil
+}
+
+// GetTemplates returns all templates, optionally filtered to one version
+// ("2.0" or "3.0"). Empty version returns all templates regardless of version.
+func GetTemplates(version string) ([]Template, error) {
+	query := `SELECT ` + templateColumns + ` FROM templates`
+	var args []any
+	if version != "" {
+		query += ` WHERE version = ?`
+		args = append(args, version)
+	}
+	query += ` ORDER BY created_at ASC`
+
+	rows, err := db.DB().Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("templates query: %w", err)
 	}
@@ -227,18 +301,9 @@ func GetTemplates() ([]Template, error) {
 	var out []Template
 	for rows.Next() {
 		var t Template
-		var isDefault int
-		if err := rows.Scan(
-			&t.ID, &t.Name, &isDefault, &t.Host,
-			&t.Jc, &t.Jmin, &t.Jmax,
-			&t.S1, &t.S2, &t.S3, &t.S4,
-			&t.H1, &t.H2, &t.H3, &t.H4,
-			&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
-			&t.CreatedAt,
-		); err != nil {
+		if err := scanTemplate(&t, rows.Scan); err != nil {
 			return nil, fmt.Errorf("template scan: %w", err)
 		}
-		t.IsDefault = isDefault == 1
 		out = append(out, t)
 	}
 
@@ -250,9 +315,11 @@ func GetTemplate(id string) (*Template, error) {
 	return queryTemplate(`WHERE id = ?`, id)
 }
 
-// GetDefaultTemplate returns the template marked as default, or nil.
-func GetDefaultTemplate() (*Template, error) {
-	return queryTemplate(`WHERE is_default = 1`)
+// GetDefaultTemplate returns the default template for the given version
+// ("2.0" or "3.0"), or nil if that version has no default set. Default is
+// scoped per-version — see CreateTemplate's comment for why.
+func GetDefaultTemplate(version string) (*Template, error) {
+	return queryTemplate(`WHERE is_default = 1 AND version = ?`, version)
 }
 
 // CreateTemplate creates a new template with random H1-H4 ranges if not provided.
@@ -261,8 +328,25 @@ func CreateTemplate(data Template) (*Template, error) {
 	if data.Name == "" {
 		return nil, fmt.Errorf("template name is required")
 	}
+	if data.Version == "" {
+		data.Version = "2.0"
+	}
+	if data.Version != "2.0" && data.Version != "3.0" {
+		return nil, fmt.Errorf("invalid template version %q — must be \"2.0\" or \"3.0\"", data.Version)
+	}
+	if data.Version != "3.0" && data.hasAWG3Fields() {
+		return nil, fmt.Errorf("AWG 3.0 Transport Protection fields require version=\"3.0\"")
+	}
+	if data.HeaderProtectionKey != "" {
+		if err := validate.WGKey(data.HeaderProtectionKey); err != nil {
+			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
+		}
+	}
 
 	// Unique name check (case-insensitive, mirrors Node.js behaviour).
+	// (S3/S4 >= 12 requirement for headerProtectionKey is checked below,
+	// after defaults are applied — S4's default of 4 would otherwise
+	// silently violate it for a template that didn't specify S4 explicitly.)
 	var count int
 	if err := db.DB().QueryRow(
 		`SELECT COUNT(*) FROM templates WHERE name = ? COLLATE NOCASE`, data.Name,
@@ -275,19 +359,51 @@ func CreateTemplate(data Template) (*Template, error) {
 
 	// Generate H1-H4 if not provided (FIX-4: non-overlapping zones).
 	hr := generateRandomHRanges()
-	if data.H1 == "" { data.H1 = hr.H1 }
-	if data.H2 == "" { data.H2 = hr.H2 }
-	if data.H3 == "" { data.H3 = hr.H3 }
-	if data.H4 == "" { data.H4 = hr.H4 }
+	if data.H1 == "" {
+		data.H1 = hr.H1
+	}
+	if data.H2 == "" {
+		data.H2 = hr.H2
+	}
+	if data.H3 == "" {
+		data.H3 = hr.H3
+	}
+	if data.H4 == "" {
+		data.H4 = hr.H4
+	}
 
 	// Apply defaults for numeric fields.
-	if data.Jc == 0   { data.Jc = 6 }
-	if data.Jmin == 0 { data.Jmin = 10 }
-	if data.Jmax == 0 { data.Jmax = 50 }
-	if data.S1 == 0   { data.S1 = 64 }
-	if data.S2 == 0   { data.S2 = 67 }
-	if data.S3 == 0   { data.S3 = 64 }
-	if data.S4 == 0   { data.S4 = 4 }
+	if data.Jc == 0 {
+		data.Jc = 6
+	}
+	if data.Jmin == 0 {
+		data.Jmin = 10
+	}
+	if data.Jmax == 0 {
+		data.Jmax = 50
+	}
+	if data.S1 == 0 {
+		data.S1 = 64
+	}
+	if data.S2 == 0 {
+		data.S2 = 67
+	}
+	if data.S3 == 0 {
+		data.S3 = 64
+	}
+	if data.S4 == 0 {
+		data.S4 = 4
+	}
+
+	// See interface.go's writeAWG3Fields / plans/awg3-protocol-notes.md: the
+	// header-protection cipher's nonce comes from the first 12 bytes of the
+	// S3/S4 padding buffer — amneziawg-go and the kernel module both refuse
+	// to bring an interface up otherwise. Checked here (after defaults) so a
+	// template that didn't explicitly set S3/S4 can't slip through with the
+	// plain-AWG2 defaults (S4 defaults to 4).
+	if err := awgparams.ValidateHeaderProtectionKeyPadding(data.HeaderProtectionKey, data.S3, data.S4); err != nil {
+		return nil, err
+	}
 
 	data.ID = uuid.NewString()
 	data.CreatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -297,9 +413,14 @@ func CreateTemplate(data Template) (*Template, error) {
 		return nil, err
 	}
 
-	// If this is default — unset all others first.
+	// If this is default — unset other defaults of the SAME version only.
+	// "Default" is scoped per-version (2.0/3.0 each have their own default),
+	// not global — otherwise setting a v3 default would silently steal the
+	// v2 default's slot, and buildAWG2Params's fallback-to-random path for
+	// whichever version lost its default would trigger on every quick-create
+	// even though the admin never intended to give that version up.
 	if data.IsDefault {
-		if _, err := tx.Exec(`UPDATE templates SET is_default = 0`); err != nil {
+		if _, err := tx.Exec(`UPDATE templates SET is_default = 0 WHERE version = ?`, data.Version); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
@@ -308,14 +429,23 @@ func CreateTemplate(data Template) (*Template, error) {
 	_, err = tx.Exec(`
 		INSERT INTO templates
 		    (id, name, is_default, host, jc, jmin, jmax, s1, s2, s3, s4,
-		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		     h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at,
+		     header_protection_key, content_padding_addition,
+		     rekey_after_time, rekey_timeout, reject_after_time,
+		     keepalive_timeout, max_handshake_attempts, version,
+		     random_trailers, disable_cookies)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		data.ID, data.Name, boolInt(data.IsDefault), data.Host,
 		data.Jc, data.Jmin, data.Jmax,
 		data.S1, data.S2, data.S3, data.S4,
 		data.H1, data.H2, data.H3, data.H4,
 		data.I1, data.I2, data.I3, data.I4, data.I5,
 		data.CreatedAt,
+		db.NullIfEmpty(data.HeaderProtectionKey), db.NullIfEmpty(data.ContentPaddingAddition),
+		db.NullIfEmpty(data.RekeyAfterTime), db.NullIfEmpty(data.RekeyTimeout), db.NullIfEmpty(data.RejectAfterTime),
+		db.NullIfEmpty(data.KeepaliveTimeout), db.NullIfEmpty(data.MaxHandshakeAttempts),
+		data.Version,
+		db.NullIfEmpty(data.RandomTrailers), db.NullIfEmpty(data.DisableCookies),
 	)
 	if err != nil {
 		tx.Rollback()
@@ -340,25 +470,107 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	}
 
 	// Apply updates to the struct.
-	if v, ok := updates["name"].(string); ok         { t.Name = v }
-	if v, ok := updates["isDefault"].(bool); ok      { t.IsDefault = v }
-	if v, ok := updates["jc"].(float64); ok          { t.Jc = int(v) }
-	if v, ok := updates["jmin"].(float64); ok        { t.Jmin = int(v) }
-	if v, ok := updates["jmax"].(float64); ok        { t.Jmax = int(v) }
-	if v, ok := updates["s1"].(float64); ok          { t.S1 = int(v) }
-	if v, ok := updates["s2"].(float64); ok          { t.S2 = int(v) }
-	if v, ok := updates["s3"].(float64); ok          { t.S3 = int(v) }
-	if v, ok := updates["s4"].(float64); ok          { t.S4 = int(v) }
-	if v, ok := updates["h1"].(string); ok           { t.H1 = v }
-	if v, ok := updates["h2"].(string); ok           { t.H2 = v }
-	if v, ok := updates["h3"].(string); ok           { t.H3 = v }
-	if v, ok := updates["h4"].(string); ok           { t.H4 = v }
-	if v, ok := updates["i1"].(string); ok           { t.I1 = v }
-	if v, ok := updates["i2"].(string); ok           { t.I2 = v }
-	if v, ok := updates["i3"].(string); ok           { t.I3 = v }
-	if v, ok := updates["i4"].(string); ok           { t.I4 = v }
-	if v, ok := updates["i5"].(string); ok           { t.I5 = v }
-	if v, ok := updates["host"].(string); ok         { t.Host = v }
+	if v, ok := updates["name"].(string); ok {
+		t.Name = v
+	}
+	if v, ok := updates["isDefault"].(bool); ok {
+		t.IsDefault = v
+	}
+	if v, ok := updates["jc"].(float64); ok {
+		t.Jc = int(v)
+	}
+	if v, ok := updates["jmin"].(float64); ok {
+		t.Jmin = int(v)
+	}
+	if v, ok := updates["jmax"].(float64); ok {
+		t.Jmax = int(v)
+	}
+	if v, ok := updates["s1"].(float64); ok {
+		t.S1 = int(v)
+	}
+	if v, ok := updates["s2"].(float64); ok {
+		t.S2 = int(v)
+	}
+	if v, ok := updates["s3"].(float64); ok {
+		t.S3 = int(v)
+	}
+	if v, ok := updates["s4"].(float64); ok {
+		t.S4 = int(v)
+	}
+	if v, ok := updates["h1"].(string); ok {
+		t.H1 = v
+	}
+	if v, ok := updates["h2"].(string); ok {
+		t.H2 = v
+	}
+	if v, ok := updates["h3"].(string); ok {
+		t.H3 = v
+	}
+	if v, ok := updates["h4"].(string); ok {
+		t.H4 = v
+	}
+	if v, ok := updates["i1"].(string); ok {
+		t.I1 = v
+	}
+	if v, ok := updates["i2"].(string); ok {
+		t.I2 = v
+	}
+	if v, ok := updates["i3"].(string); ok {
+		t.I3 = v
+	}
+	if v, ok := updates["i4"].(string); ok {
+		t.I4 = v
+	}
+	if v, ok := updates["i5"].(string); ok {
+		t.I5 = v
+	}
+	if v, ok := updates["host"].(string); ok {
+		t.Host = v
+	}
+	if v, ok := updates["version"].(string); ok {
+		t.Version = v
+	}
+	if v, ok := updates["headerProtectionKey"].(string); ok {
+		t.HeaderProtectionKey = v
+	}
+	if v, ok := updates["contentPaddingAddition"].(string); ok {
+		t.ContentPaddingAddition = v
+	}
+	if v, ok := updates["rekeyAfterTime"].(string); ok {
+		t.RekeyAfterTime = v
+	}
+	if v, ok := updates["rekeyTimeout"].(string); ok {
+		t.RekeyTimeout = v
+	}
+	if v, ok := updates["rejectAfterTime"].(string); ok {
+		t.RejectAfterTime = v
+	}
+	if v, ok := updates["keepaliveTimeout"].(string); ok {
+		t.KeepaliveTimeout = v
+	}
+	if v, ok := updates["maxHandshakeAttempts"].(string); ok {
+		t.MaxHandshakeAttempts = v
+	}
+	if v, ok := updates["randomTrailers"].(string); ok {
+		t.RandomTrailers = v
+	}
+	if v, ok := updates["disableCookies"].(string); ok {
+		t.DisableCookies = v
+	}
+	if t.Version != "2.0" && t.Version != "3.0" {
+		return nil, fmt.Errorf("invalid template version %q — must be \"2.0\" or \"3.0\"", t.Version)
+	}
+	if t.Version != "3.0" && t.hasAWG3Fields() {
+		return nil, fmt.Errorf("AWG 3.0 Transport Protection fields require version=\"3.0\"")
+	}
+	if t.HeaderProtectionKey != "" {
+		if err := validate.WGKey(t.HeaderProtectionKey); err != nil {
+			return nil, fmt.Errorf("invalid headerProtectionKey: %w", err)
+		}
+	}
+	if err := awgparams.ValidateHeaderProtectionKeyPadding(t.HeaderProtectionKey, t.S3, t.S4); err != nil {
+		return nil, err
+	}
 
 	tx, err := db.DB().Begin()
 	if err != nil {
@@ -366,7 +578,9 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 	}
 
 	if t.IsDefault {
-		if _, err := tx.Exec(`UPDATE templates SET is_default = 0`); err != nil {
+		// Scoped to t.Version — see CreateTemplate's comment on why default
+		// isn't global across both versions.
+		if _, err := tx.Exec(`UPDATE templates SET is_default = 0 WHERE version = ?`, t.Version); err != nil {
 			tx.Rollback()
 			return nil, err
 		}
@@ -377,13 +591,22 @@ func UpdateTemplate(id string, updates map[string]any) (*Template, error) {
 		    name=?, is_default=?, host=?, jc=?, jmin=?, jmax=?,
 		    s1=?, s2=?, s3=?, s4=?,
 		    h1=?, h2=?, h3=?, h4=?,
-		    i1=?, i2=?, i3=?, i4=?, i5=?
+		    i1=?, i2=?, i3=?, i4=?, i5=?,
+		    header_protection_key=?, content_padding_addition=?,
+		    rekey_after_time=?, rekey_timeout=?, reject_after_time=?,
+		    keepalive_timeout=?, max_handshake_attempts=?, version=?,
+		    random_trailers=?, disable_cookies=?
 		WHERE id=?`,
 		t.Name, boolInt(t.IsDefault), t.Host,
 		t.Jc, t.Jmin, t.Jmax,
 		t.S1, t.S2, t.S3, t.S4,
 		t.H1, t.H2, t.H3, t.H4,
 		t.I1, t.I2, t.I3, t.I4, t.I5,
+		db.NullIfEmpty(t.HeaderProtectionKey), db.NullIfEmpty(t.ContentPaddingAddition),
+		db.NullIfEmpty(t.RekeyAfterTime), db.NullIfEmpty(t.RekeyTimeout), db.NullIfEmpty(t.RejectAfterTime),
+		db.NullIfEmpty(t.KeepaliveTimeout), db.NullIfEmpty(t.MaxHandshakeAttempts),
+		t.Version,
+		db.NullIfEmpty(t.RandomTrailers), db.NullIfEmpty(t.DisableCookies),
 		id,
 	)
 	if err != nil {
@@ -411,14 +634,25 @@ func DeleteTemplate(id string) error {
 	return nil
 }
 
-// SetDefaultTemplate marks one template as default, unsets all others.
+// SetDefaultTemplate marks one template as default, unsets other defaults of
+// the same version only — see CreateTemplate's comment for why default is
+// scoped per-version rather than global.
 func SetDefaultTemplate(id string) (*Template, error) {
 	tx, err := db.DB().Begin()
 	if err != nil {
 		return nil, err
 	}
 
-	if _, err := tx.Exec(`UPDATE templates SET is_default = 0`); err != nil {
+	var version string
+	if err := tx.QueryRow(`SELECT version FROM templates WHERE id = ?`, id).Scan(&version); err != nil {
+		tx.Rollback()
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("template not found")
+		}
+		return nil, err
+	}
+
+	if _, err := tx.Exec(`UPDATE templates SET is_default = 0 WHERE version = ?`, version); err != nil {
 		tx.Rollback()
 		return nil, err
 	}
@@ -454,9 +688,12 @@ func ApplyTemplate(id string) (*AWG2Params, error) {
 	return templateToParams(t), nil
 }
 
-// ApplyDefaultTemplate returns params from the default template, or nil if none set.
-func ApplyDefaultTemplate() (*AWG2Params, error) {
-	t, err := GetDefaultTemplate()
+// ApplyDefaultTemplate returns params from the default template for
+// wantVersion ("2.0" or "3.0"). Returns nil (not an error) if that version
+// has no default template set — the caller (tunnel.Manager.buildAWG2Params)
+// is expected to fall back to a freshly-generated random profile.
+func ApplyDefaultTemplate(wantVersion string) (*AWG2Params, error) {
+	t, err := GetDefaultTemplate(wantVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -469,29 +706,16 @@ func ApplyDefaultTemplate() (*AWG2Params, error) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func queryTemplate(where string, args ...any) (*Template, error) {
-	row := db.DB().QueryRow(`
-		SELECT id, name, is_default, host,
-		       jc, jmin, jmax, s1, s2, s3, s4,
-		       h1, h2, h3, h4, i1, i2, i3, i4, i5, created_at
-		FROM templates `+where, args...)
+	row := db.DB().QueryRow(`SELECT `+templateColumns+` FROM templates `+where, args...)
 
 	var t Template
-	var isDefault int
-	err := row.Scan(
-		&t.ID, &t.Name, &isDefault, &t.Host,
-		&t.Jc, &t.Jmin, &t.Jmax,
-		&t.S1, &t.S2, &t.S3, &t.S4,
-		&t.H1, &t.H2, &t.H3, &t.H4,
-		&t.I1, &t.I2, &t.I3, &t.I4, &t.I5,
-		&t.CreatedAt,
-	)
+	err := scanTemplate(&t, row.Scan)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("template scan: %w", err)
 	}
-	t.IsDefault = isDefault == 1
 	return &t, nil
 }
 
@@ -501,6 +725,15 @@ func templateToParams(t *Template) *AWG2Params {
 		S1: t.S1, S2: t.S2, S3: t.S3, S4: t.S4,
 		H1: t.H1, H2: t.H2, H3: t.H3, H4: t.H4,
 		I1: t.I1, I2: t.I2, I3: t.I3, I4: t.I4, I5: t.I5,
+		HeaderProtectionKey:    t.HeaderProtectionKey,
+		ContentPaddingAddition: t.ContentPaddingAddition,
+		RekeyAfterTime:         t.RekeyAfterTime,
+		RekeyTimeout:           t.RekeyTimeout,
+		RejectAfterTime:        t.RejectAfterTime,
+		KeepaliveTimeout:       t.KeepaliveTimeout,
+		MaxHandshakeAttempts:   t.MaxHandshakeAttempts,
+		RandomTrailers:         t.RandomTrailers,
+		DisableCookies:         t.DisableCookies,
 	}
 }
 
@@ -633,21 +866,29 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 	case "defaultPersistentKeepalive":
 		var n int
 		fmt.Sscanf(v, "%d", &n)
-		if n > 0 { s.DefaultPersistentKeepalive = n }
+		if n > 0 {
+			s.DefaultPersistentKeepalive = n
+		}
 	case "defaultClientAllowedIPs":
 		s.DefaultClientAllowedIPs = v
 	case "gatewayWindowSeconds":
 		var n int
 		fmt.Sscanf(v, "%d", &n)
-		if n > 0 { s.GatewayWindowSeconds = n }
+		if n > 0 {
+			s.GatewayWindowSeconds = n
+		}
 	case "gatewayHealthyThreshold":
 		var f float64
 		fmt.Sscanf(v, "%f", &f)
-		if f > 0 { s.GatewayHealthyThreshold = f }
+		if f > 0 {
+			s.GatewayHealthyThreshold = f
+		}
 	case "gatewayDegradedThreshold":
 		var f float64
 		fmt.Sscanf(v, "%f", &f)
-		if f > 0 { s.GatewayDegradedThreshold = f }
+		if f > 0 {
+			s.GatewayDegradedThreshold = f
+		}
 	case "routerName":
 		s.RouterName = v
 	case "publicIPMode":
@@ -706,6 +947,20 @@ func applySettingKey(s *GlobalSettings, k, v string) {
 }
 
 func boolInt(b bool) int {
-	if b { return 1 }
+	if b {
+		return 1
+	}
 	return 0
+}
+
+// hasAWG3Fields reports whether any AWG 3.0 Transport Protection field is
+// set — used to reject a "2.0" template that carries 3.0-only fields.
+// RandomTrailers/DisableCookies only count when "on" — "off" is functionally
+// identical to unset, so treating it as a marker would reject a "2.0"
+// template for a value that has no actual effect.
+func (t Template) hasAWG3Fields() bool {
+	return t.HeaderProtectionKey != "" || t.ContentPaddingAddition != "" ||
+		t.RekeyAfterTime != "" || t.RekeyTimeout != "" || t.RejectAfterTime != "" ||
+		t.KeepaliveTimeout != "" || t.MaxHandshakeAttempts != "" ||
+		t.RandomTrailers == "on" || t.DisableCookies == "on"
 }

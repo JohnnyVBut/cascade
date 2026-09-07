@@ -1,11 +1,13 @@
 # Local development override — use locally-built image instead of GHCR.
 #
 # Usage:
+#   cp docker-compose.override.yml.example docker-compose.override.yml
 #   ./build.sh                          # builds cascade:latest locally
 #   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
 #
 # This file is NOT used in production (server pulls from ghcr.io).
-# It is git-ignored by default — copy to your working dir as needed.
+# docker-compose.override.yml is git-ignored — copy this template to that
+# name in your own working dir, it will never be committed or distributed.
 
 services:
   cascade:
