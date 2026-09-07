@@ -107,6 +107,18 @@ func DB() *sql.DB {
 	return instance
 }
 
+// TryDB returns the main config database handle, or nil if Init() has not
+// been called (or Close() already has). Prefer this over DB() in code that
+// can legitimately run before Init()/after Close() — in particular a
+// background goroutine that isn't tied to a single request's lifecycle, such
+// as gateway.Monitor's probe loop, which already falls back to hardcoded
+// defaults on any GetSettings() error (see globalThresholds) but only if
+// that error is actually returned instead of turning into a panic here.
+// Confirmed in the wild: a probe goroutine's very first (immediate, fired
+// synchronously on Monitor.Start) call raced a unit test's db.Close(),
+// panicking the whole test binary instead of gracefully falling back.
+func TryDB() *sql.DB { return instance }
+
 // MetricsDB returns the metrics-only database handle (metrics.db).
 // Panics if Init() has not been called.
 func MetricsDB() *sql.DB {
