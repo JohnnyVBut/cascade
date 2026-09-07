@@ -55,6 +55,7 @@ func (m *Manager) Init() error {
 	for _, gw := range gateways {
 		m.monitor.Start(gw)
 	}
+	m.selfHealStaleGroupMembers()
 	log.Printf("gateway-manager: init complete (%d gateways)", len(gateways))
 	return nil
 }
@@ -231,6 +232,7 @@ func (m *Manager) DeleteGateway(id string) error {
 	}
 
 	pruneDashboardWidgetsForGateway(tx, id)
+	pruneGatewayFromGroups(tx, id)
 
 	if err := tx.Commit(); err != nil {
 		return err
@@ -299,6 +301,131 @@ func pruneDashboardWidgetsForGateway(tx *sql.Tx, id string) {
 			string(out), r.userID, r.page); err != nil {
 			log.Printf("gateway-manager: prune widgets: update failed for user %s/%s: %v", r.userID, r.page, err)
 		}
+	}
+}
+
+// pruneGatewayFromGroups removes gatewayID from every gateway_groups.members
+// list that references it. Without this, deleting a gateway that's a member
+// of a group leaves a "ghost" entry behind — GetGroup/ResolveGroupGateway
+// still see a GatewayGroupMember pointing at an ID that no longer exists in
+// the gateways table, which GetGateway/GroupContainsGateway then silently
+// skip or misreport (see GitHub issue #106: a deleted gateway kept showing
+// up as a group member indefinitely, surviving even the v0.9.7 update that
+// only fixed the analogous dashboard-widget staleness, issue #96 — a
+// different storage location for the same class of dangling reference).
+//
+// Runs inside the caller's transaction (see DeleteGateway) so the gateway
+// row delete and the group membership cleanup commit atomically.
+func pruneGatewayFromGroups(tx *sql.Tx, gatewayID string) {
+	rows, err := tx.Query(`SELECT id, members FROM gateway_groups WHERE members LIKE '%' || ? || '%'`, gatewayID)
+	if err != nil {
+		log.Printf("gateway-manager: prune groups: query failed: %v", err)
+		return
+	}
+	type groupRow struct{ id, membersJSON string }
+	var candidates []groupRow
+	for rows.Next() {
+		var r groupRow
+		if err := rows.Scan(&r.id, &r.membersJSON); err != nil {
+			log.Printf("gateway-manager: prune groups: scan failed: %v", err)
+			continue
+		}
+		candidates = append(candidates, r)
+	}
+	// Drain and close rows before issuing further statements on this same
+	// transaction — see pruneDashboardWidgetsForGateway's identical comment;
+	// same single-connection (SetMaxOpenConns(1)) constraint applies here.
+	rows.Close()
+
+	for _, r := range candidates {
+		var members []GatewayGroupMember
+		if err := json.Unmarshal([]byte(r.membersJSON), &members); err != nil {
+			log.Printf("gateway-manager: prune groups: unmarshal failed for group %s: %v", r.id, err)
+			continue
+		}
+		filtered := members[:0]
+		changed := false
+		for _, mem := range members {
+			if mem.GatewayID == gatewayID {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, mem)
+		}
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(filtered)
+		if err != nil {
+			log.Printf("gateway-manager: prune groups: marshal failed for group %s: %v", r.id, err)
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE gateway_groups SET members = ? WHERE id = ?`, string(out), r.id); err != nil {
+			log.Printf("gateway-manager: prune groups: update failed for group %s: %v", r.id, err)
+		}
+	}
+}
+
+// selfHealStaleGroupMembers removes any GatewayGroupMember from every group
+// whose GatewayID no longer exists in the gateways table. Deleting a gateway
+// prunes group membership going forward (see pruneGatewayFromGroups), but
+// rows written before that fix shipped — or by any other path that could
+// leave a dangling reference — never got cleaned up on their own. Called
+// once from Init() so this runs automatically on every startup/update with
+// no user action required, mirroring how getDashboardWidgets self-heals
+// stale widget refs on read (issue #96) — except this runs proactively at
+// startup rather than lazily on the next read, since group membership isn't
+// naturally re-read on every page load the way dashboard widgets are.
+//
+// Best-effort: errors are logged, never returned — a failed self-heal here
+// must not block server startup.
+func (m *Manager) selfHealStaleGroupMembers() {
+	groups, err := m.GetGroups()
+	if err != nil {
+		log.Printf("gateway-manager: self-heal group members: list groups failed: %v", err)
+		return
+	}
+	if len(groups) == 0 {
+		return
+	}
+
+	live := make(map[string]bool)
+	gateways, err := m.GetGateways()
+	if err != nil {
+		log.Printf("gateway-manager: self-heal group members: list gateways failed: %v", err)
+		return
+	}
+	for _, gw := range gateways {
+		live[gw.ID] = true
+	}
+
+	healed := 0
+	for _, grp := range groups {
+		filtered := grp.Gateways[:0]
+		changed := false
+		for _, mem := range grp.Gateways {
+			if !live[mem.GatewayID] {
+				changed = true
+				continue
+			}
+			filtered = append(filtered, mem)
+		}
+		if !changed {
+			continue
+		}
+		out, err := json.Marshal(filtered)
+		if err != nil {
+			log.Printf("gateway-manager: self-heal group members: marshal failed for group %s: %v", grp.ID, err)
+			continue
+		}
+		if _, err := db.DB().Exec(`UPDATE gateway_groups SET members = ? WHERE id = ?`, string(out), grp.ID); err != nil {
+			log.Printf("gateway-manager: self-heal group members: update failed for group %s: %v", grp.ID, err)
+			continue
+		}
+		healed++
+	}
+	if healed > 0 {
+		log.Printf("gateway-manager: self-heal: removed stale member(s) from %d gateway group(s)", healed)
 	}
 }
 
