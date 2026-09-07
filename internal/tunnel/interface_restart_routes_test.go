@@ -69,15 +69,29 @@ func TestRestartWithNewSettings_ReapplyDependents_DoesNotPanicWithRoutingInitial
 	// initialized.
 
 	// Also exercise plain Restart() — the doReload()/KernelRemovePeer fallback
-	// path that had the identical bug. Tolerate a RegenerateConfig failure
-	// (expected in this sandbox/most CI — no writable /etc/amnezia/amneziawg
-	// without root, see import_conf_psk_test.go's established pattern); any
-	// OTHER error (in particular a panic, which a test failure here would not
-	// catch but go test's own crash report would) still fails the test.
+	// path that had the identical bug. Tolerate the environment-dependent
+	// failures every other test in this package already tolerates: no
+	// writable /etc/amnezia/amneziawg without root (see
+	// import_conf_psk_test.go's established pattern), and — seen on the real
+	// GitHub Actions ubuntu-latest runner, unlike this sandbox — no
+	// wg-quick/awg-quick binary in PATH at all ("command not found", exit
+	// status 127). Any OTHER error (in particular a panic, which a test
+	// failure here would not catch but go test's own crash report would)
+	// still fails the test.
+	benign := []string{"amneziawg", "mkdir", "not found", "exit status 127"}
 	iface.reloadMu.Lock()
 	err := iface.Restart()
 	iface.reloadMu.Unlock()
-	if err != nil && !strings.Contains(err.Error(), "amneziawg") && !strings.Contains(err.Error(), "mkdir") {
-		t.Errorf("Restart() = %v, want nil or a benign RegenerateConfig permission error", err)
+	if err != nil {
+		ok := false
+		for _, s := range benign {
+			if strings.Contains(err.Error(), s) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			t.Errorf("Restart() = %v, want nil or a benign environment-dependent error", err)
+		}
 	}
 }
