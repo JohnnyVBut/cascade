@@ -13,10 +13,10 @@ port, and peer list.
 
 - Create / edit / delete interfaces (`wg10`, `wg11`, …)
 - Start / stop / restart via UI or API
-- Two protocols: **WireGuard 1.0** (`wg-quick`) and **AmneziaWG 2.0** (`awg-quick`)
+- Three protocols: **WireGuard 1.0** (`wg-quick`), **AmneziaWG 2.0** and **AmneziaWG 3.0** (`awg-quick`) — AWG3 adds Transport Protection (S3/S4) and Header Protection
 - Hot-reload of parameters without dropping active connections (`awg syncconf`)
 - Auto-start on container restart — all `enabled=true` interfaces come up automatically
-- Per-interface AWG2 obfuscation parameters (Jc, Jmin, Jmax, S1–S4, H1–H4, I1–I5)
+- Per-interface AWG2/AWG3 obfuscation parameters (Jc, Jmin, Jmax, S1–S4, H1–H4, I1–I5, HeaderProtectionKey)
 - Export interface parameters for S2S workflow
 - Backup / restore interface + all peers as JSON
 
@@ -42,16 +42,19 @@ Two peer types per interface:
 
 ---
 
-## AmneziaWG 2.0 Obfuscation
+## AmneziaWG 2.0 / 3.0 Obfuscation
 
 - Per-interface obfuscation parameters stored in DB
-- **7 CPS profiles** for traffic imitation: QUIC Initial, QUIC 0-RTT, TLS 1.3,
-  DTLS 1.3, HTTP/3, SIP, Noise_IK
+- **11 CPS profiles** for traffic imitation: Random, QUIC Initial, QUIC 0-RTT, TLS 1.3,
+  DTLS 1.2, HTTP/3, SIP, Noise_IK (WireGuard), DNS Query (RFC 1035), TLS→QUIC (composite),
+  QUIC Burst (composite)
 - Intensity levels: `low`, `medium`, `high`
 - **AWG2 Templates** — save, load, share obfuscation profiles
 - **Generate (⚡)** — one-click parameter generation using the AmneziaWG-Architect
   algorithm, with optional save as template
 - Non-overlapping H1–H4 ranges (4 zones of uint32 space, no collision risk)
+- **AWG3 Transport Protection (S3/S4)** and **Header Protection** — optional fields,
+  key-padding validation when S3/S4 ≥ 12
 
 ---
 
@@ -163,6 +166,7 @@ Reusable named objects for use in firewall rules and NAT.
 | `group` | Combines multiple host / network aliases |
 | `port` | L4 port entries (`tcp:443`, `udp:53`, `any:80`, `tcp:8080-8090`) |
 | `port-group` | Combines multiple port aliases |
+| `client-group` | Group of VPN clients (peers) — used for Rate Limits, see below |
 
 ### ipset generation
 - Manual upload (one CIDR per line)
@@ -226,7 +230,7 @@ Legacy wg0 interface for traditional admin VPN clients.
 - `chartType` — traffic graph style: off / line / area / bar
 - Gateway monitoring thresholds (global defaults)
 - AWG2 Templates: CRUD + set default
-- AWG2 parameter generator (⚡): 7 CPS profiles, 3 intensity levels, optional save
+- AWG2/AWG3 parameter generator (⚡): 11 CPS profiles, 3 intensity levels, optional save
 
 ---
 
@@ -248,7 +252,7 @@ See [API.en.md](API.en.md) for the full endpoint reference.
 
 ### Runtime
 - **Go 1.23** + **Fiber v2** — single static binary, no Node.js, no npm
-- **SQLite** (modernc.org/sqlite, pure Go, no CGO) — single `wireguard.db` file
+- **SQLite** (modernc.org/sqlite, pure Go, no CGO) — main `cascade.db` file (auto-migrated from legacy `wireguard.db`/`awg.db`) + separate `metrics.db` for metrics
 - WAL journal mode — concurrent reads, serialised writes
 - Version-based migrations — schema evolves safely across upgrades
 - `--network host` — WireGuard UDP ports are immediately accessible without port mapping
