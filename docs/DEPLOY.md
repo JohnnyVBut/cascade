@@ -313,7 +313,9 @@ All Cascade state is stored in `~/cascade/data/`:
 
 ```
 data/
-  wireguard.db          ← SQLite: interfaces, peers, routes, NAT, firewall rules, etc.
+  cascade.db            ← SQLite: interfaces, peers, routes, NAT, firewall rules, etc.
+                           (auto-migrated from legacy wireguard.db/awg.db if present)
+  metrics.db             ← SQLite: traffic/gateway metrics history (separate file, not in default backup)
   *.save                ← ipset snapshots (auto-restored on startup)
   /etc/amnezia/amneziawg/wg10.conf   ← generated WireGuard configs (inside container)
 ```
