@@ -14,9 +14,14 @@
 - управления маршрутами (статические + просмотр ядра);
 - Outbound NAT (MASQUERADE/SNAT);
 - мониторинга шлюзов (ICMP ping + HTTP probe, Gateway Groups, failover);
-- Firewall Aliases (host/network/ipset/group/port/port-group);
-- генерации AWG2 параметров (7 CPS-профилей);
-- многопользовательской аутентификации с TOTP 2FA и API-токенами.
+- Firewall Aliases (7 типов: host/network/ipset/client-group/group/port/port-group);
+- генерации AWG2/AWG3 параметров обфускации (11 CPS-профилей);
+- многопользовательской аутентификации с TOTP 2FA и API-токенами;
+- управления несколькими серверами Cascade из одного UI (Remotes/Multi-Server);
+- встроенного Speed Test (iperf3) между управляемыми серверами;
+- сбора и хранения метрик (CPU/RAM/сеть/статус шлюзов) с историей в SQLite;
+- сетевой диагностики (ping/traceroute/tcpdump) через SSE-стриминг;
+- ограничения полосы по client-group и индивидуальным пирам (tc HTB).
 
 ### Технологический стек
 
@@ -25,7 +30,7 @@
 | Backend | Go 1.23, Fiber v2 (HTTP framework) |
 | База данных | SQLite via `modernc.org/sqlite` (CGO-free, чисто Go) |
 | Frontend | Vue 2 (CDN, без сборки), Tailwind CSS (CDN), VueI18n, ApexCharts |
-| WireGuard | `awg-quick` / `awg` (AmneziaWG 2.0), `wg-quick` / `wg` (WireGuard 1.0) |
+| WireGuard | `awg-quick` / `awg` (AmneziaWG 2.0 и 3.0 — Transport Protection/Header Protection), `wg-quick` / `wg` (WireGuard 1.0) |
 | QR коды | `rsc.io/qr` (pure Go SVG) |
 | TOTP | `github.com/pquerna/otp` |
 | Деплой | Docker, `--network host`, Caddy reverse proxy |
@@ -63,13 +68,34 @@ cascade/
 │   │   ├── settings.go          ← /api/settings + /api/templates
 │   │   ├── users.go             ← /api/users/* + TOTP setup
 │   │   ├── tokens.go            ← /api/tokens/*
+│   │   ├── dashboard.go         ← /api/dashboard/* (виджеты, system-info)
+│   │   ├── diagnostics.go       ← /api/diagnostics/* (ping/traceroute/tcpdump, SSE)
+│   │   ├── metrics.go           ← /api/metrics/* (снапшот + история)
+│   │   ├── remotes.go           ← /api/remotes/* (мультисервер + прокси на remote)
+│   │   ├── speedtest.go         ← /api/speedtest/* (iperf3 между серверами)
+│   │   ├── system.go            ← /api/system/* (backup/restore)
+│   │   ├── version.go           ← /api/version, /api/version/check
 │   │   └── users_admin_test.go
-│   ├── awgparams/               ← Генератор AWG2 параметров (9 CPS-профилей)
-│   │   ├── generator.go
+│   ├── awgparams/               ← Генератор AWG2/AWG3 параметров (11 CPS-профилей) + version-mismatch detection
+│   │   ├── generator.go         ← генерация обфускации (Jc/Jmin/Jmax/S1-S4/H1-H4/I1-I5)
+│   │   ├── protocol.go          ← IsAmneziaWG/IsUserspaceMode, AWG3 HeaderProtectionKey validation
+│   │   ├── version_check.go     ← сравнение версии awg CLI и kernel-модуля (dashboard system-info)
 │   │   └── generator_test.go
-│   ├── db/                      ← SQLite lifecycle + migrations (v1..v10)
-│   │   ├── db.go
+│   ├── db/                      ← SQLite lifecycle + миграции
+│   │   ├── db.go                ← основной файл: <dataDir>/cascade.db (переименован из wireguard.db)
 │   │   └── db_test.go
+│   ├── metrics/                 ← Сэмплер CPU/RAM/сеть/gateway-статусов + история в SQLite
+│   │   └── collector.go
+│   ├── remotes/                 ← Хранилище зарегистрированных remote-серверов (URL + API-токен)
+│   │   └── remotes.go
+│   ├── remoteclient/            ← HTTP-клиент для обращения к remote Cascade-серверам
+│   │   ├── client.go            ← логин/ObtainToken, Ping
+│   │   └── ssrf.go               ← SSRF-guard: резолвинг только в публичные адреса
+│   ├── tc/                      ← Linux Traffic Control (tc HTB) — per-peer/per-group rate limiting
+│   │   └── tc.go
+│   ├── version/                 ← Версия бинарника (ldflags) + фоновая проверка обновлений с GitHub
+│   │   ├── version.go           ← Version/GitCommit переменные (инъекция через ldflags)
+│   │   └── updater.go           ← фоновый поллер releases/latest, 24ч кэш
 │   ├── firewall/                ← FirewallManager: iptables цепочки, PBR, fallback
 │   │   ├── manager.go           ← 1414 строк
 │   │   └── firewall_test.go
@@ -121,8 +147,11 @@ cascade/
 │   │   ├── scripts/
 │   │   │   └── acme-install.sh  ← Let's Encrypt cert для bare IP
 │   │   └── www/                 ← Decoy site файлы
-│   ├── setup.sh                 ← первоначальный деплой
-│   └── switch-mode.sh           ← переключение режимов (host/bridge/isolated)
+│   ├── setup.sh                 ← полный деплой: kernel upgrade, AWG mode, Docker, TLS, Caddy (Step 0-10)
+│   ├── switch-mode.sh           ← переключить kernel/userspace на уже установленной системе; с v0.9.5 сверяет версию amneziawg-dkms и пересинхронизирует при апдейте
+│   ├── backup.sh                ← бэкап данных перед апгрейдом
+│   ├── quickstart-kernel.sh     ← одна команда: клон + setup.sh --yes в kernel-режиме
+│   └── quickstart-userspace.sh  ← одна команда: клон + setup.sh --yes в userspace-режиме
 ├── cmd/
 │   └── awg-easy/main.go
 ├── Dockerfile                ← multi-stage: builder (Go 1.23) + runtime (amneziawg-go)
@@ -746,9 +775,10 @@ type ExecError struct {
 
 ### 3.15 Пакет `awgparams`
 
-**Назначение:** генератор AWG2 параметров обфускации (порт AmneziaWG-Architect).
+**Назначение:** генератор AWG2/AWG3 параметров обфускации (порт AmneziaWG-Architect) +
+детект протокольной версии/режима работы.
 
-**Поддерживаемые CPS-профили:**
+**Поддерживаемые CPS-профили (11):**
 
 | ID | Описание |
 |----|----------|
@@ -760,15 +790,32 @@ type ExecError struct {
 | `http3` | HTTP/3 over QUIC |
 | `sip` | SIP REGISTER request |
 | `wireguard_noise` | WireGuard Noise_IK handshake initiation |
+| `dns_query` | DNS A/AAAA query (RFC 1035, без BPF-записи) |
 | `tls_to_quic` | Composite: TLS ClientHello → QUIC Initial |
 | `quic_burst` | Composite: QUIC Initial → QUIC 0-RTT → HTTP/3 |
 
-**Публичные функции:**
+**Публичные функции (`generator.go`):**
 
 ```go
 func Generate(opts Options) (*Params, error)
 func ListProfiles() []Profile
 ```
+
+**AWG3-специфика (`protocol.go`):**
+
+```go
+func IsAmneziaWG(protocol string) bool   // "amneziawg-2.0" или "amneziawg-3.0"
+func IsUserspaceMode() bool               // читает WG_QUICK_USERSPACE_IMPLEMENTATION
+func ValidateHeaderProtectionKeyPadding(headerProtectionKey string, s3, s4 int) error
+    // AWG3 Header Protection требует S3/S4 ≥ 12, если HeaderProtectionKey задан
+```
+
+**Version-mismatch detection (`version_check.go`):** сравнивает major.minor версию `awg` CLI
+(из контейнера) и загруженного в ядро kernel-модуля (`modinfo`), только в kernel-режиме.
+Результат кэшируется на процесс (`sync.Once`) и отдаётся в `GET /api/dashboard/system-info` как
+`awgCliVersion`/`awgKernelVersion`/`awgVersionMismatch` — красный индикатор в UI при рассинхроне
+(частая причина: `amneziawg-dkms` обновился на диске, но модуль в памяти не перезагружен —
+см. `deploy/switch-mode.sh`).
 
 ---
 
@@ -994,6 +1041,8 @@ recover.New()
 | POST | /api/tunnel-interfaces/:id/restart | Рестарт |
 | GET | /api/tunnel-interfaces/:id/export-params | S2S interconnect export JSON |
 | GET | /api/tunnel-interfaces/:id/export-obfuscation | AWG2 params JSON |
+| GET | /api/tunnel-interfaces/:id/export | Экспорт полного интерфейса (+ приватный ключ, опц. пиры) для переноса на другой сервер |
+| POST | /api/tunnel-interfaces/import-interface | Импорт интерфейса из `GET .../export` |
 | GET | /api/tunnel-interfaces/:id/backup | Скачать interface+peers как JSON |
 | PUT | /api/tunnel-interfaces/:id/restore | Восстановить пиров из JSON backup |
 
@@ -1004,6 +1053,7 @@ recover.New()
 | GET | /api/tunnel-interfaces/:id/peers | Список пиров |
 | POST | /api/tunnel-interfaces/:id/peers | Создать пир |
 | POST | /api/tunnel-interfaces/:id/peers/import-json | Interconnect import |
+| POST | /api/tunnel-interfaces/:id/peers/import-client-configs | Сопоставить загруженные `.conf` с пирами по pubkey, сохранить приватный ключ |
 | GET | /api/tunnel-interfaces/:id/peers/:peerId | Один пир |
 | PATCH | /api/tunnel-interfaces/:id/peers/:peerId | Обновить |
 | DELETE | /api/tunnel-interfaces/:id/peers/:peerId | Удалить |
@@ -1053,6 +1103,10 @@ recover.New()
 | PATCH | /api/firewall/rules/:id | Обновить / toggle |
 | DELETE | /api/firewall/rules/:id | Удалить |
 | POST | /api/firewall/rules/:id/move | `{ direction: "up"\|"down" }` |
+| POST | /api/firewall/reorder | `{ ids: [...] }` — переупорядочить все правила разом |
+| GET | /api/firewall/pending | `{ hasPendingChanges }` — черновик vs применённый снапшот |
+| POST | /api/firewall/apply | Применить черновик: снапшот + rebuildChains() |
+| POST | /api/firewall/discard | Откатить черновик к применённому снапшоту |
 
 #### Gateways
 
@@ -1075,12 +1129,79 @@ recover.New()
 |--------|------|----------|
 | GET | /api/aliases | Все aliases |
 | POST | /api/aliases | Создать |
+| GET | /api/aliases/client-groups | Только тип `client-group` (для dropdown в peer форме) |
 | GET | /api/aliases/:id | Один alias |
 | PATCH | /api/aliases/:id | Обновить |
 | DELETE | /api/aliases/:id | Удалить |
 | POST | /api/aliases/:id/upload | Загрузить данные ipset |
 | POST | /api/aliases/:id/generate | Запустить async генерацию → `{ jobId }` |
 | GET | /api/aliases/:id/generate/:jobId | Статус job `{ status, entryCount?, error? }` |
+
+#### Dashboard
+
+| Method | Path | Описание |
+|--------|------|----------|
+| GET | /api/dashboard/widgets?page=dashboard\|diagnostics | Раскладка виджетов пользователя (+ self-heal протухших `gateway:` ссылок) |
+| PUT | /api/dashboard/widgets?page=... | Сохранить раскладку |
+| GET | /api/dashboard/system-info | Hostname/uptime/load/mem + AWG CLI/kernel version-mismatch |
+
+#### Metrics
+
+| Method | Path | Описание |
+|--------|------|----------|
+| GET | /api/metrics | Снапшот: CPU, RAM, сеть по интерфейсам, статус шлюзов |
+| GET | /api/metrics/history?key=cpu&period=5m\|1h\|6h\|24h\|7d\|30d | История точек |
+| GET | /api/metrics/gateway-dist?key=gateway:<id>&period=1h | Распределение статусов шлюза по бакетам (для диаграммы) |
+
+#### Diagnostics
+
+| Method | Path | Описание |
+|--------|------|----------|
+| POST | /api/diagnostics/ping | Разовый ping, JSON-результат |
+| GET | /api/diagnostics/ping/stream | Потоковый ping (SSE) |
+| GET | /api/diagnostics/traceroute/stream | Потоковый traceroute (SSE) |
+| GET | /api/diagnostics/tcpdump/stream?save=true | Потоковый tcpdump (SSE), опц. сохранение PCAP |
+| POST | /api/diagnostics/tcpdump/stop?file=<id> | Остановить захват, финализировать PCAP |
+| GET | /api/diagnostics/tcpdump/download?file=<id> | Скачать PCAP (одноразово) |
+
+#### Remotes (Multi-Server)
+
+| Method | Path | Описание |
+|--------|------|----------|
+| GET | /api/remotes | Список зарегистрированных серверов (токены не отдаются) |
+| POST | /api/remotes | Зарегистрировать: логин+пароль(+TOTP) или готовый токен |
+| DELETE | /api/remotes/:id | Удалить |
+| POST | /api/remotes/:id/test | Проверка связи |
+| ALL | /api/remotes/:id/proxy/* | Прокси на `/api/*` remote-сервера со своим Bearer-токеном |
+
+#### Speed Test
+
+| Method | Path | Описание |
+|--------|------|----------|
+| GET | /api/speedtest/check | Установлен ли `iperf3` |
+| POST | /api/speedtest/run | Запустить async тест → `{ jobId }` |
+| GET | /api/speedtest/result/:jobId | Опросить статус/результат |
+| GET | /api/speedtest/results | История (последние 100) |
+| DELETE | /api/speedtest/results | Очистить историю |
+| POST | /api/speedtest/server | *Внутренний:* поднять `iperf3 -s` |
+| DELETE | /api/speedtest/server/:sessionId | *Внутренний:* убить сессию |
+| POST | /api/speedtest/client | *Внутренний:* выполнить `iperf3 -c` |
+
+#### System Backup
+
+| Method | Path | Описание |
+|--------|------|----------|
+| POST | /api/system/backup | Скачать `.tar.gz`(.enc) со всей БД + ipset-файлами |
+| GET | /api/system/backups | Список авто-бэкапов, снятых перед каждым restore |
+| POST | /api/system/restore/preview | Сверить интерфейсы бэкапа с текущими (нужен ли ifaceMap) |
+| POST | /api/system/restore | Восстановить: StopAll → FlushAll → DestroyAll → записать файлы → перезапуск процесса |
+
+#### Version
+
+| Method | Path | Описание |
+|--------|------|----------|
+| GET | /api/version | `{ version, gitCommit, latestVersion, updateAvailable, ... }`, публичный |
+| POST | /api/version/check | Форсировать проверку GitHub Releases (обходит 24ч кэш) |
 
 #### Compat (с AuthMiddleware)
 
@@ -1090,13 +1211,21 @@ recover.New()
 | ALL | /api/wireguard/* | 501 Not Implemented |
 | GET | /api/system/interfaces | `{ interfaces: [...] }` (для gateway form) |
 
+> **Полное описание** тел запросов/ответов для всех эндпоинтов — в [`docs/API.en.md`](API.en.md)/[`docs/API.md`](API.md). Таблица выше — только карта путей для навигации по архитектуре.
+
 ---
 
 ## 6. База данных (SQLite)
 
 ### Файл
 
-`<dataDir>/wireguard.db` (default: `/etc/wireguard/data/wireguard.db`)
+`<dataDir>/cascade.db` (default: `/etc/wireguard/data/cascade.db`). Название файла — `cascade.db`
+с момента переименования проекта; `db.Init()` автоматически мигрирует старые инсталляции
+(`wireguard.db`/`awg.db` → `cascade.db`, включая WAL/SHM-файлы), так что апгрейд со старой
+версии проходит прозрачно. `deploy/backup.sh`/`POST /api/system/backup` архивируют именно
+`cascade.db` (со старыми именами как legacy-фолбэк, если переименование почему-то не выполнилось).
+Метрики хранятся отдельно — `<dataDir>/metrics.db` (не включается в бэкап по умолчанию, регенерируется
+со временем).
 
 ### Таблицы
 
@@ -1174,6 +1303,33 @@ AWG2 параметры: `id`, `name`, `is_default`, `jc`, `jmin`, `jmax`, `s1-s
 #### api_tokens (migration v8)
 
 `id`, `user_id` FK → users.id CASCADE, `name`, `token_hash` UNIQUE (SHA-256), `last_used`, `created_at`
+
+#### nat_dnat_rules (Port Forwarding / DNAT)
+
+`id`, `name`, `protocol`, `in_interface`, `in_port`, `dest_ip`, `dest_port`, `masquerade`, `comment`, `enabled`, `created_at`
+
+#### dashboard_widgets
+
+`user_id` FK → users.id, `page` (`dashboard` \| `diagnostics`), `widgets` (JSON), PK (`user_id`, `page`).
+Читается/пишется через `GET`/`PUT /api/dashboard/widgets`. При чтении устаревшие ссылки на
+удалённые шлюзы (`"gateway:<id>"`) автоматически вычищаются («self-heal», см. issue #96).
+
+#### firewall_rules_applied
+
+Снапшот `firewall_rules`, реально применённый в ядре — та же схема колонок, что и у
+`firewall_rules`. Правила сначала пишутся в `firewall_rules` как черновик, и только
+`POST /api/firewall/apply` копирует их сюда и пересобирает iptables-цепочки
+(`GET /api/firewall/pending` сравнивает эти две таблицы).
+
+#### remotes
+
+`id`, `name`, `url`, `token` (API-токен зарегистрированного remote-сервера), `skip_tls_verify`, `created_at`.
+Используется прокси-слоем (`internal/remotes`, `internal/remoteclient`) для Multi-Server и Speed Test.
+
+#### speedtest_results
+
+`id`, `from_server`, `to_server`, `host`, `port`, `duration`, `streams`, `status`, `via`,
+`send_mbps`, `recv_mbps`, `retransmits`, `latency_ms`, `error`, `started_at`, `finished_at`.
 
 #### schema_migrations
 
@@ -1980,13 +2136,25 @@ Stage 2 (runtime): amneziavpn/amneziawg-go:latest
 ### Команды деплоя
 
 ```bash
-# Первоначальный деплой
+# Первоначальный деплой (интерактивный, полный: сеть/режим AWG/Caddy/TLS)
 ./deploy/setup.sh
 
+# Быстрый старт без диалогов
+./deploy/quickstart-kernel.sh      # AWG kernel module
+./deploy/quickstart-userspace.sh   # AWG userspace (amneziawg-go)
+
 # Обновление
+./deploy/update.sh
+# или вручную:
 git pull origin master
 docker compose -f docker-compose.yml pull   # или ./build.sh для локальной сборки
 docker compose -f docker-compose.yml up -d
+
+# Переключение kernel ⇄ userspace без потери данных
+./deploy/switch-mode.sh
+
+# Бэкап данных (БД + ipset), независимо от `/api/system/backup` в UI
+./deploy/backup.sh
 
 # Caddy (TLS reverse proxy)
 cd deploy/caddy
