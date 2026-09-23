@@ -154,6 +154,8 @@ Returns `GlobalSettings` merged with runtime-only fields:
 | `POST` | `/api/tunnel-interfaces/:id/restart` | Restart. Returns `{ interface }` |
 | `GET` | `/api/tunnel-interfaces/:id/export-params` | S2S export. Returns `{ name, publicKey, endpoint, address, protocol, presharedKey? }` |
 | `GET` | `/api/tunnel-interfaces/:id/export-obfuscation` | AWG2 obfuscation params as JSON |
+| `GET` | `/api/tunnel-interfaces/:id/export` | Export full interface (including private key) + optionally all peers as JSON, for cloning/migrating an interface to another server. Query: `?peers=0` to omit peers (default: included) |
+| `POST` | `/api/tunnel-interfaces/import-interface` | Import an interface previously produced by `GET /:id/export`. Body: `{ json: string, listenPort: int }` |
 | `GET` | `/api/tunnel-interfaces/:id/backup` | Download interface + all peers as JSON |
 | `PUT` | `/api/tunnel-interfaces/:id/restore` | Restore peers from backup. Removes existing peers first |
 
@@ -168,6 +170,7 @@ Base path: `/api/tunnel-interfaces/:id/peers`
 | `GET` | `/peers` | List peers. Returns `{ peers: [...] }` |
 | `POST` | `/peers` | Create peer. Body: `{ name, peerType (client/interconnect), clientAllowedIPs?, persistentKeepalive?, expiredAt? }`. Response includes `totalRx`/`totalTx` (lifetime traffic counters from SQLite, persist across restarts) and `latestHandshakeAt` (last handshake timestamp, persisted across restarts; `null` if peer never connected) |
 | `POST` | `/peers/import-json` | Create interconnect peer from exported JSON |
+| `POST` | `/peers/import-client-configs` | Match uploaded WireGuard client `.conf` files against existing peers by public key (derived from each file's private key) and save the private key, unlocking QR code / config download for peers that were created without one (e.g. imported from an AWG-Easy backup). Multipart field `configs` (multiple files) |
 | `GET` | `/peers/:peerId` | Get peer |
 | `PATCH` | `/peers/:peerId` | Update peer fields. Accepts: `name?, endpoint?, allowedIPs?, clientAllowedIPs?, persistentKeepalive?, enabled?, expiredAt?, oneTimeLink?, rateDown?, rateUp?`. Fields `rateDown`/`rateUp` — bandwidth limit in **kbps** (0 = unlimited), enforced via `tc HTB + police` on the server; the UI accepts **Mbit/s** and converts automatically |
 | `DELETE` | `/peers/:peerId` | Delete peer |
@@ -301,7 +304,15 @@ Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× 
 | `POST` | `/api/firewall/rules` | Create rule. Body: `{ name?, interface?, protocol?, source (Endpoint), destination (Endpoint), action (accept/drop/reject), gatewayId?, gatewayGroupId?, fallbackToDefault?, comment?, enabled? }` |
 | `PATCH` | `/api/firewall/rules/:id` | Update or toggle: `{ enabled: bool }` |
 | `DELETE` | `/api/firewall/rules/:id` | Delete rule |
-| `POST` | `/api/firewall/rules/:id/move` | Reorder. Body: `{ direction: "up"\|"down" }` |
+| `POST` | `/api/firewall/rules/:id/move` | Reorder by one step. Body: `{ direction: "up"\|"down" }` |
+| `POST` | `/api/firewall/reorder` | Reorder all rules at once. Body: `{ ids: ["id1", "id2", ...] }` — full ordered list of all rule IDs, must contain exactly the current IDs (no extras, none missing) |
+| `GET` | `/api/firewall/pending` | Whether the draft rule set differs from the last applied kernel snapshot. Returns `{ hasPendingChanges: bool }` |
+| `POST` | `/api/firewall/apply` | Copy draft → applied snapshot and rebuild iptables chains. **204** on success |
+| `POST` | `/api/firewall/discard` | Revert draft to the last applied snapshot — no kernel change. **204** on success |
+
+> Firewall rule changes are staged as a "draft" and only take effect in the kernel after
+> `POST /apply` — check `GET /pending` and call `/apply` (or `/discard` to abandon) after any
+> create/update/delete/reorder call, or edits will sit unapplied.
 
 ### Endpoint object
 
@@ -323,6 +334,7 @@ Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× 
 |--------|------|-------------|
 | `GET` | `/api/aliases` | List aliases. Returns `{ aliases: [...] }` |
 | `POST` | `/api/aliases` | Create alias. Body: `{ name, type, entries?, comment? }` |
+| `GET` | `/api/aliases/client-groups` | List aliases of type `client-group` (used by peer create/edit dropdowns). Returns `{ groups: [...] }` |
 | `GET` | `/api/aliases/:id` | Get alias |
 | `PATCH` | `/api/aliases/:id` | Update alias |
 | `DELETE` | `/api/aliases/:id` | Delete alias |
@@ -341,6 +353,155 @@ Each rule creates up to 4 iptables commands per protocol: PREROUTING DNAT + 2× 
 | `client-group` | managed automatically | Kernel ipset populated with IPs of peers belonging to the group. Managed automatically on peer create/update/delete. Used in firewall rules for per-group traffic control. |
 | `port` | `["tcp:443", "udp:53", "any:80"]` | L4 ports |
 | `port-group` | `["<portAliasId>"]` | Combines port aliases |
+
+---
+
+## Dashboard
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/dashboard/widgets` | Saved widget layout for the current user. Query: `?page=dashboard` (default) or `?page=diagnostics`. Returns `{ "widgets": [...] }` — the array shape is defined by the frontend, opaque to the API |
+| `PUT` | `/api/dashboard/widgets` | Save widget layout. Same `?page=` query. Body: `{ "widgets": [...] }` |
+| `GET` | `/api/dashboard/system-info` | Host system metrics for the dashboard's System Info card |
+
+**GET /api/dashboard/system-info — response fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hostname` | string | |
+| `uptime` | string | Human-readable, e.g. `"3d 4h 12m"` |
+| `uptimeSec` | int | |
+| `load1`, `load5`, `load15` | float | `/proc/loadavg` |
+| `memTotal`, `memFree`, `memUsed` | int | kB. `memFree` uses `MemAvailable` when present |
+| `memPct` | int | 0–100 |
+| `awgCliVersion` | string | Kernel mode only. `""` if undetectable |
+| `awgKernelVersion` | string | Kernel mode only. `""` if undetectable or in userspace mode |
+| `awgVersionMismatch` | bool | `true` if the AWG CLI and loaded kernel module major.minor versions differ — see [Troubleshooting](../README.md#️-troubleshooting) |
+
+> Each saved widget row referencing a since-deleted gateway (`"gateway:<id>"` in `graphs`/
+> `graphColors`) is silently pruned on the next `GET /widgets` for that user/page — self-healing,
+> no separate cleanup endpoint needed.
+
+---
+
+## Metrics
+
+Real-time and historical system/gateway metrics, backed by an in-process sampler and SQLite history.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/metrics` | Current snapshot: CPU, RAM, per-interface network throughput, per-gateway status. Returns `{ cpu, mem, memUsedMb, memTotalMb, net: {iface: {rxMbps, txMbps}}, interfaces: [...], gateways: {id: status} }` |
+| `GET` | `/api/metrics/history` | Historical points for one metric key. Query: `?key=cpu&period=5m\|1h\|6h\|24h\|7d\|30d` (default `5m`). Returns `{ key, period, points: [[timestamp, value], ...] }` |
+| `GET` | `/api/metrics/gateway-dist` | Per-bucket gateway status distribution, for the Diagnostics status bar chart. Query: `?key=gateway:<id>&period=1h` (`key` must start with `gateway:`). Returns `{ key, period, buckets: [[ts_ms, healthyCount, degradedCount, downCount, adminDownCount], ...] }` |
+
+`period` determines both the lookback window and the bucket size: `5m`→5s buckets, `1h`→60s,
+`6h`→300s, `24h`→900s, `7d`→3600s, `30d`→21600s.
+
+---
+
+## Diagnostics
+
+Ad-hoc network troubleshooting tools, run on the server on demand. Streaming endpoints use
+Server-Sent Events (SSE) — each line of live command output arrives as one `data: <line>\n\n`
+event; the stream ends with a `data: [done]\n\n` event.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/diagnostics/ping` | One-shot ping, JSON result (not streamed). Body: `{ host, count? }` (count 1–10, default 3). Returns `{ reachable, latencyMs, packetLoss }` |
+| `GET` | `/api/diagnostics/ping/stream` | Streaming ping (SSE), terminal-style output line by line. Query: `?host=...&count=1-20(default 5)&source=<iface>&size=<bytes 0-65507>&df=true&tos=0-255` |
+| `GET` | `/api/diagnostics/traceroute/stream` | Streaming traceroute (SSE). Query: `?host=...&type=udp(default)\|icmp\|tcp&source=<src IP>` |
+| `GET` | `/api/diagnostics/tcpdump/stream` | Streaming packet capture (SSE). Query: `?iface=<name>&filter=<BPF expression>&save=true` |
+| `POST` | `/api/diagnostics/tcpdump/stop` | Stop a `save=true` capture and finalize the PCAP file. Query: `?file=<captureId>` (from the stream's `[captureid:<id>]` event) |
+| `GET` | `/api/diagnostics/tcpdump/download` | Download the finalized PCAP file, then delete it from the server. Query: `?file=<captureId>` |
+
+**tcpdump save flow:** start `GET /tcpdump/stream?iface=wg10&save=true`; the *first* SSE event is
+`[captureid:<hex-id>]` — capture it immediately. Call `POST /tcpdump/stop?file=<id>` to send
+`SIGINT` and flush the file, then `GET /tcpdump/download?file=<id>` to fetch it (one-shot — the
+file and its registry entry are removed after download, and after a 300 s hard timeout with no
+stop call).
+
+`host`/`source`/`iface` are validated against a strict alphanumeric+`.`/`-`/`_`/`:`/`[`/`]`
+character set server-side — no shell metacharacters accepted.
+
+---
+
+## Remotes (Multi-Server)
+
+Lets one Cascade instance manage others: the browser only ever talks to the local server, which
+proxies authenticated requests to registered remotes using a stored API token. Used for the
+multi-server sidebar and cross-server Speed Test.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/remotes` | List registered remotes. Returns `{ remotes: [...] }` (tokens never included in the response) |
+| `POST` | `/api/remotes` | Register a remote. Two modes — see below |
+| `DELETE` | `/api/remotes/:id` | Remove a remote |
+| `POST` | `/api/remotes/:id/test` | Connectivity check (pings the remote with its stored token). Returns `{ ok: true }` or a **502** error |
+| `ALL` | `/api/remotes/:id/proxy/*` | Forwards the request to the remote's `/api/*`, injecting its stored Bearer token. The browser never sees the remote's credentials |
+
+**POST /api/remotes — login mode:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Display name (required) |
+| `url` | string | Remote's base URL — must resolve to a public address (SSRF-guarded) (required) |
+| `username`, `password` | string | Remote's admin credentials, used once to obtain a token |
+| `totpCode` | string | Only needed if the remote has 2FA — see below |
+| `skipTlsVerify` | bool | Skip TLS certificate verification (self-signed certs) |
+
+If the remote has TOTP enabled and `totpCode` is omitted, the response is **422**
+`{ "totp_required": true }` — retry the same call with `totpCode` filled in.
+
+**POST /api/remotes — explicit-token mode:** set `token` instead of `username`/`password` to
+register a pre-existing API token directly (validated against the remote with a ping before
+being stored) — no login performed, no 2FA flow.
+
+> `proxyRemote` strips `Authorization`/`Cookie`/`Host` from the forwarded request and drops
+> `Set-Cookie` from the remote's response, so a remote's session can never leak into or clobber
+> the local browser session. Redirects are followed with the same SSRF re-check applied to
+> every hop.
+
+---
+
+## Speed Test
+
+On-demand `iperf3` throughput test between any two Cascade servers (or the local server and an
+arbitrary host). The `run`/`result*` endpoints are the ones the UI calls directly; `server`/
+`client` are internal orchestration endpoints (still reachable directly if scripting your own
+test) that the *source* server calls on the *destination* server via the Remotes proxy.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/speedtest/check` | Whether `iperf3` is installed on this server. Returns `{ installed: bool, path? }` |
+| `POST` | `/api/speedtest/run` | Start an async test. Body: see below. Returns **201** `{ jobId }` immediately — the test runs in the background |
+| `GET` | `/api/speedtest/result/:jobId` | Poll a job. Returns a `SpeedtestRecord` (see below); `status` is `"running"`, `"done"`, or `"error"` |
+| `GET` | `/api/speedtest/results` | Full history (last 100 runs). Returns `{ results: [SpeedtestRecord, ...] }` |
+| `DELETE` | `/api/speedtest/results` | Clear history |
+| `POST` | `/api/speedtest/server` | *Internal.* Start an `iperf3 -s --one-off` on this server. Returns `{ port, sessionId }` |
+| `DELETE` | `/api/speedtest/server/:sessionId` | *Internal.* Kill a running `iperf3` server session |
+| `POST` | `/api/speedtest/client` | *Internal.* Run `iperf3 -c` against a given host/port and return the result |
+
+**POST /api/speedtest/run — body:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fromServer`, `toServer` | string | Display names, stored with the result for history readability |
+| `fromRemoteId`, `toRemoteId` | string | `""` = local server, else a Remote ID — determines which side runs `iperf3 -s` vs `-c` |
+| `host` | string | IP/hostname the `iperf3` client connects to (required) |
+| `bindAddr` | string | Optional: bind the client to a specific local IP (e.g. a tunnel interface IP, for a tunnel-mode test) |
+| `via` | string | `"tunnel"` or `"internet"` — informational only, stored with the result; does not change the test itself beyond `host`/`bindAddr` |
+| `duration` | int | Seconds, default 10 |
+| `streams` | int | Parallel TCP streams (`iperf3 -P`), default 4 |
+
+**SpeedtestRecord fields:** `id, fromServer, toServer, host, port, duration, streams, status, via,
+sendMbps, recvMbps, retransmits, latencyMs, error, startedAt, finishedAt`. The `Mbps`/
+`retransmits`/`latencyMs` fields are `null` until `status` is `"done"`.
+
+> The test always runs plain TCP (`iperf3` with no `-u`) regardless of `via` — when `via:
+> "tunnel"`, the WireGuard/AmneziaWG UDP encapsulation still applies underneath, so provider-side
+> UDP shaping can make a tunnel-mode result much lower than an internet-mode one on the exact same
+> pair of servers. This is a real network-path effect, not a bug — see the troubleshooting note in
+> the README if you hit an unexpectedly large gap between the two.
 
 ---
 
@@ -387,6 +548,28 @@ curl -X POST https://<host>/<admin_path>/api/system/backup \
   -o cascade-backup.tar.gz.enc
 ```
 
+### Preview a Restore
+
+```
+POST /api/system/restore/preview
+Content-Type: multipart/form-data
+Authorization: Bearer ws_...
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `backup` | file | `.tar.gz` or `.tar.gz.enc` backup file |
+| `password` | string | Required if file is encrypted, otherwise — `400` |
+
+Inspects the backup's DB (without touching current state) and compares the physical interface
+names referenced by its NAT rules against this server's actual interfaces — useful when
+restoring a backup taken on a different machine where `eth0`/`ens3`/etc. may not match.
+
+**Response (200):** `{ "backupIfaces": [...], "serverIfaces": [...], "needsRemap": bool }`
+
+If `needsRemap` is `true`, pass an `ifaceMap` (e.g. `{"eth0":"ens3"}`) to `POST /restore` below
+to rewrite `out_interface` in the restored NAT rules.
+
 ### Restore from Backup
 
 ```
@@ -399,8 +582,14 @@ Authorization: Bearer ws_...
 |-------|------|-------------|
 | `backup` | file | `.tar.gz` or `.tar.gz.enc` backup file |
 | `password` | string | Required if file is encrypted, otherwise — `400` |
+| `ifaceMap` | string (JSON) | Optional. e.g. `{"eth0":"ens3"}` — remaps `out_interface` in the restored `nat_rules` table. See "Preview a Restore" above |
 
 **Response (200):** `{ "message": "Backup restored. Container is restarting…", "restored": N }`
+
+Restore flow: auto-backs up current state to `data/pre-restore-<timestamp>.tar.gz` first, stops
+all WireGuard interfaces, flushes firewall chains and ipsets, writes the backup's files over the
+current data directory, removes stale WAL/SHM files, applies `ifaceMap` if given, then exits the
+process — Docker's `restart: always` brings it back up with the restored state.
 
 **Errors:**
 - `400 "this backup is encrypted — provide the password"` — encrypted file with no password
@@ -422,6 +611,20 @@ curl -X POST https://<host>/<admin_path>/api/system/restore \
   -F "backup=@cascade-backup.tar.gz.enc" \
   -F "password=mypassword"
 ```
+
+### List Pre-Restore Auto-Backups
+
+```
+GET /api/system/backups
+```
+
+Every `POST /restore` automatically snapshots current state to `data/pre-restore-<timestamp>.tar.gz`
+before overwriting anything (see above) — this lists those safety snapshots.
+
+**Response (200):** `{ "backups": [{ "name": "pre-restore-20260115-030405.tar.gz", "size": 123456, "createdAt": "2026-01-15T03:04:05Z" }, ...] }`
+
+These files are **not** downloadable via the API — restore one manually from the server's
+data directory if needed (`docker exec cascade ls /etc/wireguard/data/`).
 
 ### Automated Backup (cron)
 
