@@ -132,13 +132,45 @@ Interface Stop() / wg-quick down
 
 ## Текущее использование
 
-Сейчас ограничение скорости применяется только в **Expired Peer Policy** (`restrict` режим):
+Ограничение скорости применяется в трёх независимых местах, все — через общую инфраструктуру `tc.Apply`/`tc.Remove` выше:
+
+### 1. Индивидуальный лимит пира (UI/API)
+
+Задаётся напрямую на пире через `PATCH /api/tunnel-interfaces/:id/peers/:peerId` — поля
+`rateDown`/`rateUp` в **кбит/с** (UI вводит в Мбит/с и конвертирует). См.
+[`internal/peer/peer.go`](../internal/peer/peer.go), применяется в
+[`internal/tunnel/interface.go`](../internal/tunnel/interface.go) (`UpdatePeer`).
+
+### 2. Лимит на уровне client-group алиаса
+
+Алиасы типа `client-group` (см. [API.en.md § Aliases](API.en.md#aliases)) сами несут поля
+`rateDown`/`rateUp` — лимит применяется ко **всем** пирам, состоящим в группе, у которых нет
+собственного индивидуального лимита (см. `peerEffectiveRateLimits()` в
+[`internal/tunnel/interface.go:510`](../internal/tunnel/interface.go)):
+
+```go
+func peerEffectiveRateLimits(peerRateDown, peerRateUp int, group *aliases.Alias) (rateDown, rateUp int) {
+    if peerRateDown > 0 || peerRateUp > 0 {
+        return peerRateDown, peerRateUp // индивидуальный лимит пира — приоритет
+    }
+    if group != nil {
+        return group.RateDown, group.RateUp // иначе — лимит группы
+    }
+    return 0, 0
+}
+```
+
+При изменении лимита самой группы правило `tc` массово переприменяется ко всем участникам без
+собственного override (`internal/tunnel/manager.go`).
+
+**Приоритет: индивидуальный лимит пира > лимит его client-group > без ограничений.**
+
+### 3. Expired Peer Policy (`restrict` режим)
 
 - Пир с истёкшим сроком (`expiredAt`) не отключается, а получает rate limit.
-- `expiredPeerRateDown` / `expiredPeerRateUp` — глобальные настройки (kbps), 0 = без ограничения.
+- `expiredPeerRateDown` / `expiredPeerRateUp` — глобальные настройки (kbps), `0` = без ограничения.
 - При продлении даты rate limit снимается автоматически (`tc.Remove`).
-
-Per-client rate limit из UI (задать скорость конкретному пиру) — не реализован, инфраструктура готова.
+- См. [`internal/tunnel/expiry.go`](../internal/tunnel/expiry.go), `internal/settings/settings.go` (`ExpiredPeerPolicy`).
 
 ---
 
