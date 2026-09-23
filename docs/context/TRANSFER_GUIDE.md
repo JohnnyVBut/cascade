@@ -1,5 +1,16 @@
 # 📤 Инструкция: Передача контекста в новое приложение Claude
 
+> ⚠️ **OBSOLETE — Node.js era context document**
+>
+> Этот файл описывает передачу контекста для файлов из [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md)
+> (Node.js-прототип, `TunnelInterface.js`/`InterfaceManager.js`/`Peer.js`), которые были
+> полностью переписаны на Go.
+>
+> **Не используйте этот файл.** Актуальная архитектура описана в:
+> - [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — обзор архитектуры Go-переписи
+> - [docs/API.md](../API.md) — актуальный REST API (русский)
+> - [docs/FEATURES.md](../FEATURES.md) — актуальный список возможностей
+
 ## 🎯 Что нужно передать:
 
 ### 1. Основной контекст:

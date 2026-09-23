@@ -74,7 +74,7 @@
 
 - ✅ **Go-бинарник** — единый статический бинарник, без Node.js, без npm, без зависимостей
 - ✅ **Мульти-интерфейс** — управление несколькими интерфейсами WireGuard/AWG из одного UI
-- ✅ **Полный AmneziaWG 2.0 и 3.0** — S3, S4, I5, Transport Protection, H-range обфускация, 7 CPS-профилей + browser fingerprint
+- ✅ **Полный AmneziaWG 2.0 и 3.0** — S3, S4, I5, Transport Protection, H-range обфускация, 11 CPS-профилей + browser fingerprint
 - ✅ **Policy-based routing** — маршрутизация трафика по источнику через разные gateway
 - ✅ **Port Forwarding (DNAT)** — прозрачное каскадирование трафика с опциональным source NAT
 - ✅ **Импорт .conf как аплинк** — подключение Cascade как клиента к любому WireGuard-серверу; использование как PBR gateway без ручного вмешательства в таблицу маршрутизации
@@ -451,6 +451,9 @@ curl -b cookies.txt -X POST http://127.0.0.1:8888/api/tunnel-interfaces/wg10/pee
 ## 📖 Документация
 
 - [Руководство по развёртыванию](docs/DEPLOY.md)
+- [Обзор возможностей](docs/FEATURES.ru.md)
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Traffic shaping / rate limits](docs/TRAFFIC_SHAPING.md)
 - [Справочник API (RU)](docs/API.md)
 - [Справочник API (EN)](docs/API.en.md)
 - [Модель безопасности](docs/SECURITY.md)

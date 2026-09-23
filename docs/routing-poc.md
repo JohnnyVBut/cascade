@@ -1,6 +1,14 @@
 # PoC: Split Routing — RU ISP / KZ Tunnel
 
-**Статус: ✅ ПРОТЕСТИРОВАНО**
+**Статус: ✅ ПРОТЕСТИРОВАНО (архивный документ)**
+
+> ⚠️ Этот PoC описывает ручную настройку на Node.js-эре проекта (правки в
+> `TunnelInterface.js`). Принципы (ipset + fwmark + ip rule, PBR) верны и
+> сегодня, но реализация переехала в Go: см. [ARCHITECTURE.md](ARCHITECTURE.md)
+> (`internal/firewall`, `internal/aliases`, `internal/routing`) и
+> [FEATURES.md](FEATURES.md) (разделы «Маршрутизация», «Файрвол», «Алиасы
+> файрвола»). Раздел «Следующие шаги (GUI интеграция)» ниже уже реализован —
+> сохранён для истории, не как открытый TODO.
 
 ## Задача
 

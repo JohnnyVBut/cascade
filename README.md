@@ -74,7 +74,7 @@
 
 - ✅ **Go binary** — single static binary, no Node.js, no npm, no dependencies
 - ✅ **Multi-interface** — manage multiple WireGuard/AWG interfaces from one UI
-- ✅ **Full AmneziaWG 2.0 & 3.0** — S3, S4, I5, Transport Protection, H-range obfuscation, 7 CPS profiles + browser fingerprint
+- ✅ **Full AmneziaWG 2.0 & 3.0** — S3, S4, I5, Transport Protection, H-range obfuscation, 11 CPS profiles + browser fingerprint
 - ✅ **Policy-based routing** — route traffic per-source through different gateways
 - ✅ **Port Forwarding (DNAT)** — transparent traffic cascading with optional source NAT
 - ✅ **Import .conf as uplink** — connect Cascade as a client to any WireGuard server; use as PBR gateway without touching the routing table
@@ -450,6 +450,9 @@ Full reference: [docs/API.en.md](docs/API.en.md) · [docs/API.md (RU)](docs/API.
 ## 📖 Documentation
 
 - [Deploy guide](docs/DEPLOY.md)
+- [Features overview](docs/FEATURES.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Traffic shaping / rate limits](docs/TRAFFIC_SHAPING.md)
 - [API reference (EN)](docs/API.en.md)
 - [API reference (RU)](docs/API.md)
 - [Security model](docs/SECURITY.md)

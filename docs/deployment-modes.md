@@ -64,7 +64,7 @@ Compose-файл: `docker-compose.isolated.yml`
 
 ---
 
-## Setup-скрипт (планируемый)
+## Setup-скрипт (`deploy/setup.sh`)
 
 При деплое пользователь выбирает режим. Скрипт:
 
