@@ -106,6 +106,44 @@ unauthenticated attackers.
 
 **Roadmap:** Block RFC-1918 and link-local ranges in gateway monitor addresses.
 
+### ✅ SSRF via Remotes (Multi-Server) — mitigated
+
+Registering a remote server (`POST /api/remotes`) and the request proxy
+(`ALL /api/remotes/:id/proxy/*`) both make outbound HTTP requests to a
+user-supplied URL — on a router running with `--network host` this would
+otherwise be a powerful pivot into internal networks.
+
+Two-layer defense in [`internal/remoteclient/ssrf.go`](../internal/remoteclient/ssrf.go):
+
+1. `ValidateRemoteURL` — enforces `http`/`https`, rejects any host that
+   resolves to loopback/private/link-local/unspecified/multicast/CGNAT
+   (plus the extra reserved ranges `100.64.0.0/10`, `192.0.0.0/24`,
+   `240.0.0.0/4`, and the IPv6 6to4/NAT64 IPv4-embedding prefixes).
+2. `SafeDialContext` — re-resolves and re-checks the concrete IP at connect
+   time and pins the dial to it, closing the DNS-rebinding (TOCTOU) window
+   between validation and the actual request.
+
+Note: this guard applies to Remotes only. Speed Test targets a *remote's own
+declared address*, not an arbitrary URL, so it inherits the same
+registration-time validation rather than a separate check.
+
+### ⚠️ Remote API tokens stored in plaintext
+
+Unlike Cascade's own API tokens (SHA-256 hashed, see below), a **remote's**
+token is stored **plaintext** in the `remotes` table — it must be replayed
+verbatim as a `Bearer` header on every proxied request, so it cannot be
+one-way hashed like a local token. See
+[`internal/remotes/remotes.go`](../internal/remotes/remotes.go).
+
+**Impact:** Anyone with read access to the local SQLite database (e.g. via a
+host compromise) obtains live Bearer tokens for every registered remote
+server, not just this one.
+
+**Mitigation:** Treat remote registration as equivalent to sharing that
+remote's admin credentials. Use a dedicated, narrowly-scoped API token per
+remote registration (never the primary admin's token) so it can be revoked
+independently on the remote side.
+
 ### ⚠️ Denial of Service — partial mitigation
 
 - Request body size: not explicitly limited (Fiber default: 4MB)
