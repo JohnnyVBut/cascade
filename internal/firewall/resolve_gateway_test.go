@@ -252,3 +252,89 @@ func TestOnGatewayDown_MultipleRulesShareOneGroup(t *testing.T) {
 	// The disabled rule must be left untouched entirely (onGatewayDown skips
 	// !rule.Enabled rules) — nothing to assert beyond "no panic/error above".
 }
+
+// ── PBR route command format ───────────────────────────────────────────────
+// Regression: failover/restore used "via <ip> onlink" unconditionally, which
+// the kernel rejects for point-to-point wg/awg gateways ("Nexthop has invalid
+// gateway"). The failed replace left the table pinned to a dead/blackholed
+// next hop, so rules with a gateway group as next hop stopped working.
+
+func captureRouteExec(t *testing.T) *[]string {
+	t.Helper()
+	var cmds []string
+	orig := pbrRouteExec
+	pbrRouteExec = func(cmd string, timeout time.Duration, log bool) (string, error) {
+		cmds = append(cmds, cmd)
+		return "", nil
+	}
+	t.Cleanup(func() { pbrRouteExec = orig })
+	return &cmds
+}
+
+func TestPbrDefaultRouteCmd(t *testing.T) {
+	tests := []struct {
+		name string
+		gw   resolvedGW
+		want string
+	}{
+		{"wg is dev-only", resolvedGW{gatewayIP: "10.0.0.1", iface: "wg10"}, "ip route replace default dev wg10 table 100"},
+		{"awg is dev-only", resolvedGW{gatewayIP: "10.0.0.1", iface: "awg0"}, "ip route replace default dev awg0 table 100"},
+		{"no gateway ip is dev-only", resolvedGW{iface: "eth0"}, "ip route replace default dev eth0 table 100"},
+		{"regular iface uses via onlink", resolvedGW{gatewayIP: "192.168.1.1", iface: "eth0"}, "ip route replace default via 192.168.1.1 dev eth0 onlink table 100"},
+	}
+	for _, tc := range tests {
+		if got := pbrDefaultRouteCmd(tc.gw, 100); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestFailoverToNextTier_WgGatewayUsesDevOnlyRoute(t *testing.T) {
+	m, _ := initTestDB(t)
+	groupID, gw1ID, _ := newTestGroup(t, m) // members are wg10 / wg11
+	cmds := captureRouteExec(t)
+
+	rule := Rule{ID: "rule-1", Enabled: true, GatewayGroupID: groupID, Fwmark: fwmarkPtr(100)}
+	if err := insertRule(rule); err != nil {
+		t.Fatalf("insertRule: %v", err)
+	}
+
+	m.gm.Monitor().SetAdminDown(gw1ID, true)
+	if err := m.onGatewayDown(gw1ID); err != nil {
+		t.Fatalf("onGatewayDown: %v", err)
+	}
+
+	want := "ip route replace default dev wg11 table 100"
+	if len(*cmds) != 1 || (*cmds)[0] != want {
+		t.Errorf("failover commands = %v, want [%q]", *cmds, want)
+	}
+}
+
+func TestRestoreRoute_WgGatewayUsesDevOnlyRoute(t *testing.T) {
+	m, _ := initTestDB(t)
+	groupID, _, _ := newTestGroup(t, m)
+	cmds := captureRouteExec(t)
+
+	rule := Rule{ID: "rule-1", Enabled: true, GatewayGroupID: groupID, Fwmark: fwmarkPtr(100)}
+	if err := insertRule(rule); err != nil {
+		t.Fatalf("insertRule: %v", err)
+	}
+	m.fallbackMu.Lock()
+	m.fallbackActive[rule.ID] = true
+	m.fallbackMu.Unlock()
+
+	if err := m.restoreRoute(&rule); err != nil {
+		t.Fatalf("restoreRoute: %v", err)
+	}
+
+	want := "ip route replace default dev wg10 table 100"
+	if len(*cmds) != 1 || (*cmds)[0] != want {
+		t.Errorf("restore commands = %v, want [%q]", *cmds, want)
+	}
+	m.fallbackMu.Lock()
+	still := m.fallbackActive[rule.ID]
+	m.fallbackMu.Unlock()
+	if still {
+		t.Error("fallbackActive must be cleared after a successful restore")
+	}
+}

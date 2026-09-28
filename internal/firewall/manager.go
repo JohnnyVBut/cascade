@@ -1269,17 +1269,7 @@ func (m *Manager) applyRoutingForRule(rule *Rule) error {
 
 	fwmark := *rule.Fwmark
 
-	// WireGuard/AmneziaWG interfaces are point-to-point — the kernel rejects
-	// "via <ip> onlink" with "Nexthop has invalid gateway". Route via dev only.
-	// For regular interfaces (ens*, eth*) keep "via <ip> onlink" so the kernel
-	// knows which next-hop to use when multiple routes exist in the table.
-	isWG := strings.HasPrefix(gw.iface, "wg") || strings.HasPrefix(gw.iface, "awg")
-	var cmd string
-	if isWG || gw.gatewayIP == "" {
-		cmd = fmt.Sprintf("ip route replace default dev %s table %d", gw.iface, fwmark)
-	} else {
-		cmd = fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
-	}
+	cmd := pbrDefaultRouteCmd(gw, fwmark)
 	if _, err := util.Exec(cmd, 10*time.Second, true); err != nil {
 		return fmt.Errorf("ip route replace: %w", err)
 	}
@@ -1567,6 +1557,21 @@ type resolvedGW struct {
 	iface     string
 }
 
+// pbrDefaultRouteCmd builds the "ip route replace default ..." command that
+// installs a PBR rule's active route in table fwmark. WireGuard/AmneziaWG
+// interfaces are point-to-point — the kernel rejects "via <ip> onlink" with
+// "Nexthop has invalid gateway" — so those (and gateways without an IP) use a
+// dev-only route. Every path that (re)writes this route must go through here:
+// a failover/restore that used "via ... onlink" against a wg gateway failed
+// silently and left the table pinned to a dead or blackholed next hop.
+func pbrDefaultRouteCmd(gw resolvedGW, fwmark int) string {
+	isWG := strings.HasPrefix(gw.iface, "wg") || strings.HasPrefix(gw.iface, "awg")
+	if isWG || gw.gatewayIP == "" {
+		return fmt.Sprintf("ip route replace default dev %s table %d", gw.iface, fwmark)
+	}
+	return fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+}
+
 // resolveGateway finds the active gateway for a PBR rule.
 // For a group, delegates to gateway.Manager.ResolveGroupGateway — the same
 // health-aware tier walk used by static routes — so a PBR rule fails over to
@@ -1685,7 +1690,7 @@ func (m *Manager) failoverToNextTier(rule *Rule, downedGatewayID string) error {
 		return err
 	}
 	fwmark := *rule.Fwmark
-	cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	cmd := pbrDefaultRouteCmd(gw, fwmark)
 	if _, err := pbrRouteExec(cmd, 10*time.Second, true); err != nil {
 		return err
 	}
@@ -1808,7 +1813,7 @@ func (m *Manager) restoreRoute(rule *Rule) error {
 		return err
 	}
 	fwmark := *rule.Fwmark
-	cmd := fmt.Sprintf("ip route replace default via %s dev %s onlink table %d", gw.gatewayIP, gw.iface, fwmark)
+	cmd := pbrDefaultRouteCmd(gw, fwmark)
 	if _, err := pbrRouteExec(cmd, 10*time.Second, true); err != nil {
 		return err
 	}
