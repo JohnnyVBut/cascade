@@ -661,13 +661,58 @@ func (m *Manager) ReapplyAll() {
 	}
 }
 
-// removeRule deletes a NAT rule from the kernel.
+// activeAddCommands returns the set of "-A POSTROUTING ..." commands that
+// every enabled NAT rule other than excludeID currently resolves to.
+//
+// Two different NAT rules can resolve to an identical iptables line — most
+// often because their source aliases overlap or briefly coincide during
+// editing. iptables itself only ever stores that line once (applyRule's -C
+// idempotency check is a no-op the second time), so deleting it for one rule
+// silently strips enforcement from every other rule relying on the same
+// line, even though that other rule's own configuration never changed.
+// Confirmed in the wild: editing one NAT rule's source away from a shared
+// client-subnet alias deleted the MASQUERADE lines a second, untouched NAT
+// rule still needed — that rule then had no working NAT until the next
+// Cascade restart (RestoreAll doesn't care about ownership, only content).
+func (m *Manager) activeAddCommands(excludeID string) (map[string]bool, error) {
+	rules, err := m.GetRules()
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool)
+	for i := range rules {
+		if !rules[i].Enabled || rules[i].ID == excludeID {
+			continue
+		}
+		cmds, err := m.buildCmds(&rules[i], "A")
+		if err != nil {
+			log.Printf("nat: activeAddCommands: buildCmds %q: %v", rules[i].Name, err)
+			continue
+		}
+		for _, c := range cmds {
+			set[c] = true
+		}
+	}
+	return set, nil
+}
+
+// removeRule deletes a NAT rule from the kernel, skipping any individual
+// line still required by another enabled rule (see activeAddCommands).
 func (m *Manager) removeRule(rule *NatRule) error {
 	cmds, err := m.buildCmds(rule, "D")
 	if err != nil {
 		return err
 	}
+	inUse, err := m.activeAddCommands(rule.ID)
+	if err != nil {
+		log.Printf("nat: removeRule: activeAddCommands: %v — proceeding without dedup check", err)
+		inUse = nil
+	}
 	for _, cmd := range cmds {
+		if addForm := strings.Replace(cmd, "-D POSTROUTING", "-A POSTROUTING", 1); inUse[addForm] {
+			log.Printf("nat: removeRule: skip %q — still required by another enabled rule", cmd)
+			continue
+		}
 		log.Printf("nat: removeRule: %s", cmd)
 		if _, err := util.ExecDefault(cmd); err != nil {
 			return fmt.Errorf("iptables-nft: %w", err)

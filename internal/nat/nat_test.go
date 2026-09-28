@@ -464,3 +464,86 @@ func TestGetRule_NotFound(t *testing.T) {
 		t.Errorf("expected nil for unknown ID, got %+v", rule)
 	}
 }
+
+// ── removeRule / activeAddCommands: reference counting across rules ────────
+// Regression: editing one NAT rule's source away from a shared client-subnet
+// deleted the MASQUERADE lines a second, untouched NAT rule still needed —
+// iptables only stores an identical line once, so removeRule must not delete
+// a line another enabled rule still resolves to.
+
+// insertNatRuleDirect writes a rule straight into nat_rules, bypassing
+// AddRule (which would call applyRule and hit a real "iptables-nft" binary
+// unavailable in this test environment).
+func insertNatRuleDirect(t *testing.T, m *Manager, r NatRule) {
+	t.Helper()
+	_, err := db.DB().Exec(`
+		INSERT INTO nat_rules
+		    (id, name, source, source_alias_id, out_interface, type,
+		     to_source, comment, enabled, order_idx, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		r.ID, r.Name, r.Source, r.SourceAliasID, r.OutInterface,
+		r.Type, r.ToSource, r.Comment, boolInt(r.Enabled), r.OrderIdx, r.CreatedAt,
+	)
+	if err != nil {
+		t.Fatalf("insertNatRuleDirect: %v", err)
+	}
+}
+
+func TestActiveAddCommands_OverlappingSourceStillCountsOtherRule(t *testing.T) {
+	m := initTestDB(t)
+	insertNatRuleDirect(t, m, NatRule{
+		ID: "nat2", Name: "NAT2", Source: "10.10.230.0/24", OutInterface: "enp0s3",
+		Type: "MASQUERADE", Enabled: true,
+	})
+	insertNatRuleDirect(t, m, NatRule{
+		ID: "nat3", Name: "NAT3", Source: "10.10.5.2", OutInterface: "enp0s3",
+		Type: "MASQUERADE", Enabled: true,
+	})
+
+	// Excluding NAT3 itself: only NAT2's command should show up as "in use".
+	inUse, err := m.activeAddCommands("nat3")
+	if err != nil {
+		t.Fatalf("activeAddCommands: %v", err)
+	}
+	want := "iptables-nft -t nat -A POSTROUTING -s 10.10.230.0/24 -o enp0s3 -j MASQUERADE"
+	if !inUse[want] {
+		t.Errorf("activeAddCommands(exclude nat3) = %v, want to contain %q", inUse, want)
+	}
+	if len(inUse) != 1 {
+		t.Errorf("activeAddCommands(exclude nat3) = %v, want exactly 1 entry (NAT3 must not count itself)", inUse)
+	}
+}
+
+func TestActiveAddCommands_DisabledRuleDoesNotCount(t *testing.T) {
+	m := initTestDB(t)
+	insertNatRuleDirect(t, m, NatRule{
+		ID: "nat2", Name: "NAT2", Source: "10.10.230.0/24", OutInterface: "enp0s3",
+		Type: "MASQUERADE", Enabled: false, // disabled
+	})
+
+	inUse, err := m.activeAddCommands("nat3")
+	if err != nil {
+		t.Fatalf("activeAddCommands: %v", err)
+	}
+	if len(inUse) != 0 {
+		t.Errorf("activeAddCommands should ignore disabled rules, got %v", inUse)
+	}
+}
+
+func TestActiveAddCommands_NoOverlapEmptySet(t *testing.T) {
+	m := initTestDB(t)
+	insertNatRuleDirect(t, m, NatRule{
+		ID: "nat2", Name: "NAT2", Source: "10.10.5.2", OutInterface: "enp0s3",
+		Type: "MASQUERADE", Enabled: true,
+	})
+
+	inUse, err := m.activeAddCommands("nat3")
+	if err != nil {
+		t.Fatalf("activeAddCommands: %v", err)
+	}
+	want := "iptables-nft -t nat -A POSTROUTING -s 10.10.5.2 -o enp0s3 -j MASQUERADE"
+	if !inUse[want] {
+		t.Errorf("activeAddCommands should include NAT2's own distinct command, got %v", inUse)
+	}
+}
