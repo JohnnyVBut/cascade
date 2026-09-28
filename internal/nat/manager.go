@@ -594,38 +594,92 @@ func (m *Manager) applyRule(rule *NatRule) error {
 	return nil
 }
 
-// RemoveForAlias removes kernel iptables rules for all enabled NAT rules that
-// reference aliasID as their source. Must be called BEFORE the alias is updated
-// in the DB so that buildCmds still uses the OLD alias content.
-func (m *Manager) RemoveForAlias(aliasID string) {
+// aliasTreeContains reports whether targetID is aliasID itself, or is
+// reachable by walking aliasID's "group" membership transitively. NAT rules
+// store only the top-level SourceAliasID they were created with (e.g. a
+// group like "ru_vpn_clients"), which can itself contain nested groups or
+// network aliases. Editing one of those nested members previously went
+// undetected — RemoveForAlias/RestoreForAlias compared the edited alias's ID
+// against rule.SourceAliasID with plain equality, so a NAT rule referencing
+// a group only resynced when the group itself was edited directly, never
+// when a member nested inside it changed. The kernel rule then silently
+// kept stale CIDRs (or missed newly added ones) while the DB and GUI
+// already reflected the new alias content, since alias resolution for
+// display re-walks the tree fresh on every read.
+// visited guards against a cyclic group reference (should not normally
+// happen, but a corrupt DB must not hang this in an infinite loop).
+func (m *Manager) aliasTreeContains(aliasID, targetID string, visited map[string]bool) bool {
+	if aliasID == targetID {
+		return true
+	}
+	if visited[aliasID] {
+		return false
+	}
+	visited[aliasID] = true
+
+	if m.am == nil {
+		return false
+	}
+	alias, err := m.am.GetByID(aliasID)
+	if err != nil || alias == nil || alias.Type != "group" {
+		return false
+	}
+	for _, memberID := range alias.MemberIDs {
+		if m.aliasTreeContains(memberID, targetID, visited) {
+			return true
+		}
+	}
+	return false
+}
+
+// rulesReferencingAlias returns every enabled NAT rule whose source alias is
+// aliasID or transitively contains it (see aliasTreeContains). Factored out
+// of RemoveForAlias/RestoreForAlias so the selection logic — the part that
+// was actually wrong (plain ID equality missing nested membership) — can be
+// tested directly, without needing a real "iptables-nft" binary.
+func (m *Manager) rulesReferencingAlias(aliasID string) ([]NatRule, error) {
 	rules, err := m.GetRules()
+	if err != nil {
+		return nil, err
+	}
+	var out []NatRule
+	for i := range rules {
+		if !rules[i].Enabled || !m.aliasTreeContains(rules[i].SourceAliasID, aliasID, map[string]bool{}) {
+			continue
+		}
+		out = append(out, rules[i])
+	}
+	return out, nil
+}
+
+// RemoveForAlias removes kernel iptables rules for all enabled NAT rules
+// whose source alias is aliasID or transitively contains it (see
+// aliasTreeContains). Must be called BEFORE the alias is updated in the DB
+// so that buildCmds still uses the OLD alias content.
+func (m *Manager) RemoveForAlias(aliasID string) {
+	rules, err := m.rulesReferencingAlias(aliasID)
 	if err != nil {
 		log.Printf("nat: RemoveForAlias %s: load rules: %v", aliasID, err)
 		return
 	}
 	for i := range rules {
-		if !rules[i].Enabled || rules[i].SourceAliasID != aliasID {
-			continue
-		}
 		if err := m.removeRule(&rules[i]); err != nil {
 			log.Printf("nat: RemoveForAlias %s: remove %q: %v", aliasID, rules[i].Name, err)
 		}
 	}
 }
 
-// RestoreForAlias re-applies kernel iptables rules for all enabled NAT rules that
-// reference aliasID. Must be called AFTER the alias is updated in the DB so that
-// buildCmds uses the NEW alias content.
+// RestoreForAlias re-applies kernel iptables rules for all enabled NAT rules
+// whose source alias is aliasID or transitively contains it. Must be called
+// AFTER the alias is updated in the DB so that buildCmds uses the NEW alias
+// content.
 func (m *Manager) RestoreForAlias(aliasID string) {
-	rules, err := m.GetRules()
+	rules, err := m.rulesReferencingAlias(aliasID)
 	if err != nil {
 		log.Printf("nat: RestoreForAlias %s: load rules: %v", aliasID, err)
 		return
 	}
 	for i := range rules {
-		if !rules[i].Enabled || rules[i].SourceAliasID != aliasID {
-			continue
-		}
 		if err := m.applyRule(&rules[i]); err != nil {
 			log.Printf("nat: RestoreForAlias %s: apply %q: %v", aliasID, rules[i].Name, err)
 		}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JohnnyVBut/cascade/internal/aliases"
 	"github.com/JohnnyVBut/cascade/internal/db"
 )
 
@@ -545,5 +546,83 @@ func TestActiveAddCommands_NoOverlapEmptySet(t *testing.T) {
 	want := "iptables-nft -t nat -A POSTROUTING -s 10.10.5.2 -o enp0s3 -j MASQUERADE"
 	if !inUse[want] {
 		t.Errorf("activeAddCommands should include NAT2's own distinct command, got %v", inUse)
+	}
+}
+
+// ── RemoveForAlias / RestoreForAlias: nested group membership ──────────────
+// Regression: a NAT rule's SourceAliasID points at a top-level group. Editing
+// a MEMBER alias nested inside that group (not the group itself) must still
+// resync the rule's kernel state — plain ID equality against the edited
+// alias missed this, so the rule's kernel lines silently went stale.
+
+func TestAliasTreeContains_DirectMatch(t *testing.T) {
+	m := initTestDB(t)
+	if !m.aliasTreeContains("a", "a", map[string]bool{}) {
+		t.Error("an alias must be considered to contain itself")
+	}
+}
+
+func TestAliasTreeContains_NestedMember(t *testing.T) {
+	if err := db.Init(t.TempDir()); err != nil {
+		t.Fatalf("db.Init: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	am := aliases.New(nil)
+	m := &Manager{am: am}
+
+	network, err := am.Create(aliases.Alias{Name: "client_networks", Type: "network", Entries: []string{"10.10.200.0/24"}})
+	if err != nil {
+		t.Fatalf("create network alias: %v", err)
+	}
+	group, err := am.Create(aliases.Alias{Name: "ru_vpn_clients", Type: "group", MemberIDs: []string{network.ID}})
+	if err != nil {
+		t.Fatalf("create group alias: %v", err)
+	}
+
+	if !m.aliasTreeContains(group.ID, network.ID, map[string]bool{}) {
+		t.Error("aliasTreeContains should find the nested network alias inside the group")
+	}
+	if m.aliasTreeContains(group.ID, "no-such-id", map[string]bool{}) {
+		t.Error("aliasTreeContains should not match an unrelated alias id")
+	}
+}
+
+func TestRestoreForAlias_ResyncsRuleWhenNestedMemberChanges(t *testing.T) {
+	am := aliases.New(nil)
+	m := &Manager{am: am}
+	if err := db.Init(t.TempDir()); err != nil {
+		t.Fatalf("db.Init: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	network, err := am.Create(aliases.Alias{Name: "client_networks", Type: "network", Entries: []string{"10.10.200.0/24"}})
+	if err != nil {
+		t.Fatalf("create network alias: %v", err)
+	}
+	group, err := am.Create(aliases.Alias{Name: "ru_vpn_clients", Type: "group", MemberIDs: []string{network.ID}})
+	if err != nil {
+		t.Fatalf("create group alias: %v", err)
+	}
+
+	insertNatRuleDirect(t, m, NatRule{
+		ID: "nat2", Name: "NAT2", SourceAliasID: group.ID, OutInterface: "enp0s3",
+		Type: "MASQUERADE", Enabled: true,
+	})
+	insertNatRuleDirect(t, m, NatRule{
+		ID: "nat3", Name: "NAT3", Source: "10.10.5.2", OutInterface: "enp0s3",
+		Type: "MASQUERADE", Enabled: true,
+	})
+
+	// RestoreForAlias/RemoveForAlias are called with the NESTED alias's ID
+	// (the one actually edited), not the group's ID — this exercises
+	// rulesReferencingAlias exactly as they do, and must still select NAT2
+	// via the group it belongs to, while leaving the unrelated NAT3 out.
+	matched, err := m.rulesReferencingAlias(network.ID)
+	if err != nil {
+		t.Fatalf("rulesReferencingAlias: %v", err)
+	}
+	if len(matched) != 1 || matched[0].ID != "nat2" {
+		t.Errorf("rulesReferencingAlias(%s) = %v, want exactly [NAT2] (matched via its group %s)", network.ID, matched, group.ID)
 	}
 }
